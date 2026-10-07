@@ -253,7 +253,9 @@ final class DiagramOverlay {
             // Non-contiguous layout can report stale estimates for unlaid text; make everything above the card exact.
             lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(total, NSMaxRange(line.range))))
             let glyph = lm.glyphIndexForCharacter(at: min(max(0, line.range.location), total - 1))
-            let frag = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            // The fragment rect of the block's last line includes the paragraph spacing we reserved for the card,
+            // so anchor to the *used* rect (the text itself) and let the card fill the reserved space beneath it.
+            let frag = lm.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
             let height = max(24, e.reserved - 14)
             var w = width
             if e.view.isImage, let n = e.view.naturalSize {

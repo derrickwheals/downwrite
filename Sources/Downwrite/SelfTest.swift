@@ -130,10 +130,10 @@ enum SelfTest {
             let lm = tv.layoutManager!
             func lineRect(_ l: Int) -> NSRect {
                 let loc = coordinator.analysis.lines[l].range.location
-                return lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: loc), effectiveRange: nil)
+                return lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: loc), effectiveRange: nil)
             }
             let first = lineRect(block.firstLine), last = lineRect(block.lastLine)
-            let gap = card.frame.minY - last.maxY
+            let gap = card.frame.minY - (last.maxY + tv.textContainerOrigin.y)
             report.append("DIAG mermaid lines \(block.firstLine)…\(block.lastLine): first y=\(first.minY) h=\(first.height), last y=\(last.minY) h=\(last.height), card y=\(card.frame.minY) h=\(card.frame.height), reserved=\(coordinator.overlay.reservedHeights[block.firstLine] ?? 0)")
             check(first.height < 2 && last.height < 2, "collapsed Mermaid source takes no vertical space", detail: "heights \(first.height)/\(last.height)")
             check(gap >= 0 && gap < 12, "diagram card sits directly under its collapsed source", detail: "gap \(gap)")
