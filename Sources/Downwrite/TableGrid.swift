@@ -185,6 +185,8 @@ final class TableCellView: NSTextView, NSTextViewDelegate {
         let ok = super.resignFirstResponder()
         if ok {
             focused = false
+            // An unfocused cell must not keep drawing its old selection (e.g. the text Tab selected on arrival).
+            if selectedRange().length > 0 { setSelectedRange(NSRange(location: 0, length: 0)) }
             restyleCell(reanalyze: false)
             grid?.cellDidResignFocus(self)
         }

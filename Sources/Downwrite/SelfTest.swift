@@ -141,8 +141,15 @@ enum SelfTest {
                 let loc = coordinator.analysis.lines[l].range.location
                 return lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: loc), effectiveRange: nil)
             }
+            let staleLast = lineRect(block.lastLine)
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: NSMaxRange(coordinator.analysis.lines[block.lastLine].range)))
             let first = lineRect(block.firstLine), last = lineRect(block.lastLine)
             let gap = card.frame.minY - (last.maxY + tv.textContainerOrigin.y)
+            let tableLast = coordinator.analysis.tables.first(where: \.isGrid).map { $0.lastLine }
+            let spacing = tableLast.flatMap { l -> CGFloat? in
+                (storage.attribute(.paragraphStyle, at: coordinator.analysis.lines[l].range.location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing
+            }
+            report.append("DIAG gap before/after ensureLayout: last.y \(staleLast.minY) → \(last.minY); table spacing \(spacing ?? -1) vs grid \(coordinator.tableOverlay.grids.first?.totalHeight ?? -1) frame \(String(describing: coordinator.tableOverlay.grids.first?.frame))")
             report.append("DIAG mermaid lines \(block.firstLine)…\(block.lastLine): first y=\(first.minY) h=\(first.height), last y=\(last.minY) h=\(last.height), card y=\(card.frame.minY) h=\(card.frame.height), reserved=\(coordinator.overlay.reservedHeights[block.firstLine] ?? 0)")
             check(first.height < 2 && last.height < 2, "collapsed Mermaid source takes no vertical space", detail: "heights \(first.height)/\(last.height)")
             check(gap >= 0 && gap < 12, "diagram card sits directly under its collapsed source", detail: "gap \(gap)")
