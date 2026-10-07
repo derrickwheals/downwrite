@@ -1,6 +1,6 @@
 {
   "fill": {
-    "automatic-gradient": "display-p3:0.93000,0.94000,1.00000,1.00000"
+    "automatic-gradient": "display-p3:0.37000,0.45000,0.96000,1.00000"
   },
   "fill-specializations": [
     {
@@ -16,13 +16,7 @@
         {
           "image-name": "glyph.png",
           "name": "glyph",
-          "glass": true,
-          "image-name-specializations": [
-            {
-              "appearance": "dark",
-              "value": "glyph-dark.png"
-            }
-          ]
+          "glass": true
         }
       ],
       "shadow": {

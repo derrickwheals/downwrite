@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="Packaging/AppIcon-light-1024.png" width="112" alt="Downwrite app icon (light)">
+  <img src="Packaging/AppIcon-dark-1024.png" width="112" alt="Downwrite app icon (dark)">
+</p>
+
 # Downwrite
 
 A quiet, native Markdown editor for the Mac — light-weight, beautiful to type in, and happy to be your default `.md` app.
@@ -20,7 +25,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **CommonMark + GFM + extras.** Full CommonMark (via Apple's `swift-markdown` / cmark-gfm), plus tables, task lists (click to tick), strikethrough, autolinks, `==highlight==`, `[^footnotes]`, `$math$` styling and YAML front matter.
 - **Mermaid diagrams.** Fenced ```` ```mermaid ```` blocks render as live diagrams (flowcharts, sequence, class, state, ER, Gantt, pie, journey, git graph, mind maps…). Mermaid is bundled, so it works offline. Click a diagram to edit its source; it re-renders as you type.
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
-- **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The Dock icon switches between light and dark artwork too.
+- **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The app icon is an Icon Composer asset (light, dark and tinted variants chosen by macOS) and the Dock icon also swaps between the light and dark artwork while the app runs.
 - **Liquid Glass.** Built for macOS 26 "Tahoe" and ready for macOS 27 "Golden Gate": system toolbar and window chrome adopt Liquid Glass automatically, and the floating word-count pill uses `glassEffect`.
 - **A proper Mac document app.** Tabs, Versions, autosave, Open Recent, drag-and-drop onto the Dock icon, Find (⌘F), full undo/redo. Opens and saves UTF-8 (± BOM), UTF-16 and legacy Windows-1252 files and **preserves line endings** (LF / CRLF) so it never rewrites a file's format behind your back.
 - **Smart keys.** Return continues lists, tasks, numbered lists and quotes (press it twice to leave); Tab / ⇧Tab indent and outdent; paste a URL over selected text to make a link.

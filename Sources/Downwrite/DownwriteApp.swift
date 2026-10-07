@@ -10,6 +10,7 @@ struct DownwriteApp: App {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
             EditorScene(document: file.$document, fileURL: file.fileURL)
         }
+        .defaultSize(width: 940, height: 740)
         .commands {
             FormatCommands()
             ViewCommands()

@@ -41,7 +41,7 @@ In the cloud (Linux) container there is **no Xcode/macOS**. The app target canno
 - Editor is **TextKit 1** (`DWLayoutManager`, explicit `NSTextStorage/NSLayoutManager/NSTextContainer`) for predictable custom drawing (code cards, pills, quote bars, rules). Do not touch `textView.textLayoutManager` — that silently flips it to TextKit 2/1 fallback.
 - Mermaid: `MermaidService` renders SVG in a hidden `WKWebView` (bundled `mermaid.min.js`, `securityLevel: strict`); `DiagramOverlay` owns one click-through `DiagramView` per block and tells the styler how much `paragraphSpacing` to reserve on the block's last line. Source collapses while the caret is outside the block.
 - Resources are loaded through `AppResources.url` (app bundle first, SwiftPM `Bundle.module` fallback). `build-app.sh` flattens `Sources/Downwrite/Resources/*` into `Contents/Resources`.
-- Theme = `NSApp.appearance` override from the `theme` default (`system|light|dark`); palettes live in `Palette` and are picked from the view's `effectiveAppearance`. Dock icon swaps `AppIcon-light/dark.png` by system appearance.
+- Theme = `NSApp.appearance` override from the `theme` default (`system|light|dark`); palettes live in `Palette` and are picked from the view's `effectiveAppearance`. Dock icon swaps `AppIcon-light/dark.png` by system appearance. The Finder/system icon is `Packaging/AppIcon.icon` (Icon Composer) compiled by `actool` in `build-app.sh`; it uses ONE glyph layer for all appearances (per-appearance glyph overrides were not honoured) and only the background fill changes. Regenerate everything with `scripts/generate-icons.py`.
 - Swift language mode is v5 (`swiftLanguageModes: [.v5]`) to avoid strict-concurrency churn in AppKit code.
 
 ## Gotchas learned the hard way

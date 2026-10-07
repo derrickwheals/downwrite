@@ -67,13 +67,14 @@ def glyph_layer(ink, caret, glow):
     return layer
 
 def render(variant):
+    # One glyph colour scheme (white "d" + amber caret) is legible on both backgrounds, so the Icon Composer bundle
+    # needs no per-appearance glyph overrides; only the background changes between light and dark.
+    ink, caret, glow = (255, 255, 255, 255), (255, 206, 99, 255), (255, 206, 99, 120)
     if variant == "light":
-        top, bottom = (252, 251, 255), (214, 220, 255)
-        ink, caret, glow = (36, 38, 66, 255), (64, 84, 214, 255), (64, 84, 214, 70)
-        edge = (255, 255, 255, 160)
+        top, bottom = (122, 136, 255), (62, 80, 214)
+        edge = (255, 255, 255, 120)
     else:
         top, bottom = (58, 62, 128), (16, 17, 38)
-        ink, caret, glow = (244, 243, 255, 255), (149, 164, 255, 255), (149, 164, 255, 150)
         edge = (255, 255, 255, 46)
     margin = 100 * S
     box = (margin, margin, N - margin, N - margin)
@@ -117,16 +118,14 @@ def main():
     icon = os.path.join(pk, "AppIcon.icon"); shutil.rmtree(icon, ignore_errors=True)
     os.makedirs(os.path.join(icon, "Assets"))
     arts["light"][1].save(os.path.join(icon, "Assets", "glyph.png"))
-    arts["dark"][1].save(os.path.join(icon, "Assets", "glyph-dark.png"))
     spec = {
-        "fill": {"automatic-gradient": "display-p3:0.93000,0.94000,1.00000,1.00000"},
+        "fill": {"automatic-gradient": "display-p3:0.37000,0.45000,0.96000,1.00000"},
         "fill-specializations": [
             {"appearance": "dark", "value": {"automatic-gradient": "display-p3:0.16000,0.17000,0.36000,1.00000"}},
         ],
         "groups": [{
             "layers": [{
                 "image-name": "glyph.png", "name": "glyph", "glass": True,
-                "image-name-specializations": [{"appearance": "dark", "value": "glyph-dark.png"}],
             }],
             "shadow": {"kind": "neutral", "opacity": 0.5},
             "translucency": {"enabled": True, "value": 0.4},
