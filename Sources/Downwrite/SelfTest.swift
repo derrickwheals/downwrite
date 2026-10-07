@@ -19,6 +19,11 @@ enum SelfTest {
         return (URL(fileURLWithPath: out, isDirectory: true), URL(fileURLWithPath: input))
     }
 
+    /// Optional extra Markdown file (CI passes the project README) used for the "tables vs. sidebar" scenario.
+    private static var extraFile: URL? {
+        CommandLine.arguments.first { $0.hasPrefix("--selftest-extra=") }.map { URL(fileURLWithPath: String($0.dropFirst("--selftest-extra=".count))) }
+    }
+
     private static var report: [String] = []
     private static var failures = 0
 
@@ -246,6 +251,68 @@ enum SelfTest {
             tv.scrollToBeginningOfDocument(nil)
         } else {
             check(false, "editor feeds a table-of-contents model")
+        }
+
+        // 5d. Regression: with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
+        // and keep the right reserved height while the sidebar opens and closes, however fast.
+        if let extra = extraFile, let readme = try? String(contentsOf: extra, encoding: .utf8), let tables = coordinator.tableOverlay {
+            let welcomeText = tv.string
+            let whole = NSRange(location: 0, length: welcomeText.utf16.count)
+            tv.setSelectedRange(whole)
+            tv.insertText(readme, replacementRange: whole)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            let defaults = UserDefaults.standard
+            defaults.set(false, forKey: Prefs.showTOC)
+            let ready = await waitUntil(timeout: 20) { !tables.grids.isEmpty && tables.grids.allSatisfy { $0.tableSize.width > 0 } }
+            check(ready, "README tables become grids", detail: "\(tables.grids.count) grids")
+            func settled() async -> [String] {
+                var found: [String] = []
+                _ = await waitUntil(timeout: 6) { found = tables.layoutProblems(); return found.isEmpty }
+                return found
+            }
+            func geometry(_ label: String) {
+                report.append("DIAG README \(label): text view \(Int(tv.frame.width)) pt, inset \(tv.textContainerInset.width), grid frames \(tables.grids.map { "\(Int($0.frame.minX)),\(Int($0.frame.minY)) \(Int($0.frame.width))×\(Int($0.frame.height))" })")
+            }
+            let wide = tv.frame.width
+            var problems = await settled()
+            geometry("start")
+            check(problems.isEmpty, "README tables are lined up with the text at the start", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+
+            press("o", keyCode: 31, [.command, .control])
+            _ = await waitUntil(timeout: 10) { tv.frame.width < wide - 150 }
+            problems = await settled()
+            geometry("sidebar open")
+            check(problems.isEmpty, "README tables stay lined up with the sidebar open", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-readme-toc-open.png"))
+
+            press("o", keyCode: 31, [.command, .control])
+            _ = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            problems = await settled()
+            geometry("sidebar closed again")
+            check(problems.isEmpty, "README tables are lined up again after the sidebar closes", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-readme-toc-closed.png"))
+
+            for _ in 0..<4 {
+                press("o", keyCode: 31, [.command, .control]); try? await Task.sleep(nanoseconds: 150_000_000)
+                press("o", keyCode: 31, [.command, .control]); try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            _ = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            problems = await settled()
+            geometry("after rapid toggling")
+            check(problems.isEmpty, "README tables are lined up after rapid sidebar toggling", detail: problems.joined(separator: "; "))
+
+            defaults.set(false, forKey: Prefs.showTOC)
+            let back = NSRange(location: 0, length: tv.string.utf16.count)
+            tv.setSelectedRange(back)
+            tv.insertText(welcomeText, replacementRange: back)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            window.makeFirstResponder(tv)
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
         // 6. Themes: light/dark follow the preference and palettes change.

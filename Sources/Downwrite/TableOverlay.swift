@@ -121,6 +121,48 @@ final class TableOverlay {
         if heightChanged { onReservedHeightsChanged?() }
     }
 
+    /// Every way a visible grid disagrees with the text around it (empty means consistent): wrong column width, not
+    /// lined up with the text column, wrong reserved height, or overlapping the paragraph below. Used by tests and the
+    /// end-to-end run; it never changes anything.
+    func layoutProblems() -> [String] {
+        guard let tv = textView, let lm = tv.layoutManager, let storage = tv.textStorage else { return ["no text view"] }
+        let total = storage.length
+        guard total > 0, analysis.length == total else { return ["analysis is stale (\(analysis.length) vs \(total) characters)"] }
+        let blocks = gridBlocks
+        guard blocks.count == grids.count else { return ["\(blocks.count) tables but \(grids.count) grids"] }
+        var out: [String] = []
+        let origin = tv.textContainerOrigin
+        let width = availableWidth
+        for (k, block) in blocks.enumerated() {
+            let grid = grids[k]
+            guard !grid.isHidden, block.lastLine < analysis.lines.count else { continue }
+            let line = analysis.lines[block.lastLine]
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(total, NSMaxRange(line.range))))
+            let glyph = lm.glyphIndexForCharacter(at: min(max(0, line.range.location), total - 1))
+            let used = lm.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+            let frag = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            func f(_ v: CGFloat) -> String { String(format: "%.1f", Double(v)) }
+            if abs(grid.maxTableWidth - width) > 1 {
+                out.append("grid \(k) was sized for a \(f(grid.maxTableWidth)) pt column but the text column is \(f(width)) pt")
+            }
+            let expectedX = origin.x - GridMetrics.leftGutter
+            if abs(grid.frame.minX - expectedX) > 1 {
+                out.append("grid \(k) starts at x=\(f(grid.frame.minX)) but the text column implies x=\(f(expectedX))")
+            }
+            let expectedY = used.maxY + origin.y
+            if abs(grid.frame.minY - expectedY) > 1 {
+                out.append("grid \(k) is at y=\(f(grid.frame.minY)) but its source line ends at y=\(f(expectedY))")
+            }
+            let spacing = (storage.attribute(.paragraphStyle, at: line.range.location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? -1
+            if abs(spacing - grid.totalHeight) > 1 {
+                out.append("grid \(k): the text reserves \(f(spacing)) pt but the grid is \(f(grid.totalHeight)) pt tall")
+            }
+            let overlap = grid.frame.maxY - (frag.maxY + origin.y)
+            if overlap > 1 { out.append("grid \(k) overlaps the text below it by \(f(overlap)) pt") }
+        }
+        return out
+    }
+
     // MARK: Writing edits back
 
     /// Writes `model` into the document as the table's new Markdown. `typing` marks keystrokes in one cell so they
