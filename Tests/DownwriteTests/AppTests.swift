@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 @testable import Downwrite
 import DownwriteCore
 

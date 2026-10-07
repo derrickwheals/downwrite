@@ -3,7 +3,7 @@ import DownwriteCore
 
 /// End-to-end test mode, used by CI and available to anyone:
 ///
-///     Downwrite.app/Contents/MacOS/Downwrite --selftest <outputDir> <markdownFile>
+///     Downwrite.app/Contents/MacOS/Downwrite --selftest-out=<outputDir> --selftest-input=<markdownFile>
 ///
 /// Launches the real app, opens the file through the document system, drives it with real key events through the real
 /// menu bar, saves to disk, flips the theme, captures screenshots of the actual window and writes `selftest-report.txt`.
@@ -11,9 +11,12 @@ import DownwriteCore
 @MainActor
 enum SelfTest {
     static var arguments: (outDir: URL, input: URL)? {
-        let args = CommandLine.arguments
-        guard let i = args.firstIndex(of: "--selftest"), args.count > i + 2 else { return nil }
-        return (URL(fileURLWithPath: args[i + 1], isDirectory: true), URL(fileURLWithPath: args[i + 2]))
+        // Single `--key=value` tokens: bare paths on the command line would make Cocoa open them as documents.
+        func value(_ key: String) -> String? {
+            CommandLine.arguments.first { $0.hasPrefix(key + "=") }.map { String($0.dropFirst(key.count + 1)) }
+        }
+        guard let out = value("--selftest-out"), let input = value("--selftest-input") else { return nil }
+        return (URL(fileURLWithPath: out, isDirectory: true), URL(fileURLWithPath: input))
     }
 
     private static var report: [String] = []
@@ -42,8 +45,7 @@ enum SelfTest {
             check(false, "open document", detail: "\(error)")
             return finish(outDir)
         }
-        var found = await waitForEditor(containing: "Welcome")
-        if found == nil { found = await waitForEditor(containing: "") }
+        let found = await waitForEditor(file: work.lastPathComponent)
         guard let tv = found else {
             check(false, "editor window appears")
             return finish(outDir)
@@ -156,10 +158,10 @@ enum SelfTest {
         return NSApp.windows.compactMap(\.contentView).flatMap(find)
     }
 
-    private static func waitForEditor(containing needle: String) async -> EditorTextView? {
+    private static func waitForEditor(file name: String) async -> EditorTextView? {
         var found: EditorTextView?
-        _ = await waitUntil(timeout: 20) {
-            found = editors().first { $0.string.contains(needle) }
+        _ = await waitUntil(timeout: 25) {
+            found = editors().first { $0.window?.representedURL?.lastPathComponent == name }
             return found != nil
         }
         return found

@@ -76,6 +76,24 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertTrue(a.links.contains { $0.destination == "https://b.example" })
     }
 
+    func testBareURLsBecomeLinks() {
+        let s = "Visit https://example.com/a?b=1, or www.example.org. Not (https://wrapped.example) nor `https://code.example`."
+        let a = MarkdownAnalyzer.analyze(s)
+        let dests = a.links.map(\.destination)
+        XCTAssertTrue(dests.contains("https://example.com/a?b=1"), "\(dests)")
+        XCTAssertTrue(dests.contains("https://www.example.org"), "\(dests)")
+        XCTAssertFalse(dests.contains { $0.contains("code.example") })
+        // Trailing punctuation is excluded from the link text.
+        let first = a.links.first { $0.destination == "https://example.com/a?b=1" }!
+        XCTAssertEqual(ns(s, first.range), "https://example.com/a?b=1")
+    }
+
+    func testURLInsideExplicitLinkIsNotLinkedTwice() {
+        let s = "[https://a.example](https://a.example) and https://b.example"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.links.count, 2)
+    }
+
     func testImage() {
         let s = "![alt text](pic.png)"
         let a = MarkdownAnalyzer.analyze(s)

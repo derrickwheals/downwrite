@@ -21,7 +21,7 @@ scripts/linux-test.sh                  # core tests in the Swift Docker image (w
 swift test                             # macOS: everything
 swift build && swift run Downwrite     # macOS: debug run
 scripts/build-app.sh                   # macOS: dist/Downwrite.app
-dist/Downwrite.app/Contents/MacOS/Downwrite --selftest <outDir> <file.md>   # e2e, writes selftest-report.txt
+dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out=<dir> --selftest-input=<file.md>   # e2e, writes selftest-report.txt
 python3 scripts/generate-icons.py      # regenerate icon artwork (needs Pillow)
 ```
 

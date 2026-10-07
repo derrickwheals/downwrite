@@ -456,6 +456,10 @@ private struct Builder {
     private static let mathInlineRE = try! NSRegularExpression(pattern: "(?<![\\\\$])\\$(?![\\s$])([^$\\n]+?)(?<![\\s\\\\])\\$(?![\\d$])")
     private static let mathBlockRE = try! NSRegularExpression(pattern: "\\$\\$(.+?)\\$\\$", options: [.dotMatchesLineSeparators])
 
+    /// Bare URLs (GFM "autolink literals"), which the bundled cmark build does not produce on its own.
+    private static let bareURLRE = try! NSRegularExpression(
+        pattern: "(?<![\\w/@(\\[])(?:https?://|www\\.)[^\\s<>\\[\\]]*[^\\s<>\\[\\].,;:!?'\"”’)\\]*_~]")
+
     private mutating func extensions(in container: NSRange, protected: [NSRange]) {
         var units = Array(src.units[container.location..<NSMaxRange(container)])
         for p in protected {
@@ -471,6 +475,15 @@ private struct Builder {
             addSpan(r, .highlight)
             addMarker(NSRange(location: r.location, length: 2), reveal: r)
             addMarker(NSRange(location: NSMaxRange(r) - 2, length: 2), reveal: r)
+        }
+        for m in Self.bareURLRE.matches(in: s, range: whole) {
+            let r = shift(m.range)
+            let overlapsLink = links.contains { NSIntersectionRange($0.range, r).length > 0 }
+            let inProtected = protected.contains { NSIntersectionRange($0, r).length > 0 }
+            guard !overlapsLink, !inProtected else { continue }
+            let text = src.string(r)
+            addSpan(r, .link)
+            links.append(LinkSpan(range: r, textRange: r, destination: text.hasPrefix("www.") ? "https://" + text : text))
         }
         for m in Self.footnoteRE.matches(in: s, range: whole) { addSpan(shift(m.range), .footnote) }
         for m in Self.mathBlockRE.matches(in: s, range: whole) { addSpan(shift(m.range), .math) }

@@ -62,7 +62,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          dist/Downwrite.app/Contents/MacOS/Downwrite --selftest "$PWD/artifacts/e2e" "$PWD/Sources/Downwrite/Resources/Welcome.md" > artifacts/e2e/stdout.txt 2>&1 &
+          dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" > artifacts/e2e/stdout.txt 2>&1 &
           APP=$!
           for i in $(seq 1 150); do kill -0 $APP 2>/dev/null || break; sleep 1; done
           kill $APP 2>/dev/null
@@ -110,5 +110,5 @@ jobs:
           echo "--- test result ---"; grep -E "Executed [0-9]+ tests" test.log 2>/dev/null | tail -1
           echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
           echo "--- e2e report ---"; cat artifacts/e2e/selftest-report.txt 2>/dev/null | head -60
-          echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null
-          echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -70
+          echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null || true
+          echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -70 || true

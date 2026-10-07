@@ -31,7 +31,7 @@ final class EditorBehaviourTests: XCTestCase {
         h.textView.dwApplyFormat(FormatCommandBox(.italic))
         XCTAssertEqual(h.textView.string, "make *this* strong")
         h.textView.dwApplyFormat(FormatCommandBox(.inlineCode))
-        XCTAssertEqual(h.textView.string, "make `*this*` strong")
+        XCTAssertEqual(h.textView.string, "make *`this`* strong")
     }
 
     func testFormattingIsUndoable() {

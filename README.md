@@ -121,7 +121,7 @@ Run the end-to-end test yourself:
 
 ```bash
 scripts/build-app.sh
-dist/Downwrite.app/Contents/MacOS/Downwrite --selftest /tmp/downwrite-e2e Sources/Downwrite/Resources/Welcome.md
+dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out=/tmp/downwrite-e2e --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md"
 cat /tmp/downwrite-e2e/selftest-report.txt
 ```
 
