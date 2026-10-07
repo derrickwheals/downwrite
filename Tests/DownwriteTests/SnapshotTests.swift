@@ -39,10 +39,10 @@ final class SnapshotTests: XCTestCase {
         return image
     }
 
-    private func assertNotBlank(_ image: NSImage, _ name: String) throws {
+    private func assertNotBlank(_ image: NSImage, _ name: String, dense: Bool = false) throws {
         let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
         var values = Set<UInt32>()
-        let step = max(1, rep.pixelsWide / 60)
+        let step = dense ? 1 : max(1, rep.pixelsWide / 60)
         for y in stride(from: 0, to: rep.pixelsHigh, by: step) {
             for x in stride(from: 0, to: rep.pixelsWide, by: step) {
                 if let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) {
@@ -88,7 +88,7 @@ final class SnapshotTests: XCTestCase {
         let h = EditorHarness(text: "", dark: false, size: NSSize(width: 760, height: 300))
         h.window.makeFirstResponder(h.textView)
         let image = try await render(h, name: "empty-light")
-        try assertNotBlank(image, "empty") // background + placeholder text
+        try assertNotBlank(image, "empty", dense: true) // sparse: background + one line of placeholder text
     }
 
     func testSnapshotEditingStates() async throws {
