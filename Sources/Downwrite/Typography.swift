@@ -94,4 +94,6 @@ extension NSAttributedString.Key {
     static let dwPill = NSAttributedString.Key("dw.pill")
     static let dwRule = NSAttributedString.Key("dw.rule")
     static let dwQuoteDepth = NSAttributedString.Key("dw.quoteDepth")
+    /// Marks a `-`/`*`/`+` list marker character that is displayed as a bullet glyph.
+    static let dwBullet = NSAttributedString.Key("dw.bullet")
 }

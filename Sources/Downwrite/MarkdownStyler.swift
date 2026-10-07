@@ -191,6 +191,7 @@ final class MarkdownStyler {
         } else if f.contains(.listMarker) {
             attrs[.foregroundColor] = palette.accent.nsColor
             attrs[.font] = typography.font(size: look.size, bold: true, mono: look.mono)
+            if f.contains(.bullet) { attrs[.dwBullet] = true }
         } else if f.contains(.task) {
             attrs[.foregroundColor] = palette.accent.nsColor
             attrs[.font] = typography.font(size: look.size, bold: true, mono: true)

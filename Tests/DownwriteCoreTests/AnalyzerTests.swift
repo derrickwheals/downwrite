@@ -265,6 +265,8 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertEqual(a.lines[4].listPrefixLength, 6)
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.taskDone) && ns(s, $0.range) == "done" })
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.listMarker) && ns(s, $0.range) == "1." })
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.bullet) && ns(s, $0.range) == "-" })
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.bullet) && ns(s, $0.range) == "1." })
         XCTAssertNotNil(a.taskBox(at: a.taskBoxes[0].range.location + 1))
     }
 
@@ -279,8 +281,9 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertEqual(a.tables[0].firstLine, 0)
         XCTAssertEqual(a.tables[0].lastLine, 2)
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.dim) && ns(s, $0.range) == "|" })
-        // Inline formatting inside a body cell is understood.
+        // Inline formatting inside a body cell is understood, and its markers never hide (columns stay aligned).
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.bold) && ns(s, $0.range) == "**2**" })
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: s.utf16.count - 2, length: 0)).count, 0)
     }
 
     func testFrontMatter() {

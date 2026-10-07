@@ -214,6 +214,28 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         Task { @MainActor in self.scheduleReposition() }
     }
 
+    /// Draws `-`/`*`/`+` list markers as a real bullet glyph while the Markdown character stays in the text.
+    nonisolated func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                                   properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+                                   characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont,
+                                   forGlyphRange glyphRange: NSRange) -> Int {
+        guard let storage = layoutManager.textStorage, glyphRange.length > 0 else { return 0 }
+        var newGlyphs = Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
+        var changed = false
+        for i in 0..<glyphRange.length {
+            let ci = charIndexes[i]
+            guard ci < storage.length, storage.attribute(.dwBullet, at: ci, effectiveRange: nil) != nil else { continue }
+            var ch: UniChar = 0x2022
+            var glyph: CGGlyph = 0
+            if CTFontGetGlyphsForCharacters(aFont, &ch, &glyph, 1) { newGlyphs[i] = glyph; changed = true }
+        }
+        guard changed else { return 0 }
+        let properties = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
+        let indexes = Array(UnsafeBufferPointer(start: charIndexes, count: glyphRange.length))
+        layoutManager.setGlyphs(newGlyphs, properties: properties, characterIndexes: indexes, font: aFont, forGlyphRange: glyphRange)
+        return glyphRange.length
+    }
+
     // MARK: Links
 
     func open(destination: String) {

@@ -84,12 +84,15 @@ jobs:
       - name: Record screenshots on the branch
         if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
         run: |
-          mkdir -p docs/screenshots
+          mkdir -p docs/screenshots docs/ci
+          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt docs/ci/ 2>/dev/null || true
+          grep -E "Executed [0-9]+ tests" test.log | tail -1 > docs/ci/test-summary.txt || true
+          grep -E "error:" test.log | sort -u | head -40 >> docs/ci/test-summary.txt || true
           cp artifacts/e2e/window-*.png docs/screenshots/ 2>/dev/null || true
           cp artifacts/snapshots/*.png docs/screenshots/ 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots
+          git add docs/screenshots docs/ci
           if git diff --cached --quiet; then echo "no screenshot changes"; else
             git commit -q -m "ci: update screenshots [skip ci]"
             for i in 1 2 3; do
@@ -111,4 +114,4 @@ jobs:
           echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
           echo "--- e2e report ---"; cat artifacts/e2e/selftest-report.txt 2>/dev/null | head -60
           echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null || true
-          echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -70 || true
+          true

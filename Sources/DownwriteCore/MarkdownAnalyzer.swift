@@ -297,7 +297,8 @@ private struct Builder {
             if q > p, q < end, src.units[q] == 46 || src.units[q] == 41 { p = q + 1 }
         }
         if p > tokenStart {
-            addSpan(NSRange(location: tokenStart, length: p - tokenStart), .listMarker)
+            let isBullet = p - tokenStart == 1 && [42, 43, 45].contains(src.units[tokenStart])
+            addSpan(NSRange(location: tokenStart, length: p - tokenStart), isBullet ? [.listMarker, .bullet] : .listMarker)
             var q = p
             while q < end && src.isSpaceOrTab(q) { q += 1 }
             if q - p > 4 { q = p + 1 }
@@ -350,9 +351,12 @@ private struct Builder {
         tables.append(TableBlock(range: NSRange(location: src.lineStarts[ls.lowerBound],
                                                 length: src.lineContentEnds[ls.upperBound] - src.lineStarts[ls.lowerBound]),
                                  firstLine: ls.lowerBound, lastLine: ls.upperBound))
-        // Inline formatting inside cells.
+        // Inline formatting inside cells. Markers stay visible there: hiding them would shift the monospaced columns.
+        let firstMarker = markers.count
         for cell in t.head.children { inlineContent(of: cell) }
         for row in t.body.children { for cell in row.children { inlineContent(of: cell) } }
+        let always = NSRange(location: 0, length: src.length)
+        for i in firstMarker..<markers.count { markers[i].reveal = always }
     }
 
     // MARK: Inline

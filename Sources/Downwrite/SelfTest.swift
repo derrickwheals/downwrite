@@ -53,6 +53,8 @@ enum SelfTest {
         check(true, "editor window appears")
         check(tv.string == original, "document text loaded into editor", detail: "\(tv.string.count) vs \(original.count) chars")
         let window = tv.window!
+        window.setContentSize(NSSize(width: 1000, height: 780))
+        window.center()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(tv)
         NSApp.activate(ignoringOtherApps: true)
@@ -120,8 +122,21 @@ enum SelfTest {
         // 5. Mermaid renders as a card and the source collapses.
         let diagram = await waitUntil(timeout: 30) { tv.subviews.contains { ($0 as? DiagramView)?.naturalSize != nil } }
         check(diagram, "mermaid diagram rendered into a card")
-        if let card = tv.subviews.compactMap({ $0 as? DiagramView }).first {
+        if let card = tv.subviews.compactMap({ $0 as? DiagramView }).first,
+           let block = coordinator.analysis.previewBlocks.first(where: { if case .mermaid = $0.kind { return true } else { return false } }) {
             check(card.frame.height > 80 && card.frame.width > 200, "diagram card has a sensible frame", detail: "\(card.frame)")
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            let lm = tv.layoutManager!
+            func lineRect(_ l: Int) -> NSRect {
+                let loc = coordinator.analysis.lines[l].range.location
+                return lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: loc), effectiveRange: nil)
+            }
+            let first = lineRect(block.firstLine), last = lineRect(block.lastLine)
+            let gap = card.frame.minY - last.maxY
+            report.append("DIAG mermaid lines \(block.firstLine)…\(block.lastLine): first y=\(first.minY) h=\(first.height), last y=\(last.minY) h=\(last.height), card y=\(card.frame.minY) h=\(card.frame.height), reserved=\(coordinator.overlay.reservedHeights[block.firstLine] ?? 0)")
+            check(first.height < 2 && last.height < 2, "collapsed Mermaid source takes no vertical space", detail: "heights \(first.height)/\(last.height)")
+            check(gap >= 0 && gap < 12, "diagram card sits directly under its collapsed source", detail: "gap \(gap)")
         }
 
         // 6. Themes: light/dark follow the preference and palettes change.
@@ -135,10 +150,17 @@ enum SelfTest {
             check(coordinator.styler.palette == Palette.palette(for: theme == .dark ? .dark : .light), "editor palette follows \(theme.rawValue)")
             tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "comes back").location + 3, length: 0))
             try? await Task.sleep(nanoseconds: 800_000_000)
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 600_000_000)
             let file = outDir.appendingPathComponent("window-\(theme.rawValue).png")
             let ok = capture(window: window, to: file)
             shots.append(file.lastPathComponent)
             check(ok, "screenshot of real window (\(theme.rawValue))", detail: ok ? "" : "screencapture unavailable; see in-process snapshots")
+            if let card = tv.subviews.compactMap({ $0 as? DiagramView }).first {
+                tv.scrollToVisible(card.frame.insetBy(dx: 0, dy: -150))
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-diagram.png"))
+            }
         }
 
         // 7. Back to system theme leaves the app following macOS.

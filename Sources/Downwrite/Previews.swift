@@ -250,6 +250,8 @@ final class DiagramOverlay {
         for block in analysis.previewBlocks {
             guard let e = entries[block.firstLine], block.lastLine < analysis.lines.count else { continue }
             let line = analysis.lines[block.lastLine]
+            // Non-contiguous layout can report stale estimates for unlaid text; make everything above the card exact.
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(total, NSMaxRange(line.range))))
             let glyph = lm.glyphIndexForCharacter(at: min(max(0, line.range.location), total - 1))
             let frag = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             let height = max(24, e.reserved - 14)

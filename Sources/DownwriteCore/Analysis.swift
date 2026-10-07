@@ -38,6 +38,8 @@ public struct StyleFlags: OptionSet, Hashable, Sendable {
     /// De-emphasised punctuation that is never hidden (table pipes, setext underline …).
     public static let dim = StyleFlags(rawValue: 1 << 23)
     public static let headingMarker = StyleFlags(rawValue: 1 << 24)
+    /// A `-`, `*` or `+` list marker that the editor draws as a bullet glyph.
+    public static let bullet = StyleFlags(rawValue: 1 << 25)
 }
 
 public struct FormatSpan: Equatable, Sendable {
