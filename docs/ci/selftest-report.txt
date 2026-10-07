@@ -5,6 +5,7 @@ PASS  sample contains **disappears**
 PASS  markers hidden when caret is elsewhere
 PASS  markers revealed when caret enters the pair
 PASS  ⌘F opens the find bar
+PASS  find bar closes again
 PASS  ⌘B wraps selection in **
 PASS  ⌘B again unwraps
 PASS  ⌘I wraps selection in *
