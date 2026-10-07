@@ -56,8 +56,10 @@ jobs:
         run: |
           scripts/build-app.sh > artifacts/package.log 2>&1 || { tail -30 artifacts/package.log; exit 1; }
           tail -12 artifacts/package.log
-          test -f dist/Downwrite.app/Contents/Resources/Legal/LICENSE && test -f dist/Downwrite.app/Contents/Resources/Legal/THIRD-PARTY-NOTICES.md \
-            && echo "legal files bundled" | tee -a artifacts/package.log
+          for f in LICENSE THIRD-PARTY-NOTICES.md swift-markdown-LICENSE.txt cmark-gfm-COPYING.txt mermaid-LICENSE.txt; do
+            if [ ! -s "dist/Downwrite.app/Contents/Resources/Legal/$f" ]; then echo "MISSING legal file: $f"; exit 1; fi
+          done
+          echo "legal files bundled: $(ls dist/Downwrite.app/Contents/Resources/Legal | tr '\n' ' ')" | tee -a artifacts/package.log
           ls dist/Downwrite.app/Contents/Resources | head -20 | tee -a artifacts/package.log
           du -sh dist/Downwrite.app | tee -a artifacts/package.log
           echo "--- compiled icon variants ---" | tee -a artifacts/package.log
