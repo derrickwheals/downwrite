@@ -32,9 +32,11 @@ struct EditorScene: View {
     @AppStorage(Prefs.fontSize) private var fontSize = 17.0
     @AppStorage(Prefs.lineHeight) private var lineHeight = 1.45
     @AppStorage(Prefs.width) private var width = 720.0
+    @AppStorage(Prefs.spellCheck) private var spellCheck = false
 
     private var settings: EditorSettings {
-        EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width)
+        EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
+                       spellCheck: spellCheck)
     }
 
     var body: some View {
@@ -209,6 +211,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.fontSize) private var fontSize = 17.0
     @AppStorage(Prefs.lineHeight) private var lineHeight = 1.45
     @AppStorage(Prefs.width) private var width = 720.0
+    @AppStorage(Prefs.spellCheck) private var spellCheck = false
     @State private var message: String?
 
     var body: some View {
@@ -241,6 +244,9 @@ struct SettingsView: View {
                         Text("\(Int(width)) pt").monospacedDigit().frame(width: 56, alignment: .trailing)
                     }
                 }
+            }
+            Section("Writing") {
+                Toggle("Check spelling while typing", isOn: $spellCheck)
             }
             Section("Files") {
                 Button("Make Downwrite the Default Markdown App") {

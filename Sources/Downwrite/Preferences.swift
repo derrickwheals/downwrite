@@ -7,6 +7,7 @@ enum Prefs {
     static let fontSize = "fontSize"
     static let lineHeight = "lineHeight"
     static let width = "contentWidth"
+    static let spellCheck = "spellCheck"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -15,6 +16,7 @@ enum Prefs {
             fontSize: 17.0,
             lineHeight: 1.45,
             width: 720.0,
+            spellCheck: false,
         ])
     }
 }

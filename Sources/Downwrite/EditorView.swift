@@ -7,6 +7,7 @@ struct EditorSettings: Equatable {
     var size: Double
     var lineHeight: Double
     var width: Double
+    var spellCheck: Bool = false
 }
 
 /// SwiftUI wrapper around the AppKit editor.
@@ -77,6 +78,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         settings = s
         typography.update(choice: s.font, size: CGFloat(s.size), lineHeight: CGFloat(s.lineHeight), readableWidth: CGFloat(s.width))
         textView?.maxContentWidth = CGFloat(s.width)
+        textView?.isContinuousSpellCheckingEnabled = s.spellCheck
     }
 
     func update(text newText: String, settings s: EditorSettings) {

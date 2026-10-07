@@ -43,7 +43,7 @@ final class EditorTextView: NSTextView {
         tv.isAutomaticTextReplacementEnabled = false
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.isAutomaticTextCompletionEnabled = false
-        tv.isContinuousSpellCheckingEnabled = true
+        tv.isContinuousSpellCheckingEnabled = false
         tv.isGrammarCheckingEnabled = false
         tv.drawsBackground = true
         tv.textContainerInset = NSSize(width: 30, height: 28)
