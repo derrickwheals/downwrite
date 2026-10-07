@@ -12,21 +12,21 @@ Building for production...
 [9/42] Compiling cmark-gfm-extensions autolink.c
 [10/42] Compiling cmark-gfm render.c
 [11/42] Compiling cmark-gfm registry.c
-[12/42] Compiling cmark-gfm scanners.c
-[13/42] Compiling cmark-gfm utf8.c
-[14/42] Compiling cmark-gfm references.c
-[15/42] Compiling cmark-gfm plugin.c
-[16/42] Compiling cmark-gfm plaintext.c
+[12/42] Compiling cmark-gfm references.c
+[13/42] Compiling cmark-gfm plugin.c
+[14/42] Compiling cmark-gfm scanners.c
+[15/42] Compiling cmark-gfm plaintext.c
+[16/42] Compiling cmark-gfm utf8.c
 [17/42] Compiling cmark-gfm map.c
 [18/42] Compiling cmark-gfm man.c
 [19/42] Compiling cmark-gfm linked_list.c
 [20/42] Compiling cmark-gfm node.c
 [21/42] Compiling cmark-gfm latex.c
 [22/42] Compiling cmark-gfm iterator.c
-[23/42] Compiling cmark-gfm houdini_html_u.c
-[24/42] Compiling cmark-gfm html.c
-[25/42] Compiling cmark-gfm houdini_html_e.c
-[26/42] Compiling cmark-gfm houdini_href_e.c
+[23/42] Compiling cmark-gfm html.c
+[24/42] Compiling cmark-gfm houdini_html_u.c
+[25/42] Compiling cmark-gfm houdini_href_e.c
+[26/42] Compiling cmark-gfm houdini_html_e.c
 [27/42] Compiling cmark-gfm footnotes.c
 [28/42] Compiling cmark-gfm cmark_ctype.c
 [29/42] Compiling cmark-gfm commonmark.c
@@ -34,10 +34,9 @@ Building for production...
 [31/42] Compiling cmark-gfm buffer.c
 [32/42] Compiling cmark-gfm inlines.c
 [33/42] Write sources
-[34/42] Compiling cmark-gfm arena.c
+[34/42] Copying Resources
 [35/42] Write sources
-[36/42] Copying Resources
-[36/42] Write sources
+[37/42] Compiling cmark-gfm arena.c
 [38/42] Compiling CAtomic CAtomic.c
 [39/42] Compiling cmark-gfm blocks.c
 [41/43] Compiling Markdown ChildIndexPath.swift
@@ -45,7 +44,7 @@ Building for production...
 [43/45] Compiling Downwrite AppDelegate.swift
 [43/45] Write Objects.LinkFileList
 [44/45] Linking Downwrite
-Build of product 'Downwrite' complete! (65.56s)
+Build of product 'Downwrite' complete! (53.48s)
 ▶ assembling dist/Downwrite.app
 dist/Downwrite.app/Contents/Info.plist: OK
 ▶ compiling AppIcon.icon
@@ -62,7 +61,7 @@ Legal
 mermaid-renderer.html
 mermaid.min.js
 Welcome.md
-8.3M	dist/Downwrite.app
+8.4M	dist/Downwrite.app
 --- compiled icon variants ---
    3         "Appearance" : "ISAppearanceTintable",
    3         "Appearance" : "NSAppearanceNameAqua",

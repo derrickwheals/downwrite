@@ -1,2 +1,1 @@
-	 Executed 292 tests, with 1 failure (0 unexpected) in 53.834 (53.943) seconds
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/TableLayoutTests.swift:64: error: -[DownwriteTests.TableLayoutTests testNarrowColumnMakesGridTallerAndTextFollows] : XCTAssertEqual failed: ("["grid 0 was sized for a 720.0 pt column but the text column is 500.0 pt", "grid 0 starts at x=62.0 but the text column implies x=2.0", "grid 0 is at y=2641.4 but its source line ends at y=3324.3", "grid 1 was sized for a 720.0 pt column but the text column is 500.0 pt", "grid 1 starts at x=62.0 but the text column implies x=2.0", "grid 1 is at y=6237.2 but its source line ends at y=7566.3"]") is not equal to ("[]")
+	 Executed 292 tests, with 0 failures (0 unexpected) in 40.988 (41.059) seconds
