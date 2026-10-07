@@ -144,11 +144,15 @@ final class TableCellView: NSTextView, NSTextViewDelegate {
         if reanalyze || analysis.length != storage.length { analysis = MarkdownAnalyzer.analyzeTableCell(string) }
         let sel = effectiveSelection
         styler.styleCell(storage: storage, analysis: analysis, selection: sel, header: isHeader, alignment: textAlignment)
-        lastHidden = analysis.hiddenMarkerIndices(selection: sel)
+        let hidden = analysis.hiddenMarkerIndices(selection: sel)
+        let markersMoved = hidden != lastHidden
+        lastHidden = hidden
         typingAttributes = styler.cellBaseAttributes(header: isHeader, alignment: textAlignment)
         insertionPointColor = styler.palette.accent.nsColor
         selectedTextAttributes = [.backgroundColor: styler.palette.selection.nsColor]
         needsDisplay = true
+        // Showing or hiding `**` changes how wide the text is, so the column has to follow.
+        if markersMoved { grid?.cellMetricsChanged() }
     }
 
     // MARK: Measuring
@@ -323,7 +327,8 @@ final class TableGridView: NSView {
         case none, cell(TableCellPosition), rowGrip(Int), columnGrip(Int), addRow, addColumn
     }
 
-    unowned let overlay: TableOverlay
+    /// Weak: during teardown a focused cell can resign after the overlay (owned by the coordinator) is gone.
+    weak var overlay: TableOverlay?
     private(set) var model: TableModel
     private(set) var cells: [[TableCellView]] = []
     /// Position among the document's grid tables.
@@ -345,8 +350,8 @@ final class TableGridView: NSView {
     private var drag: Drag?
     private var isReconciling = false
 
-    var styler: MarkdownStyler { overlay.styler }
-    private var palette: Palette { overlay.styler.palette }
+    var styler: MarkdownStyler? { overlay?.styler }
+    private var palette: Palette? { overlay?.styler.palette }
     private var rowCount: Int { model.rowCount }
     private var columnCount: Int { model.columnCount }
 
@@ -405,6 +410,7 @@ final class TableGridView: NSView {
         let natural = (0..<columnCount).map { c in (0..<rowCount).map { cells[$0][c].naturalWidth }.max() ?? 0 }
         columnWidths = TableLayout.columnWidths(natural: natural.map { Double($0) }, available: Double(width),
                                                 minimum: Double(GridMetrics.minColumn)).map { CGFloat($0) }
+        guard let styler else { return false }
         let minLine = styler.cellLineHeight
         rowHeights = (0..<rowCount).map { r in
             (0..<columnCount).map { cells[r][$0].height(forColumnWidth: columnWidths[$0], minLine: minLine) }.max() ?? (minLine + 2 * GridMetrics.padY)
@@ -605,7 +611,7 @@ final class TableGridView: NSView {
         let moved = isRow ? m.moveRow(from: from, to: to) : m.moveColumn(from: from, to: to)
         guard moved else { return }
         let focus = isRow ? TableCellPosition(row: to, column: anchor.column) : TableCellPosition(row: anchor.row, column: to)
-        overlay.commit(grid: self, model: m, undoName: isRow ? "Move Row" : "Move Column", focus: focus)
+        overlay?.commit(grid: self, model: m, undoName: isRow ? "Move Row" : "Move Column", focus: focus)
     }
 
     private func popUpMenu(isRow: Bool, index: Int) {
@@ -675,7 +681,7 @@ final class TableGridView: NSView {
     }
 
     func perform(_ command: TableCommand, at pos: TableCellPosition) {
-        overlay.perform(command, grid: self, at: pos)
+        overlay?.perform(command, grid: self, at: pos)
     }
 
     // MARK: Focus and navigation
@@ -699,7 +705,7 @@ final class TableGridView: NSView {
 
     func cellDidBecomeFocused(_ cell: TableCellView) {
         focusedPosition = cell.position
-        overlay.endTypingSession()
+        overlay?.endTypingSession()
         needsDisplay = true
     }
 
@@ -716,13 +722,13 @@ final class TableGridView: NSView {
             return
         }
         if result.model == model { focus(result.focus) }
-        else { overlay.commit(grid: self, model: result.model, undoName: "Add Row", focus: result.focus) }
+        else { overlay?.commit(grid: self, model: result.model, undoName: "Add Row", focus: result.focus) }
     }
 
     func returnKey(from p: TableCellPosition) {
         guard let result = model.returnKey(from: p) else { return }
         if result.model == model { focus(result.focus) }
-        else { overlay.commit(grid: self, model: result.model, undoName: "Add Row", focus: result.focus) }
+        else { overlay?.commit(grid: self, model: result.model, undoName: "Add Row", focus: result.focus) }
     }
 
     /// Arrow keys at the edge of a cell move to the neighbouring cell, or out of the table.
@@ -739,7 +745,7 @@ final class TableGridView: NSView {
         focus(target, selection: atEnd ? nil : NSRange(location: 0, length: 0), atEnd: atEnd)
     }
 
-    func leave(after: Bool) { overlay.leave(grid: self, after: after) }
+    func leave(after: Bool) { overlay?.leave(grid: self, after: after) }
 
     /// The cell closest to a point in this view's coordinates (for clicks next to the table).
     func nearestCell(toLocal p: NSPoint) -> TableCellPosition? {
@@ -753,20 +759,21 @@ final class TableGridView: NSView {
     func pasteGrid(_ values: [[String]], from p: TableCellPosition) {
         var m = model
         let end = m.paste(values, at: p)
-        overlay.commit(grid: self, model: m, undoName: "Paste", focus: end)
+        overlay?.commit(grid: self, model: m, undoName: "Paste", focus: end)
     }
 
     func cellTextChanged(_ cell: TableCellView) {
         guard !isReconciling else { return }
         var m = model
         m.setCell(cell.string, at: cell.position)
-        guard m != model else { relayoutAfterTyping(); return }
-        overlay.commit(grid: self, model: m, undoName: "Typing", focus: nil, typing: cell.position)
+        guard m != model else { cellMetricsChanged(); return }
+        overlay?.commit(grid: self, model: m, undoName: "Typing", focus: nil, typing: cell.position)
     }
 
-    /// Wrapped lines (or trailing spaces) can change a row's height even when the Markdown did not change.
-    private func relayoutAfterTyping() {
-        if relayout(maxTableWidth: maxTableWidth) { overlay.heightsChanged() }
+    /// Revealed markers, wrapped lines or trailing spaces can change a cell's size even when the Markdown did not.
+    func cellMetricsChanged() {
+        guard !isReconciling, maxTableWidth > 0 else { return }
+        if relayout(maxTableWidth: maxTableWidth) { overlay?.heightsChanged() }
     }
 
     /// Puts the grid into its hover (or drag) look without a pointer — for snapshots and tests.
@@ -783,15 +790,15 @@ final class TableGridView: NSView {
 
     func endSimulatedDrag() { drag = nil; needsDisplay = true }
 
-    func forwardFindAction(_ sender: Any?) { overlay.forwardFindAction(sender) }
-    func open(destination: String) { overlay.open(destination: destination) }
+    func forwardFindAction(_ sender: Any?) { overlay?.forwardFindAction(sender) }
+    func open(destination: String) { overlay?.open(destination: destination) }
 
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         let t = tableRect
         guard t.width > 0, t.height > 0, rowHeights.count == rowCount, columnWidths.count == columnCount else { return }
-        let p = palette
+        guard let p = palette else { return }
         let accent = p.accent.nsColor
         let rule = p.rule.nsColor
 
@@ -857,7 +864,7 @@ final class TableGridView: NSView {
     }
 
     private func drawGrip(_ rect: NSRect, vertical: Bool, strong: Bool) {
-        let p = palette
+        guard let p = palette else { return }
         (strong ? p.accent.nsColor.withAlphaComponent(0.2) : p.codeBackground.nsColor).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
         p.rule.nsColor.setStroke()
@@ -879,7 +886,7 @@ final class TableGridView: NSView {
     }
 
     private func drawAddStrip(_ rect: NSRect, strong: Bool) {
-        let accent = palette.accent.nsColor
+        guard let accent = palette?.accent.nsColor else { return }
         accent.withAlphaComponent(strong ? 0.24 : 0.08).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
         accent.withAlphaComponent(strong ? 1 : 0.7).setStroke()

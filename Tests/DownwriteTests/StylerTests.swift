@@ -96,12 +96,28 @@ final class StylerTests: XCTestCase {
         XCTAssertFalse(h.isHidden(at: hr))
     }
 
-    func testTableUsesMonospaceCard() {
+    func testTableSourceUsesMonospaceCardWhenShownAsMarkdown() {
         let h = EditorHarness(text: "| a | b |\n| - | - |\n| 1 | 2 |\n\nend\n")
-        h.select(h.textView.string.utf16.count)
+        h.coordinator.showTableSource(order: 0, at: TableCellPosition(row: 1, column: 0))
         XCTAssertTrue(h.font(at: 2).isFixedPitch)
         XCTAssertNotNil(h.attrs(at: 2)[.dwBlockBackground])
         XCTAssertTrue(h.font(at: 2).isBold, "header row is bold")
+    }
+
+    func testQuotedTableKeepsTheMonospaceSourceCard() {
+        let h = EditorHarness(text: "> | a | b |\n> | - | - |\n> | 1 | 2 |\n\nend\n")
+        h.select(h.textView.string.utf16.count)
+        XCTAssertEqual(h.coordinator.tableOverlay.grids.count, 0, "only top-level tables become grids")
+        XCTAssertTrue(h.font(at: 4).isFixedPitch)
+        XCTAssertNotNil(h.attrs(at: 4)[.dwBlockBackground])
+    }
+
+    func testGridTableSourceIsCollapsedBehindTheGrid() {
+        let h = EditorHarness(text: "| a | b |\n| - | - |\n| 1 | 2 |\n\nend\n")
+        h.select(h.textView.string.utf16.count)
+        for i in [0, 2, 10, 20] { XCTAssertTrue(h.isHidden(at: i) || h.font(at: i).pointSize < 1, "source character \(i) is collapsed") }
+        XCTAssertEqual(h.paragraph(at: 2).maximumLineHeight, 0.1, accuracy: 0.001)
+        XCTAssertGreaterThan(h.coordinator.tableOverlay.grids[0].totalHeight, 60)
     }
 
     func testHighlightGetsPill() {

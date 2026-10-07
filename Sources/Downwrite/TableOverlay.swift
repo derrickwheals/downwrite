@@ -48,17 +48,25 @@ final class TableOverlay {
         for (k, block) in blocks.enumerated() {
             guard let model = block.model else { continue }
             let grid: TableGridView
+            var created = false
             if k < grids.count {
                 grid = grids[k]
             } else {
                 grid = TableGridView(overlay: self, model: model)
                 tv.addSubview(grid)
                 grids.append(grid)
+                created = true
             }
             grid.order = k
             grid.isHidden = block.firstLine == coordinator.sourceTableFirstLine
-            grid.apply(model: model, forceRestyle: restyle)
-            grid.relayout(maxTableWidth: availableWidth)
+            // Typing elsewhere re-analyses the document on every keystroke: leave untouched tables alone.
+            let width = availableWidth
+            if grid.model != model || restyle || created {
+                grid.apply(model: model, forceRestyle: restyle)
+                grid.relayout(maxTableWidth: width)
+            } else if abs(grid.maxTableWidth - width) > 0.5 {
+                grid.relayout(maxTableWidth: width)
+            }
         }
         highlightSelection()
         consumePendingFocus()
