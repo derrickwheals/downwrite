@@ -51,7 +51,7 @@ Pressing a formatting shortcut again removes the formatting. With nothing select
 ## Requirements
 
 - **To run:** macOS 26 (Tahoe) or later — including macOS 27 (Golden Gate).
-- **To build:** Xcode 26 or later (Swift 6.2+). Command Line Tools alone are not enough because the app needs the macOS 26 SDK.
+- **To build:** Xcode 26 or later (Swift 6.2+), installed as the toolchain — you never need to open it, everything builds from the Terminal. Command Line Tools alone are untested: `actool`, which compiles the adaptive light/dark app icon, ships only with full Xcode (without it `build-app.sh` falls back to a static icon).
 
 ## Build and run
 
