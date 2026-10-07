@@ -68,8 +68,13 @@ final class EditorTextView: NSTextView {
     // MARK: Layout
 
     override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.5
         super.setFrameSize(newSize)
         updateInsets()
+        // Table grids and preview cards are placed from this view's geometry. A width change re-flows the text but does
+        // not reliably produce a layout-completion callback once layout is idle (the sidebar opening and closing), which
+        // used to leave a grid in the old column, overlapping the paragraphs below it. Ask for a reposition explicitly.
+        if widthChanged { coordinator?.scheduleReposition() }
     }
 
     func updateInsets() {

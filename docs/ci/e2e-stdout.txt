@@ -1,32 +1,3 @@
-PASS  editor window appears
-PASS  document text loaded into editor — 1696 vs 1696 chars
-PASS  Format menu is installed
-PASS  View menu has the Table of Contents toggle
-PASS  sample contains **disappears**
-PASS  markers hidden when caret is elsewhere
-PASS  markers revealed when caret enters the pair
-PASS  ⌘F opens the find bar
-PASS  find bar closes again
-PASS  ⌘B wraps selection in **
-PASS  ⌘B again unwraps
-PASS  ⌘I wraps selection in *
-PASS  ⌘E wraps selection in backticks
-PASS  ⌘2 makes a level-2 heading
-PASS  ⌘2 again removes the heading
-PASS  ⌘K inserts a link
-PASS  undo reverts the link
-PASS  typed text is saved to disk by the document system
-PASS  mermaid diagram rendered into a card
-PASS  diagram card has a sensible frame — (132.0, 1645.8999999999987, 719.0, 156.9375)
-DIAG gap before/after ensureLayout: last.y 1594.449999999999 → 1613.7999999999988; table spacing 300.0 vs grid 300.0 frame Optional((104.0, 1151.7199999999998, 775.0, 300.0))
-DIAG mermaid lines 42…48: first y=1613.1999999999994 h=0.09999999999990905, last y=1613.7999999999988 h=0.09999999999990905, card y=1645.8999999999987 h=156.9375, reserved=170.9375
-PASS  collapsed Mermaid source takes no vertical space — heights 0.09999999999990905/0.09999999999990905
-PASS  diagram card sits directly under its collapsed source — gap 4.0
-PASS  table is shown as an editable grid
-PASS  grid has the Welcome table's shape — 6×2
-PASS  grid has a sensible frame — (104.0, 1151.7199999999998, 775.0, 300.0)
-PASS  clicking into a cell gives it the keyboard
-PASS  Tab jumps to the next cell — Optional(DownwriteCore.TableCellPosition(row: 1, column: 1))
 PASS  ⇧Tab jumps back — Optional(DownwriteCore.TableCellPosition(row: 1, column: 0))
 PASS  Tab in the last cell adds a row — 7 rows
 PASS  focus lands in the new row — Optional(DownwriteCore.TableCellPosition(row: 6, column: 0))

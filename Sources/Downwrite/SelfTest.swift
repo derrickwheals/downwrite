@@ -19,17 +19,31 @@ enum SelfTest {
         return (URL(fileURLWithPath: out, isDirectory: true), URL(fileURLWithPath: input))
     }
 
+    /// Optional extra Markdown file (CI passes the project README) used for the "tables vs. sidebar" scenario.
+    private static var extraFile: URL? {
+        CommandLine.arguments.first { $0.hasPrefix("--selftest-extra=") }.map { URL(fileURLWithPath: String($0.dropFirst("--selftest-extra=".count))) }
+    }
+
     private static var report: [String] = []
+    private static var reportURL: URL?
+
+    /// Written after every check, so a crash part-way through still leaves everything that happened before it.
+    private static func flush() {
+        guard let url = reportURL else { return }
+        try? (report + ["(in progress)"]).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
     private static var failures = 0
 
     private static func check(_ ok: Bool, _ name: String, detail: String = "") {
         report.append((ok ? "PASS  " : "FAIL  ") + name + (detail.isEmpty ? "" : " — " + detail))
         if !ok { failures += 1 }
+        flush()
     }
 
     static func run() async {
         guard let (outDir, input) = arguments else { return }
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        reportURL = outDir.appendingPathComponent("selftest-report.txt")
         let work = outDir.appendingPathComponent("work.md")
         try? FileManager.default.removeItem(at: work)
         try? FileManager.default.copyItem(at: input, to: work)
@@ -257,7 +271,7 @@ enum SelfTest {
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             check(isDark == (theme == .dark), "theme \(theme.rawValue) applies to the app")
             check(coordinator.styler.palette == Palette.palette(for: theme == .dark ? .dark : .light), "editor palette follows \(theme.rawValue)")
-            tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "comes back").location + 3, length: 0))
+            tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "comes back", plus: 3), length: 0))
             try? await Task.sleep(nanoseconds: 800_000_000)
             tv.scrollToBeginningOfDocument(nil)
             try? await Task.sleep(nanoseconds: 600_000_000)
@@ -281,7 +295,7 @@ enum SelfTest {
             }
             // The sidebar next to the editor, with the section holding the caret highlighted.
             UserDefaults.standard.set(true, forKey: Prefs.showTOC)
-            tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "Lists that keep up").location + 3, length: 0))
+            tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "Lists that keep up", plus: 3), length: 0))
             tv.scrollToBeginningOfDocument(nil)
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             let tocShot = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-toc.png"))
@@ -295,10 +309,71 @@ enum SelfTest {
         ThemeChoice.applyCurrent()
         check(NSApp.appearance == nil, "system theme clears the appearance override")
 
+        // 8. Regression (runs last because it replaces the document): with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
+        // and keep the right reserved height while the sidebar opens and closes, however fast.
+        if let extra = extraFile, let readme = try? String(contentsOf: extra, encoding: .utf8), let tables = coordinator.tableOverlay {
+            let whole = NSRange(location: 0, length: tv.string.utf16.count)
+            tv.setSelectedRange(whole)
+            tv.insertText(readme, replacementRange: whole)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            let defaults = UserDefaults.standard
+            defaults.set(false, forKey: Prefs.showTOC)
+            let ready = await waitUntil(timeout: 20) { !tables.grids.isEmpty && tables.grids.allSatisfy { $0.tableSize.width > 0 } }
+            check(ready, "README tables become grids", detail: "\(tables.grids.count) grids")
+            func settled() async -> [String] {
+                var found: [String] = []
+                _ = await waitUntil(timeout: 6) { found = tables.layoutProblems(); return found.isEmpty }
+                return found
+            }
+            func geometry(_ label: String) {
+                report.append("DIAG README \(label): text view \(Int(tv.frame.width)) pt, inset \(tv.textContainerInset.width), grid frames \(tables.grids.map { "\(Int($0.frame.minX)),\(Int($0.frame.minY)) \(Int($0.frame.width))×\(Int($0.frame.height))" })")
+            }
+            let wide = tv.frame.width
+            var problems = await settled()
+            geometry("start")
+            check(problems.isEmpty, "README tables are lined up with the text at the start", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+
+            press("o", keyCode: 31, [.command, .control])
+            _ = await waitUntil(timeout: 10) { tv.frame.width < wide - 150 }
+            problems = await settled()
+            geometry("sidebar open")
+            check(problems.isEmpty, "README tables stay lined up with the sidebar open", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-readme-toc-open.png"))
+
+            press("o", keyCode: 31, [.command, .control])
+            _ = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            problems = await settled()
+            geometry("sidebar closed again")
+            check(problems.isEmpty, "README tables are lined up again after the sidebar closes", detail: problems.joined(separator: "; "))
+            if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-readme-toc-closed.png"))
+
+            for _ in 0..<4 {
+                press("o", keyCode: 31, [.command, .control]); try? await Task.sleep(nanoseconds: 150_000_000)
+                press("o", keyCode: 31, [.command, .control]); try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            _ = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            problems = await settled()
+            geometry("after rapid toggling")
+            check(problems.isEmpty, "README tables are lined up after rapid sidebar toggling", detail: problems.joined(separator: "; "))
+
+            defaults.set(false, forKey: Prefs.showTOC)
+        }
+
         finish(outDir)
     }
 
     // MARK: Helpers
+
+    /// Offset `plus` characters into the first occurrence of `text`, or 0 when it is not in the document.
+    private static func caretOffset(in tv: EditorTextView, after text: String, plus: Int) -> Int {
+        let r = (tv.string as NSString).range(of: text)
+        return r.location == NSNotFound ? 0 : min(r.location + plus, tv.string.utf16.count)
+    }
 
     private static func editors() -> [EditorTextView] {
         func find(_ v: NSView) -> [EditorTextView] {
