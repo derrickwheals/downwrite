@@ -52,6 +52,7 @@ In the cloud (Linux) container there is **no Xcode/macOS**. The app target canno
 - `NSIntersectionRange`, `lineRange(for:)` etc. operate in UTF-16 — never mix with `String.Index`.
 - Don't call `NSTextStorage.setAttributes` outside `begin/endEditing`, and ignore selection callbacks while styling (`isStyling` flag in `EditorCoordinator`).
 - `textViewDidChangeSelection` fires *before* `textDidChange` when typing; the coordinator guards on `analysis.length == storage.length`.
+- Overlays (table grids, Mermaid/image cards) are positioned from the text view's geometry and must be re-positioned on every width change: `EditorTextView.setFrameSize` calls `scheduleReposition()` because a layout-completion callback is *not* guaranteed after a pure width change (sidebar open/close left grids stale and overlapping text). `TableOverlay.layoutProblems()` reports any disagreement between a grid and the text; `TableLayoutTests` and the e2e README scenario assert it is empty.
 - Info.plist template tokens are replaced by `build-app.sh`; `AppTests.testInfoPlistClaimsMarkdownFiles` guards the file-association keys.
 
 ## Licensing
