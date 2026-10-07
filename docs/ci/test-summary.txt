@@ -1,2 +1,1 @@
-	 Executed 154 tests, with 1 failure (0 unexpected) in 20.859 (20.906) seconds
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/SnapshotTests.swift:53: error: -[DownwriteTests.SnapshotTests testSnapshotEmptyDocumentShowsPlaceholder] : XCTAssertGreaterThan failed: ("1") is not greater than ("6") - empty looks blank (1 distinct colours)
+	 Executed 154 tests, with 0 failures (0 unexpected) in 24.010 (24.061) seconds

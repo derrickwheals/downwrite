@@ -15,8 +15,8 @@ PASS  ⌘K inserts a link
 PASS  undo reverts the link
 PASS  typed text is saved to disk by the document system
 PASS  mermaid diagram rendered into a card
-PASS  diagram card has a sensible frame — (132.0, 1344.3999999999987, 719.0, 156.9375)
-DIAG mermaid lines 39…45: first y=1311.6999999999994 h=0.09999999999990905, last y=1312.299999999999 h=0.09999999999990905, card y=1344.399999999999 h=156.9375, reserved=170.9375
+PASS  diagram card has a sensible frame — (132.0, 1344.3999999999996, 719.0, 156.9375)
+DIAG mermaid lines 39…45: first y=1311.7000000000003 h=0.09999999999990905, last y=1312.2999999999997 h=0.09999999999990905, card y=1344.3999999999996 h=156.9375, reserved=170.9375
 PASS  collapsed Mermaid source takes no vertical space — heights 0.09999999999990905/0.09999999999990905
 PASS  diagram card sits directly under its collapsed source — gap 4.0
 PASS  theme light applies to the app

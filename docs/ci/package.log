@@ -2,11 +2,11 @@
 Building for production...
 [0/42] Write swift-version-7974D3F7F03D5E95.txt
 [1/42] Compiling cmark-gfm-extensions tagfilter.c
-[2/42] Compiling cmark-gfm-extensions tasklist.c
-[3/42] Compiling cmark-gfm-extensions strikethrough.c
+[2/42] Compiling cmark-gfm-extensions strikethrough.c
+[3/42] Compiling cmark-gfm-extensions table.c
 [4/42] Compiling cmark-gfm-extensions core-extensions.c
 [5/42] Compiling cmark-gfm-extensions ext_scanners.c
-[6/42] Compiling cmark-gfm-extensions table.c
+[6/42] Compiling cmark-gfm-extensions tasklist.c
 [7/42] Compiling cmark-gfm xml.c
 [8/42] Compiling cmark-gfm syntax_extension.c
 [9/42] Compiling cmark-gfm-extensions autolink.c
@@ -14,19 +14,19 @@ Building for production...
 [11/42] Compiling cmark-gfm registry.c
 [12/42] Compiling cmark-gfm references.c
 [13/42] Compiling cmark-gfm plugin.c
-[14/42] Compiling cmark-gfm scanners.c
-[15/42] Compiling cmark-gfm plaintext.c
-[16/42] Compiling cmark-gfm map.c
-[17/42] Compiling cmark-gfm utf8.c
-[18/42] Compiling cmark-gfm man.c
-[19/42] Compiling cmark-gfm linked_list.c
-[19/42] Compiling cmark-gfm node.c
+[14/42] Compiling cmark-gfm plaintext.c
+[15/42] Compiling cmark-gfm scanners.c
+[16/42] Compiling cmark-gfm utf8.c
+[17/42] Compiling cmark-gfm map.c
+[18/42] Compiling cmark-gfm linked_list.c
+[19/42] Compiling cmark-gfm man.c
+[20/42] Compiling cmark-gfm node.c
 [21/42] Compiling cmark-gfm latex.c
 [22/42] Compiling cmark-gfm iterator.c
-[23/42] Compiling cmark-gfm html.c
-[24/42] Compiling cmark-gfm houdini_html_u.c
-[25/42] Compiling cmark-gfm houdini_html_e.c
-[26/42] Compiling cmark-gfm houdini_href_e.c
+[23/42] Compiling cmark-gfm houdini_html_u.c
+[24/42] Compiling cmark-gfm html.c
+[25/42] Compiling cmark-gfm houdini_href_e.c
+[26/42] Compiling cmark-gfm houdini_html_e.c
 [27/42] Compiling cmark-gfm footnotes.c
 [28/42] Compiling cmark-gfm cmark_ctype.c
 [29/42] Compiling cmark-gfm commonmark.c
@@ -35,7 +35,7 @@ Building for production...
 [32/42] Compiling cmark-gfm inlines.c
 [33/42] Write sources
 [34/42] Copying Resources
-[35/42] Write sources
+[34/42] Write sources
 [37/42] Compiling cmark-gfm arena.c
 [38/42] Compiling CAtomic CAtomic.c
 [39/42] Compiling cmark-gfm blocks.c
@@ -44,7 +44,7 @@ Building for production...
 [43/45] Compiling Downwrite AppDelegate.swift
 [43/45] Write Objects.LinkFileList
 [44/45] Linking Downwrite
-Build of product 'Downwrite' complete! (38.89s)
+Build of product 'Downwrite' complete! (52.17s)
 ▶ assembling dist/Downwrite.app
 dist/Downwrite.app/Contents/Info.plist: OK
 ▶ compiling AppIcon.icon
@@ -60,3 +60,34 @@ mermaid-renderer.html
 mermaid.min.js
 Welcome.md
 7.8M	dist/Downwrite.app
+--- compiled icon variants ---
+   3         "Appearance" : "ISAppearanceTintable",
+   3         "Appearance" : "NSAppearanceNameAqua",
+   3         "Appearance" : "NSAppearanceNameDarkAqua",
+   9         "AssetType" : "IconGroup",
+   3         "AssetType" : "Image",
+   3         "Name" : "AppIcon_Assets\/glyph",
+   2         "Name" : "AppIcon_Assets\/Gradient-1",
+   1         "Name" : "AppIcon_Assets\/Gradient-2",
+   9         "Name" : "AppIcon\/Group",
+   2     "Appearance" : "ISAppearanceTintable",
+   2     "Appearance" : "NSAppearanceNameAqua",
+   2     "Appearance" : "NSAppearanceNameDarkAqua",
+   4     "AssetType" : "Color",
+   7     "AssetType" : "Icon Image",
+   3     "AssetType" : "IconGroup",
+   3     "AssetType" : "IconImageStack",
+   1     "AssetType" : "Image",
+   1     "AssetType" : "MultiSized Image",
+   2     "AssetType" : "Named Gradient",
+   1     "AssetType" : "PackedImage",
+   1     "Name" : "AppIcon_Assets\/Color-1",
+   1     "Name" : "AppIcon_Assets\/Color-2",
+   1     "Name" : "AppIcon_Assets\/Color-3",
+   1     "Name" : "AppIcon_Assets\/Color-4",
+   1     "Name" : "AppIcon_Assets\/glyph",
+   1     "Name" : "AppIcon_Assets\/Gradient-1",
+   1     "Name" : "AppIcon_Assets\/Gradient-2",
+  11     "Name" : "AppIcon",
+   3     "Name" : "AppIcon\/Group",
+   1     "Name" : "ZZZZPackedAsset-2.0.0-gamut0",
