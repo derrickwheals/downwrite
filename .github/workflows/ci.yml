@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  core-linux:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
+  macos-probe:
+    name: macOS probe
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sw_vers
+          xcodebuild -version
+          ls /Applications | grep -i xcode || true
+          swift --version
+          swift build 2>&1 | tail -20
