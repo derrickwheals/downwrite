@@ -24,7 +24,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **Liquid Glass.** Built for macOS 26 "Tahoe" and ready for macOS 27 "Golden Gate": system toolbar and window chrome adopt Liquid Glass automatically, and the floating word-count pill uses `glassEffect`.
 - **A proper Mac document app.** Tabs, Versions, autosave, Open Recent, drag-and-drop onto the Dock icon, Find (⌘F), full undo/redo. Opens and saves UTF-8 (± BOM), UTF-16 and legacy Windows-1252 files and **preserves line endings** (LF / CRLF) so it never rewrites a file's format behind your back.
 - **Smart keys.** Return continues lists, tasks, numbered lists and quotes (press it twice to leave); Tab / ⇧Tab indent and outdent; paste a URL over selected text to make a link.
-- **Small.** About 4 MB on disk, almost all of it the bundled Mermaid engine. No network access needed except for remote images.
+- **Small.** Under 10 MB on disk, most of it the bundled Mermaid engine. No network access needed except for remote images.
 - **Inline images.** `![alt](path)` on its own line shows the picture below the (collapsed) Markdown.
 
 ## Keyboard shortcuts

@@ -58,6 +58,9 @@ jobs:
           tail -12 artifacts/package.log
           ls dist/Downwrite.app/Contents/Resources | head -20 | tee -a artifacts/package.log
           du -sh dist/Downwrite.app | tee -a artifacts/package.log
+          echo "--- compiled icon variants ---" | tee -a artifacts/package.log
+          xcrun assetutil --info dist/Downwrite.app/Contents/Resources/Assets.car 2>/dev/null \
+            | grep -E '"(Appearance|Name|AssetType|Idiom)"' | sort | uniq -c | head -30 | tee -a artifacts/package.log
 
       - name: End-to-end self-test (real app, real window)
         id: e2e
