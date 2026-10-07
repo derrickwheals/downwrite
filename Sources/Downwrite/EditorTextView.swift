@@ -90,6 +90,48 @@ final class EditorTextView: NSTextView {
         coordinator?.appearanceDidChange()
     }
 
+    // MARK: Scrolling
+
+    /// Scrolls so the line holding `range.location` sits `margin` points below the top edge of the visible area, as far
+    /// as the ends of the document allow.
+    func scrollToTop(of range: NSRange, margin: CGFloat = 28, animated: Bool) {
+        guard let scroll = enclosingScrollView, let target = scrollTarget(for: range, margin: margin) else { return }
+        let clip = scroll.contentView
+        let animate = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if animate {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                clip.animator().setBoundsOrigin(target)
+            }
+        } else {
+            clip.setBoundsOrigin(target)
+        }
+        scroll.reflectScrolledClipView(clip)
+        // Diagram and image cards reserve their height after layout; if the line moved meanwhile, follow it
+        // (unless the reader has already scrolled elsewhere).
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: animate ? 400_000_000 : 50_000_000)
+            guard let self, abs(clip.bounds.origin.y - target.y) <= 1,
+                  let settled = self.scrollTarget(for: range, margin: margin), abs(settled.y - target.y) > 1 else { return }
+            clip.setBoundsOrigin(settled)
+            scroll.reflectScrolledClipView(clip)
+        }
+    }
+
+    private func scrollTarget(for range: NSRange, margin: CGFloat) -> NSPoint? {
+        guard let lm = layoutManager, let storage = textStorage, let scroll = enclosingScrollView, storage.length > 0 else { return nil }
+        let location = min(range.location, storage.length - 1)
+        // Layout is non-contiguous: everything above the line must be laid out first or its position is only an estimate.
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: location + 1))
+        let used = lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: location), effectiveRange: nil)
+        let clip = scroll.contentView
+        let lineY = used.minY + textContainerOrigin.y
+        // A heading that already sits within a margin or two of the start just shows the top of the document.
+        let y = lineY <= margin * 2 ? -clip.contentInsets.top : lineY - margin - clip.contentInsets.top
+        let wanted = NSRect(x: clip.bounds.origin.x, y: y, width: clip.bounds.width, height: clip.bounds.height)
+        return clip.constrainBoundsRect(wanted).origin
+    }
+
     // MARK: Placeholder
 
     override func draw(_ dirtyRect: NSRect) {

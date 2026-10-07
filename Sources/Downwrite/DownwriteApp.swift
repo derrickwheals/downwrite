@@ -34,6 +34,8 @@ struct EditorScene: View {
     @AppStorage(Prefs.lineHeight) private var lineHeight = 1.45
     @AppStorage(Prefs.width) private var width = 720.0
     @AppStorage(Prefs.spellCheck) private var spellCheck = false
+    @AppStorage(Prefs.showTOC) private var showTOC = false
+    @StateObject private var toc = TOCModel()
 
     private var settings: EditorSettings {
         EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
@@ -41,12 +43,16 @@ struct EditorScene: View {
     }
 
     var body: some View {
-        EditorView(text: $document.text, settings: settings, fileURL: fileURL)
+        EditorView(text: $document.text, settings: settings, fileURL: fileURL, toc: toc)
             .ignoresSafeArea()
             .overlay(alignment: .bottomTrailing) {
                 StatusPill(text: document.text)
                     .padding(16)
                     .allowsHitTesting(false)
+            }
+            .inspector(isPresented: $showTOC) {
+                TOCSidebar(model: toc)
+                    .inspectorColumnWidth(min: 200, ideal: 250, max: 380)
             }
             .frame(minWidth: 420, minHeight: 320)
             .toolbar {
@@ -57,6 +63,15 @@ struct EditorScene: View {
                         Label("Format", systemImage: "textformat")
                     }
                     .help("Format")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showTOC.toggle()
+                    } label: {
+                        Label("Table of Contents", systemImage: "sidebar.trailing")
+                    }
+                    .help(showTOC ? "Hide Table of Contents" : "Show Table of Contents")
+                    .accessibilityIdentifier("toc-toggle")
                 }
             }
     }
@@ -191,9 +206,13 @@ struct FormatCommands: Commands {
 struct ViewCommands: Commands {
     @AppStorage(Prefs.theme) private var theme = ThemeChoice.system.rawValue
     @AppStorage(Prefs.fontSize) private var fontSize = 17.0
+    @AppStorage(Prefs.showTOC) private var showTOC = false
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
+            Button(showTOC ? "Hide Table of Contents" : "Show Table of Contents") { showTOC.toggle() }
+                .keyboardShortcut("o", modifiers: [.command, .control])
+            Divider()
             Picker("Appearance", selection: $theme) {
                 ForEach(ThemeChoice.allCases) { Text($0.label).tag($0.rawValue) }
             }

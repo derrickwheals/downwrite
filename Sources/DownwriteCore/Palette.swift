@@ -45,11 +45,11 @@ public struct Palette: Equatable, Sendable {
         switch theme {
         case .light:
             return Palette(
-                background: RGBA(hex: 0xFBFAF7), text: RGBA(hex: 0x24242B), secondaryText: RGBA(hex: 0x66666F),
+                background: RGBA(hex: 0xFFFFFF), text: RGBA(hex: 0x24242B), secondaryText: RGBA(hex: 0x66666F),
                 marker: RGBA(hex: 0x8A8A96), accent: RGBA(hex: 0x4054D6), link: RGBA(hex: 0x3548C9),
-                codeText: RGBA(hex: 0x2B2B38), codeBackground: RGBA(hex: 0xF0EEE8), inlineCodeBackground: RGBA(hex: 0xEDEAE3),
+                codeText: RGBA(hex: 0x2B2B38), codeBackground: RGBA(hex: 0xF3F3F6), inlineCodeBackground: RGBA(hex: 0xEEEEF2),
                 quoteBar: RGBA(hex: 0xC7CBF2), highlightBackground: RGBA(hex: 0xFFE98A, alpha: 0.75),
-                rule: RGBA(hex: 0xD9D6CE), selection: RGBA(hex: 0x4054D6, alpha: 0.22))
+                rule: RGBA(hex: 0xDADADF), selection: RGBA(hex: 0x4054D6, alpha: 0.22))
         case .dark:
             return Palette(
                 background: RGBA(hex: 0x1B1B1F), text: RGBA(hex: 0xE9E7E2), secondaryText: RGBA(hex: 0x9C9CA8),

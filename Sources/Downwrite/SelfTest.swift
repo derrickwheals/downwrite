@@ -62,6 +62,8 @@ enum SelfTest {
 
         dumpMenus(outDir)
         check(NSApp.mainMenu?.items.contains { $0.title == "Format" } == true, "Format menu is installed")
+        let viewMenu = NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu
+        check(viewMenu?.items.contains { $0.title.hasSuffix("Table of Contents") } == true, "View menu has the Table of Contents toggle")
 
         // 2. Hidden syntax + reveal on a live document.
         let coordinator = tv.coordinator!
@@ -202,6 +204,50 @@ enum SelfTest {
             window.makeFirstResponder(tv)
         }
 
+        // 5c. Table of contents sidebar: toggled from the menu bar, lists the headings, a click scrolls the editor.
+        if let scroll = tv.enclosingScrollView, let toc = coordinator.toc {
+            let defaults = UserDefaults.standard
+            let wide = tv.frame.width
+            check(!defaults.bool(forKey: Prefs.showTOC), "table of contents sidebar starts hidden")
+            press("o", keyCode: 31, [.command, .control])
+            // The sidebar floats over the window (macOS 26): the scroll view keeps its frame and insets its content.
+            let shown = await waitUntil(timeout: 10) { tv.frame.width < wide - 150 }
+            check(defaults.bool(forKey: Prefs.showTOC), "⌃⌘O turns the sidebar on")
+            check(shown, "the editor column narrows to make room for the sidebar", detail: "\(wide) → \(tv.frame.width)")
+            let expected = coordinator.analysis.headings.map(\.plainTitle)
+            let listed = await waitUntil(timeout: 10) { toc.rows.map(\.title) == expected }
+            check(listed && expected.count >= 5, "sidebar lists every heading", detail: toc.rows.map(\.title).joined(separator: " | "))
+            check(toc.rows.contains { $0.depth >= 2 }, "headings are nested by level", detail: toc.rows.map { String($0.depth) }.joined())
+            if let target = toc.rows.last(where: { $0.depth == 1 }) {
+                tv.scrollToBeginningOfDocument(nil)
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                let before = scroll.contentView.bounds.origin.y
+                toc.select(target.id)
+                let heading = coordinator.analysis.headings[target.id]
+                let lm = tv.layoutManager!
+                func headingTop() -> CGFloat {
+                    lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: heading.range.location), effectiveRange: nil).minY + tv.textContainerOrigin.y
+                }
+                let arrived = await waitUntil(timeout: 8) { scroll.contentView.bounds.origin.y > before + 100 }
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                let visible = tv.visibleRect
+                check(arrived, "clicking '\(target.title)' scrolls the editor", detail: "\(before) → \(scroll.contentView.bounds.origin.y)")
+                check(headingTop() >= visible.minY && headingTop() <= visible.maxY, "the clicked heading is in view", detail: "y \(headingTop()) in \(visible)")
+                check(tv.selectedRange() == NSRange(location: NSMaxRange(heading.range), length: 0), "the caret moves to the heading")
+                check(window.firstResponder === tv, "the editor keeps the keyboard after a click in the sidebar")
+                let active = await waitUntil(timeout: 5) { toc.activeID == target.id }
+                check(active, "the clicked heading is highlighted in the sidebar")
+            } else {
+                check(false, "sample has a level-2 heading to click")
+            }
+            press("o", keyCode: 31, [.command, .control])
+            let hidden = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            check(!defaults.bool(forKey: Prefs.showTOC) && hidden, "⌃⌘O turns the sidebar off again", detail: "\(tv.frame.width)")
+            tv.scrollToBeginningOfDocument(nil)
+        } else {
+            check(false, "editor feeds a table-of-contents model")
+        }
+
         // 6. Themes: light/dark follow the preference and palettes change.
         var shots: [String] = []
         for theme in [ThemeChoice.light, .dark] {
@@ -233,6 +279,15 @@ enum SelfTest {
                 grid.simulateHover(row: nil, column: nil)
                 window.makeFirstResponder(tv)
             }
+            // The sidebar next to the editor, with the section holding the caret highlighted.
+            UserDefaults.standard.set(true, forKey: Prefs.showTOC)
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "Lists that keep up").location + 3, length: 0))
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let tocShot = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-toc.png"))
+            check(tocShot, "screenshot with the table of contents open (\(theme.rawValue))", detail: tocShot ? "" : "screencapture unavailable")
+            UserDefaults.standard.set(false, forKey: Prefs.showTOC)
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
         // 7. Back to system theme leaves the app following macOS.

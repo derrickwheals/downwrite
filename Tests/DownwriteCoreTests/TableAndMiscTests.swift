@@ -60,6 +60,20 @@ final class TableAndMiscTests: XCTestCase {
         }
     }
 
+    func testLightEditorBackgroundIsWhite() {
+        XCTAssertEqual(Palette.palette(for: .light).background, RGBA(1, 1, 1))
+        XCTAssertEqual(Palette.palette(for: .light).background.luminance, 1, accuracy: 0.0001)
+    }
+
+    func testLightPaletteStaysNeutralOnWhite() {
+        // Cards and rules must read as quiet greys on white, not as cream tints left over from the old paper colour.
+        let p = Palette.palette(for: .light)
+        for c in [p.codeBackground, p.inlineCodeBackground, p.rule] {
+            XCTAssertLessThan(abs(c.r - c.b), 0.03, "warm tint")
+            XCTAssertGreaterThan(c.contrast(with: p.background), 1.05, "visible against white")
+        }
+    }
+
     func testLightAndDarkAreOpposites() {
         let l = Palette.palette(for: .light), d = Palette.palette(for: .dark)
         XCTAssertGreaterThan(l.background.luminance, 0.8)

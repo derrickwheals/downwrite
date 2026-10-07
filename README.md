@@ -16,6 +16,10 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 <p align="center">
   <img src="docs/screenshots/window-light-diagram.png" width="60%" alt="A Mermaid diagram rendered inline">
 </p>
+<p align="center">
+  <img src="docs/screenshots/window-light-toc.png" width="48%" alt="The table of contents sidebar in light mode">
+  <img src="docs/screenshots/window-dark-toc.png" width="48%" alt="The table of contents sidebar in dark mode">
+</p>
 
 <sub>Screenshots are captured automatically from the real app on a macOS 26 runner by the end-to-end self-test (see Testing).</sub>
 
@@ -25,6 +29,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **CommonMark + GFM + extras.** Full CommonMark (via Apple's `swift-markdown` / cmark-gfm), plus tables, task lists (click to tick), strikethrough, autolinks, `==highlight==`, `[^footnotes]`, `$math$` styling and YAML front matter.
 - **Editable tables.** Tables are shown as a real grid you type into, not as pipes and dashes. **Tab** jumps to the next cell (and adds a row from the last cell), **Return** moves down, arrows step across cell edges, ⇧Return adds a line break. Drag the grips left of each row / above each column to reorder them, click a grip (or right-click any cell) for insert / delete / move / duplicate / align / sort, and use the **+** strips to append a row or column. Cell text keeps its Markdown (bold, links, code hide their syntax like everywhere else), pasting spreadsheet data fills several cells, and *Edit as Markdown* shows the source. The document text stays plain GFM, aligned and tidy.
 - **Mermaid diagrams.** Fenced ```` ```mermaid ```` blocks render as live diagrams (flowcharts, sequence, class, state, ER, Gantt, pie, journey, git graph, mind maps…). Mermaid is bundled, so it works offline. Click a diagram to edit its source; it re-renders as you type.
+- **Table of contents.** Toggle a sidebar on the right (⌃⌘O, the toolbar button, or View ▸ Show Table of Contents) that lists the document's headings, nested by level, with the section holding the caret highlighted. Click a heading and the editor scrolls it to the top and puts the caret there, ready to type. Headings show as they read in the editor (no `#`, `**` or link syntax), update as you type, and the sidebar remembers whether you left it open.
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
 - **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The app icon is an Icon Composer asset (light, dark and tinted variants chosen by macOS) and the Dock icon also swaps between the light and dark artwork while the app runs.
 - **Liquid Glass.** Built for macOS 26 "Tahoe" and ready for macOS 27 "Golden Gate": system toolbar and window chrome adopt Liquid Glass automatically, and the floating word-count pill uses `glassEffect`.
@@ -46,6 +51,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 | Heading 1–6 | ⌘1 … ⌘6 | Insert / format table | ⌥⌘T / ⇧⌥⌘T |
 | Body text | ⌘0 | Indent / outdent | ⌘] / ⌘[ (or Tab / ⇧Tab in lists) |
 | Find | ⌘F | Bigger / smaller text | ⌘= / ⌘- |
+| Table of contents | ⌃⌘O | | |
 | Next / previous table cell | Tab / ⇧Tab | New table row (in the last cell) | Tab or Return |
 
 Pressing a formatting shortcut again removes the formatting. With nothing selected it wraps the word under the caret (or inserts an empty pair). Standard shortcuts (⌘Z, ⇧⌘Z, ⌘C/V/X, ⌘A, ⌘S, ⌘W, ⌘T …) work as in any Mac app. ⌘-click a link to open it.
@@ -122,9 +128,9 @@ Three layers, all run by CI on every push (see `.github/workflows/ci.yml`):
 
 | Layer | Where | What it covers |
 | --- | --- | --- |
-| **Core unit tests** (`Tests/DownwriteCoreTests`) | Linux *and* macOS | The Markdown analysis engine (CommonMark/GFM structure, hidden-marker rules, Unicode/CRLF offsets, adversarial input), every formatting shortcut, list/quote continuation, the table model (parsing with cell ranges, every row/column command, Tab/Return navigation, sort, paste, column layout, leaving and deleting a table), file encodings and line endings, palette contrast (WCAG), Mermaid helpers. |
-| **App integration tests** (`Tests/DownwriteTests`) | macOS | Real `NSTextView` editor in a real window: attributes for every Markdown construct, markers hiding/revealing as the caret moves, typing, undo/redo, smart Return/Tab, paste-to-link, theme switching, Mermaid rendering of ten diagram types plus error handling, the table grid (layout over the collapsed source, typing with one-step undo, Tab/Return/arrow navigation, the right-click menu, grip dragging, focus hand-off, Markdown-source view), Info.plist file-association checks, and PNG snapshots for visual review. |
-| **End-to-end self-test** (`Downwrite --selftest`) | macOS | Launches the *packaged app*, opens a file through the document system, presses real ⌘B/⌘I/⌘E/⌘2/⌘K key events through the real menu bar, types, saves to disk and re-reads the file, waits for a Mermaid card, tabs through the table grid with real key events (adding a row, typing, the right-click menu, undo), flips light → dark → system theme, and screenshots the actual window. |
+| **Core unit tests** (`Tests/DownwriteCoreTests`) | Linux *and* macOS | The Markdown analysis engine (CommonMark/GFM structure, hidden-marker rules, Unicode/CRLF offsets, adversarial input), every formatting shortcut, list/quote continuation, the table model (parsing with cell ranges, every row/column command, Tab/Return navigation, sort, paste, column layout, leaving and deleting a table), file encodings and line endings, palette contrast (WCAG) and the white light-theme background, the table-of-contents outline (nesting, visible titles, caret → section), Mermaid helpers. |
+| **App integration tests** (`Tests/DownwriteTests`) | macOS | Real `NSTextView` editor in a real window: attributes for every Markdown construct, markers hiding/revealing as the caret moves, typing, undo/redo, smart Return/Tab, paste-to-link, theme switching, Mermaid rendering of ten diagram types plus error handling, the table of contents sidebar's model, caret tracking and click-to-scroll, the table grid (layout over the collapsed source, typing with one-step undo, Tab/Return/arrow navigation, the right-click menu, grip dragging, focus hand-off, Markdown-source view), Info.plist file-association checks, and PNG snapshots for visual review. |
+| **End-to-end self-test** (`Downwrite --selftest`) | macOS | Launches the *packaged app*, opens a file through the document system, presses real ⌘B/⌘I/⌘E/⌘2/⌘K key events through the real menu bar, types, saves to disk and re-reads the file, waits for a Mermaid card, tabs through the table grid with real key events (adding a row, typing, the right-click menu, undo), toggles the table-of-contents sidebar with ⌃⌘O and clicks a heading to scroll to it, flips light → dark → system theme, and screenshots the actual window. |
 
 Run the core tests on any machine with Docker (no Mac needed):
 
@@ -153,7 +159,7 @@ ThirdParty/              Third-party licence texts (swift-markdown, cmark-gfm, M
 LICENSE                  GNU GPL v3.0
 ```
 
-How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gfm and produces an immutable `MarkdownAnalysis` — style spans, *marker* ranges (the syntax characters) with the range that reveals each one, and per-line block styles. `MarkdownStyler` turns that into `NSTextStorage` attributes; hidden markers get a 0.1 pt clear font so they stay in the text (copy, undo and find keep working) but take no space. When the caret moves, only the lines whose markers changed state are restyled. Top-level tables are parsed into a `TableModel` (cell source text, alignments, where each cell sits in the document) and shown by `TableGridView`, a grid of small TextKit 1 editors laid over the table's collapsed source; every edit goes back through `TableModel.markdown` so the document text is the single source of truth and undo just works. Mermaid blocks are rendered once in a hidden `WKWebView` to SVG and shown in a click-through card placed in vertical space reserved under the collapsed source.
+How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gfm and produces an immutable `MarkdownAnalysis` — style spans, *marker* ranges (the syntax characters) with the range that reveals each one, and per-line block styles. `MarkdownStyler` turns that into `NSTextStorage` attributes; hidden markers get a 0.1 pt clear font so they stay in the text (copy, undo and find keep working) but take no space. When the caret moves, only the lines whose markers changed state are restyled. The table-of-contents sidebar is a SwiftUI `.inspector` fed by `TableOfContents` (rows built from the analysed headings, with `MarkdownAnalysis.headingIndex(at:)` mapping the caret to its section); a click moves the caret to the heading and `EditorTextView.scrollToTop(of:)` scrolls it into place. Top-level tables are parsed into a `TableModel` (cell source text, alignments, where each cell sits in the document) and shown by `TableGridView`, a grid of small TextKit 1 editors laid over the table's collapsed source; every edit goes back through `TableModel.markdown` so the document text is the single source of truth and undo just works. Mermaid blocks are rendered once in a hidden `WKWebView` to SVG and shown in a click-through card placed in vertical space reserved under the collapsed source.
 
 ## Known limitations
 
