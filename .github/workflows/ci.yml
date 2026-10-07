@@ -19,20 +19,85 @@ jobs:
       - run: swift test
 
   app-macos:
-    name: App build + tests (macOS)
+    name: App build, tests and e2e (macOS)
     runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      SNAPSHOT_DIR: ${{ github.workspace }}/artifacts/snapshots
     steps:
       - uses: actions/checkout@v4
+
       - name: Toolchain
         run: |
           sw_vers -productVersion
           xcodebuild -version | head -1
           swift --version 2>&1 | head -1
+          mkdir -p artifacts/snapshots artifacts/e2e
+
       - name: Build
         run: |
           set -o pipefail
-          if ! swift build 2>&1 | tee build.log | tail -5; then
-            echo "=== BUILD ERRORS ==="
-            grep -E "error:" build.log | sort -u | head -60
+          if ! swift build 2>&1 | tee build.log | tail -3; then
+            echo "=== BUILD ERRORS ==="; grep -E "error:" build.log | sort -u | head -60; exit 1
+          fi
+
+      - name: Unit and integration tests
+        run: |
+          swift test > test.log 2>&1
+          STATUS=$?
+          grep -E "Executed [0-9]+ tests" test.log | tail -1
+          if [ $STATUS -ne 0 ]; then
+            echo "=== TEST FAILURES ==="
+            grep -E "error:|Fatal|Segmentation|Crash" test.log | sort -u | head -80
             exit 1
           fi
+
+      - name: Package app bundle
+        run: |
+          scripts/build-app.sh 2>&1 | tail -15
+          ls dist/Downwrite.app/Contents/Resources | head -20
+
+      - name: End-to-end self-test (real app, real window)
+        id: e2e
+        continue-on-error: true
+        run: |
+          set +e
+          dist/Downwrite.app/Contents/MacOS/Downwrite --selftest "$PWD/artifacts/e2e" "$PWD/Sources/Downwrite/Resources/Welcome.md" > artifacts/e2e/stdout.txt 2>&1 &
+          APP=$!
+          for i in $(seq 1 150); do kill -0 $APP 2>/dev/null || break; sleep 1; done
+          kill $APP 2>/dev/null
+          wait $APP; echo "exit=$?"
+          cat artifacts/e2e/selftest-report.txt 2>/dev/null || { echo "no report; app output:"; tail -40 artifacts/e2e/stdout.txt; }
+          echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -80
+          grep -q "ALL CHECKS PASSED" artifacts/e2e/selftest-report.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: downwrite-ci
+          path: |
+            artifacts/
+            dist/Downwrite.app
+          retention-days: 7
+
+      # Commit screenshots to this same branch (normal push, never force) when the commit message contains [shots].
+      - name: Record screenshots on the branch
+        if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
+        run: |
+          mkdir -p docs/screenshots
+          cp artifacts/e2e/window-*.png docs/screenshots/ 2>/dev/null || true
+          cp artifacts/snapshots/*.png docs/screenshots/ 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "no screenshot changes"; else
+            git commit -q -m "ci: update screenshots [skip ci]"
+            for i in 1 2 3; do
+              git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && break
+              sleep 5
+            done
+          fi
+
+      - name: Fail if e2e failed
+        if: steps.e2e.outcome == 'failure'
+        run: echo "e2e self-test failed"; exit 1

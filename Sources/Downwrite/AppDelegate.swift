@@ -15,6 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { ThemeChoice.applyCurrent() }
         }
+        if SelfTest.arguments != nil {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                await SelfTest.run()
+            }
+        }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
         ) { _ in

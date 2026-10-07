@@ -145,6 +145,14 @@ final class DiagramView: NSView {
         }
     }
 
+    /// Bitmap of the web content (WebKit renders out of process, so view caching cannot see it).
+    func webSnapshot() async -> NSImage? {
+        guard !web.isHidden else { return nil }
+        return await withCheckedContinuation { cont in
+            web.takeSnapshot(with: nil) { image, _ in cont.resume(returning: image) }
+        }
+    }
+
     func showError(_ message: String) {
         web.isHidden = true
         lastSVG = nil
