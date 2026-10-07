@@ -52,6 +52,10 @@ In the cloud (Linux) container there is **no Xcode/macOS**. The app target canno
 - `textViewDidChangeSelection` fires *before* `textDidChange` when typing; the coordinator guards on `analysis.length == storage.length`.
 - Info.plist template tokens are replaced by `build-app.sh`; `AppTests.testInfoPlistClaimsMarkdownFiles` guards the file-association keys.
 
+## Licensing
+
+GPL-3.0 (`LICENSE`), © Derrick Wheals. Dependencies must be GPL-3.0-compatible (permissive licences only; no GPL-2.0-only, no proprietary). When adding or upgrading a dependency update `THIRD-PARTY-NOTICES.md` and `ThirdParty/`; `build-app.sh` bundles both into `Contents/Resources/Legal`. `LicenseTests` guards the files.
+
 ## Quality bar
 
 - Every Core change ships with unit tests; `scripts/linux-test.sh` must be green before pushing.

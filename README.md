@@ -106,7 +106,9 @@ xcrun stapler staple dist/Downwrite-1.0.0.dmg
 spctl --assess --type open --context context:primary-signature -v dist/Downwrite-1.0.0.dmg
 ```
 
-The app is **not sandboxed** (it reads sibling files for relative links and opens documents anywhere you point it). If you want to publish to the Mac App Store, add the App Sandbox entitlements (`com.apple.security.app-sandbox`, `…files.user-selected.read-write`, `…network.client` for WebKit) to `Packaging/Downwrite.entitlements` and sign with an App Store identity.
+The app is **not sandboxed** (it reads sibling files for relative links and opens documents anywhere you point it).
+
+> **Mac App Store note.** The GPL-3.0 and the App Store's terms are widely considered incompatible for *third parties* redistributing the code there. Direct download, GitHub Releases and Homebrew-style distribution are fine. As the sole copyright holder you may publish your own build elsewhere under different terms, but once you accept outside contributions you would need contributors' agreement (e.g. a CLA) to do so. If you ever go that route you would also add the App Sandbox entitlements to `Packaging/Downwrite.entitlements`.
 
 ### Releases from GitHub
 
@@ -145,7 +147,8 @@ Tests/DownwriteCoreTests Linux + macOS unit tests
 Tests/DownwriteTests     macOS integration tests
 Packaging/               Info.plist, entitlements, icon artwork
 scripts/                 build-app.sh, make-dmg.sh, linux-test.sh, generate-icons.py
-ThirdParty/              Third-party licences (Mermaid, MIT)
+ThirdParty/              Third-party licence texts (swift-markdown, cmark-gfm, Mermaid)
+LICENSE                  GNU GPL v3.0
 ```
 
 How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gfm and produces an immutable `MarkdownAnalysis` — style spans, *marker* ranges (the syntax characters) with the range that reveals each one, and per-line block styles. `MarkdownStyler` turns that into `NSTextStorage` attributes; hidden markers get a 0.1 pt clear font so they stay in the text (copy, undo and find keep working) but take no space. When the caret moves, only the lines whose markers changed state are restyled. Mermaid blocks are rendered once in a hidden `WKWebView` to SVG and shown in a click-through card placed in vertical space reserved under the collapsed source.
@@ -156,6 +159,12 @@ How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gf
 - Math (`$…$`, `$$…$$`) is styled, not typeset.
 - Liquid Glass chrome comes from the system on macOS 26+; Downwrite deliberately keeps the writing surface opaque for legibility. Icon Composer light/dark/tinted variants are compiled with `actool` when it succeeds in `scripts/build-app.sh`; otherwise the app falls back to the bundled `.icns` (the Dock icon still switches light/dark at runtime).
 - Built and tested against the macOS 26 SDK (Xcode 26.x). macOS 27 specific APIs are not required.
+
+## License
+
+Downwrite is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0** — see [`LICENSE`](LICENSE). Copyright © 2026 Derrick Wheals.
+
+Third-party components (swift-markdown, cmark-gfm, Mermaid) and their licences are listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md); the licence texts ship inside the app at `Contents/Resources/Legal/`. Contributions are accepted under the same licence.
 
 ## Credits
 

@@ -24,6 +24,9 @@ cp "$BIN_DIR/Downwrite" "$OUT/Contents/MacOS/Downwrite"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Packaging/Info.plist > "$OUT/Contents/Info.plist"
 cp Sources/Downwrite/Resources/* "$OUT/Contents/Resources/"
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "$OUT/Contents/Resources/AppIcon.icns"
+# GPL-3.0 and third-party notices travel with the app.
+mkdir -p "$OUT/Contents/Resources/Legal"
+cp LICENSE THIRD-PARTY-NOTICES.md ThirdParty/* "$OUT/Contents/Resources/Legal/"
 printf 'APPL????' > "$OUT/Contents/PkgInfo"
 plutil -lint "$OUT/Contents/Info.plist"
 
