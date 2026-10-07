@@ -7,6 +7,8 @@ enum GridMetrics {
     static let padX: CGFloat = 12
     static let padY: CGFloat = 7
     static let minColumn: CGFloat = 76
+    /// Floor for the squeeze that keeps a table with many columns inside the text column.
+    static let narrowestColumn: CGFloat = 40
     /// Room left of the table for the row grips, right of it for the "add column" strip.
     static let leftGutter: CGFloat = 28
     static let rightGutter: CGFloat = 28
@@ -374,9 +376,16 @@ final class TableGridView: NSView {
     // MARK: Model → views
 
     func apply(model new: TableModel, forceRestyle: Bool = false) {
+        let focusBefore = focusedPosition
         model = new
         isReconciling = true
-        defer { isReconciling = false }
+        defer {
+            isReconciling = false
+            // The focused cell can vanish (undoing an added row or column): keep the keyboard in the table.
+            if let f = focusBefore, !(window?.firstResponder is TableCellView) {
+                focus(TableCellPosition(row: min(f.row, new.rowCount - 1), column: min(f.column, new.columnCount - 1)), atEnd: true)
+            }
+        }
         // Rows and columns beyond the new shape go; missing ones are created.
         while cells.count > new.rowCount { cells.removeLast().forEach { $0.removeFromSuperview() } }
         for r in 0..<new.rowCount {
@@ -412,8 +421,10 @@ final class TableGridView: NSView {
         maxTableWidth = width
         guard cells.count == rowCount, cells.allSatisfy({ $0.count == columnCount }) else { return false }
         let natural = (0..<columnCount).map { c in (0..<rowCount).map { cells[$0][c].naturalWidth }.max() ?? 0 }
+        // Many columns shrink below the usual minimum (and wrap) rather than run off the edge of the text column.
+        let minimum = max(GridMetrics.narrowestColumn, min(GridMetrics.minColumn, width / CGFloat(max(1, columnCount))))
         columnWidths = TableLayout.columnWidths(natural: natural.map { Double($0) }, available: Double(width),
-                                                minimum: Double(GridMetrics.minColumn)).map { CGFloat($0) }
+                                                minimum: Double(minimum)).map { CGFloat($0) }
         guard let styler else { return false }
         let minLine = styler.cellLineHeight
         rowHeights = (0..<rowCount).map { r in
@@ -704,12 +715,17 @@ final class TableGridView: NSView {
         } else {
             cell.setSelectedRange(NSRange(location: 0, length: length))
         }
-        cell.scrollToVisible(cell.bounds.insetBy(dx: 0, dy: -24))
+        // Right after an edit the text view has not laid out the reserved space yet: scroll once it has.
+        DispatchQueue.main.async { [weak cell] in
+            guard let cell, cell.window?.firstResponder === cell else { return }
+            cell.scrollToVisible(cell.bounds.insetBy(dx: 0, dy: -24))
+        }
     }
 
     func cellDidBecomeFocused(_ cell: TableCellView) {
         focusedPosition = cell.position
         overlay?.endTypingSession()
+        overlay?.focusMovedIntoGrid()
         needsDisplay = true
     }
 

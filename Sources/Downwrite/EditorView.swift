@@ -134,6 +134,16 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         return set
     }
 
+    /// Shows the grid again for a table that was being edited as Markdown (unless the caret is still inside it).
+    func endTableSource() {
+        guard let first = sourceTableFirstLine, let tv = textView else { return }
+        if let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),
+           tableOverlay.hasFocus || !MarkdownAnalysis.isRevealed(t.range, by: tv.selectedRange()) {
+            sourceTableFirstLine = nil
+            reanalyze()
+        }
+    }
+
     /// "Edit as Markdown": shows one table as source until the caret leaves it.
     func showTableSource(order: Int, at pos: TableCellPosition) {
         let blocks = analysis.tables.filter(\.isGrid)

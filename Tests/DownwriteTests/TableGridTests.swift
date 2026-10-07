@@ -112,6 +112,24 @@ final class TableGridTests: XCTestCase {
         XCTAssertLessThan(cell(h, 1, 0).frame.width, 200, "the short column keeps its natural width")
     }
 
+    func testManyColumnsStayInsideTheTextColumnAndRemainClickable() {
+        let cols = 12
+        let head = "| " + (1...cols).map { "Heading \($0)" }.joined(separator: " | ") + " |"
+        let rule = "| " + (1...cols).map { _ in "---" }.joined(separator: " | ") + " |"
+        let body = "| " + (1...cols).map { "value \($0)" }.joined(separator: " | ") + " |"
+        let h = harness(head + "\n" + rule + "\n" + body + "\n\nEnd\n")
+        let g = grid(h)
+        let width = h.textView.bounds.width - h.textView.textContainerInset.width * 2
+        XCTAssertLessThanOrEqual(g.tableSize.width, width + 0.5, "table fits the text column")
+        XCTAssertGreaterThanOrEqual(g.frame.width, g.tableSize.width + GridMetrics.leftGutter + GridMetrics.rightGutter - 0.5)
+        let last = cell(h, 1, cols - 1)
+        XCTAssertLessThanOrEqual(last.frame.maxX, g.tableRect.maxX + 0.5)
+        let t = g.tableRect
+        let hit = g.hitTest(g.superview!.convert(NSPoint(x: t.maxX - 10, y: t.maxY - 10), from: g))
+        XCTAssertTrue(hit != nil && hit!.isDescendant(of: g), "the last column can be clicked")
+        XCTAssertNotNil(g.hitTest(g.superview!.convert(NSPoint(x: t.maxX + 14, y: t.midY), from: g)), "add-column strip is reachable")
+    }
+
     // MARK: Typing and undo
 
     func testTypingInACellWritesMarkdownAndOneUndoRevertsTheWholeRun() {
@@ -182,6 +200,26 @@ final class TableGridTests: XCTestCase {
         tick()
         h.textView.undoManager?.undo()
         XCTAssertEqual(model(h)?.rowCount, 3, "adding a row is one undo step")
+    }
+
+    func testKeyboardStaysInTheTableWhenTheFocusedCellIsUndoneAway() {
+        let h = harness()
+        grid(h).focus(.init(row: 2, column: 1))
+        tick()
+        cell(h, 2, 1).insertTab(nil)                       // adds row 3 and focuses it
+        XCTAssertEqual(grid(h).focusedPosition, .init(row: 3, column: 0))
+        tick()
+        h.textView.undoManager?.undo()                     // the focused cell no longer exists
+        XCTAssertEqual(model(h)?.rowCount, 3)
+        XCTAssertTrue(window(h).firstResponder is TableCellView, "focus moved to a surviving cell, not lost")
+        XCTAssertEqual(grid(h).focusedPosition, .init(row: 2, column: 0))
+    }
+
+    func testTheWindowKeepsAResponderWhenTheFocusedTableIsRemoved() {
+        let h = harness()
+        grid(h).focus(.init(row: 1, column: 0))
+        h.coordinator.update(text: "no table now\n", settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720))
+        XCTAssertTrue(window(h).firstResponder === h.textView, "the text view takes the keyboard back")
     }
 
     func testTabSelectsTheWholeCell() {
@@ -445,6 +483,22 @@ final class TableGridTests: XCTestCase {
         XCTAssertEqual(grid(h).focusedPosition, .init(row: 2, column: 1))
     }
 
+    func testWordAndLineDeletesBelowTheTableAreAlsoGuarded() {
+        let h = harness()
+        let before = h.textView.string
+        let belowBlank = NSMaxRange(h.coordinator.analysis.tables[0].range) + 1
+        for command in [h.textView.deleteWordBackward, h.textView.deleteToBeginningOfLine, h.textView.deleteToBeginningOfParagraph] {
+            h.window.makeFirstResponder(h.textView)
+            h.select(belowBlank)
+            command(nil)
+            XCTAssertEqual(h.textView.string, before)
+        }
+        h.window.makeFirstResponder(h.textView)
+        h.select(h.coordinator.analysis.tables[0].range.location - 1)
+        h.textView.deleteForward(nil)
+        XCTAssertEqual(h.textView.string, before, "forward delete at the end of the line above stays out of the table too")
+    }
+
     // MARK: Markdown source
 
     func testEditAsMarkdownShowsTheSourceUntilTheCaretLeaves() async {
@@ -466,6 +520,17 @@ final class TableGridTests: XCTestCase {
         XCTAssertFalse(grid(h).isHidden)
         XCTAssertLessThan(usedRect(h, line: 4).height, 2, "source is collapsed again")
         XCTAssertEqual(cell(h, 1, 0).string, "green apple")
+    }
+
+    func testClickingIntoAnotherTableEndsMarkdownSourceView() async {
+        let h = harness("| a |\n| - |\n| 1 |\n\ntext\n\n| b |\n| - |\n| 2 |\n")
+        h.coordinator.showTableSource(order: 0, at: .init(row: 1, column: 0))
+        XCTAssertNotNil(h.coordinator.sourceTableFirstLine)
+        XCTAssertTrue(grid(h, 0).isHidden)
+        grid(h, 1).focus(.init(row: 1, column: 0))
+        let ok = await waitUntil(timeout: 3) { h.coordinator.sourceTableFirstLine == nil }
+        XCTAssertTrue(ok, "source view closes when another table takes the keyboard")
+        XCTAssertFalse(grid(h, 0).isHidden)
     }
 
     func testTableCommandsWorkWhileMarkdownIsShowing() {

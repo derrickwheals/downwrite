@@ -41,7 +41,12 @@ final class TableOverlay {
     func sync() {
         guard let tv = textView else { return }
         let blocks = gridBlocks
-        while grids.count > blocks.count { grids.removeLast().removeFromSuperview() }
+        while grids.count > blocks.count {
+            let gone = grids.removeLast()
+            // Do not leave the window without a first responder when the focused grid disappears.
+            if gone.hasFocus { tv.window?.makeFirstResponder(tv) }
+            gone.removeFromSuperview()
+        }
         let signature = StyleSignature(choice: styler.typography.choice, size: styler.typography.size, palette: styler.palette)
         let restyle = signature != lastSignature
         lastSignature = signature
@@ -109,7 +114,8 @@ final class TableOverlay {
             // The fragment of the last (collapsed) line carries the spacing we reserved; its *used* rect is just the line.
             let frag = lm.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
             let frame = NSRect(x: origin.x - GridMetrics.leftGutter, y: frag.maxY + origin.y,
-                               width: width + GridMetrics.leftGutter + GridMetrics.rightGutter, height: grid.totalHeight)
+                               width: max(width, grid.tableSize.width) + GridMetrics.leftGutter + GridMetrics.rightGutter,
+                               height: grid.totalHeight)
             if grid.frame != frame { grid.frame = frame }
         }
         if heightChanged { onReservedHeightsChanged?() }
@@ -132,6 +138,12 @@ final class TableOverlay {
     }
 
     func endTypingSession() { textView?.gridTypingKey = nil }
+
+    /// Clicking into a grid ends "Edit as Markdown" on another table (the text view's selection did not change).
+    func focusMovedIntoGrid() {
+        guard coordinator.sourceTableFirstLine != nil else { return }
+        DispatchQueue.main.async { [weak self] in self?.coordinator.endTableSource() }
+    }
 
     private func consumePendingFocus() {
         guard let pending = pendingFocus else { return }

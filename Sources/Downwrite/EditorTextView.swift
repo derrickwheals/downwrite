@@ -138,12 +138,15 @@ final class EditorTextView: NSTextView {
         let continuing = coalesceKey != nil && coalesceKey == gridTypingKey && !undoing
         um?.disableUndoRegistration()
         isApplyingGridEdit = true
+        var applied = false
         if shouldChangeText(in: block.range, replacementString: markdown) {
             storage.replaceCharacters(in: block.range, with: markdown)
             didChangeText()
+            applied = true
         }
         isApplyingGridEdit = false
         um?.enableUndoRegistration()
+        guard applied else { return }
         if !continuing {
             let payload: [String: Any] = ["start": tableStart, "text": old, "name": undoName]
             um?.registerUndo(withTarget: self, selector: #selector(dwUndoTableEdit(_:)), object: payload as NSDictionary)
@@ -184,15 +187,26 @@ final class EditorTextView: NSTextView {
 
     /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source.
     override func deleteBackward(_ sender: Any?) {
-        if !hasMarkedText(), selectedRange().length == 0,
-           coordinator?.tableOverlay?.enterTable(adjacentToCaret: selectedRange().location, backwards: true) == true { return }
+        if guardTableDelete(backwards: true) { return }
         super.deleteBackward(sender)
     }
 
     override func deleteForward(_ sender: Any?) {
-        if !hasMarkedText(), selectedRange().length == 0,
-           coordinator?.tableOverlay?.enterTable(adjacentToCaret: selectedRange().location, backwards: false) == true { return }
+        if guardTableDelete(backwards: false) { return }
         super.deleteForward(sender)
+    }
+
+    // Word and line deletes would eat the hidden newline next to a table just the same.
+    override func deleteWordBackward(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteWordBackward(sender) } }
+    override func deleteToBeginningOfLine(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
+    override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
+    override func deleteWordForward(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteWordForward(sender) } }
+    override func deleteToEndOfLine(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
+    override func deleteToEndOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
+
+    private func guardTableDelete(backwards: Bool) -> Bool {
+        guard !hasMarkedText(), selectedRange().length == 0 else { return false }
+        return coordinator?.tableOverlay?.enterTable(adjacentToCaret: selectedRange().location, backwards: backwards) == true
     }
 
     override func insertNewline(_ sender: Any?) {
