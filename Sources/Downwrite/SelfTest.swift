@@ -209,7 +209,20 @@ enum SelfTest {
             let defaults = UserDefaults.standard
             let wide = scroll.frame.width
             check(!defaults.bool(forKey: Prefs.showTOC), "table of contents sidebar starts hidden")
+            func geometry() -> String {
+                "scroll \(scroll.frame) text \(tv.frame.width) clip \(scroll.contentView.bounds.width) window.content \(window.contentView?.frame.width ?? 0) showTOC=\(defaults.bool(forKey: Prefs.showTOC))"
+            }
+            func tree(_ v: NSView, _ depth: Int) -> [String] {
+                let line = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)"
+                return depth >= 6 ? [line] : [line] + v.subviews.flatMap { tree($0, depth + 1) }
+            }
+            report.append("DIAG sidebar before toggle: " + geometry())
             press("o", keyCode: 31, [.command, .control])
+            for i in 1...6 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                report.append("DIAG sidebar +\(Double(i) * 0.5)s: " + geometry())
+            }
+            report.append("DIAG window view tree:\n" + (window.contentView?.superview.map { tree($0, 0) } ?? []).joined(separator: "\n"))
             let shown = await waitUntil(timeout: 10) { scroll.frame.width < wide - 150 }
             check(defaults.bool(forKey: Prefs.showTOC), "⌃⌘O turns the sidebar on")
             check(shown, "the editor column narrows to make room for the sidebar", detail: "\(wide) → \(scroll.frame.width)")
