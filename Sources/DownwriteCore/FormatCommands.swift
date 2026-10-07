@@ -167,7 +167,7 @@ public enum Formatter {
                         selection: NSRange(location: sel.location + prefix.utf16.count, length: url.utf16.count))
     }
 
-    static func looksLikeURL(_ s: String) -> Bool {
+    public static func looksLikeURL(_ s: String) -> Bool {
         let t = s.trimmingCharacters(in: .whitespaces)
         return !t.contains(" ") && (t.hasPrefix("http://") || t.hasPrefix("https://") || t.hasPrefix("mailto:") || t.hasPrefix("www."))
     }
