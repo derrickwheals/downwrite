@@ -215,7 +215,9 @@ final class TableCellView: NSTextView, NSTextViewDelegate {
     }
 
     override func insertNewline(_ sender: Any?) {
-        if hasMarkedText() { super.insertNewline(sender) } else { grid?.returnKey(from: position) }
+        if hasMarkedText() { super.insertNewline(sender); return }
+        // Depending on the key bindings ⇧Return arrives here rather than as a line break.
+        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { insertLineBreak(sender) } else { grid?.returnKey(from: position) }
     }
 
     /// ⇧Return / ⌥Return: a line break inside the cell (Markdown tables cannot hold real newlines).
