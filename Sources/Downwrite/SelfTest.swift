@@ -207,25 +207,13 @@ enum SelfTest {
         // 5c. Table of contents sidebar: toggled from the menu bar, lists the headings, a click scrolls the editor.
         if let scroll = tv.enclosingScrollView, let toc = coordinator.toc {
             let defaults = UserDefaults.standard
-            let wide = scroll.frame.width
+            let wide = tv.frame.width
             check(!defaults.bool(forKey: Prefs.showTOC), "table of contents sidebar starts hidden")
-            func geometry() -> String {
-                "scroll \(scroll.frame) text \(tv.frame.width) clip \(scroll.contentView.bounds.width) window.content \(window.contentView?.frame.width ?? 0) showTOC=\(defaults.bool(forKey: Prefs.showTOC))"
-            }
-            func tree(_ v: NSView, _ depth: Int) -> [String] {
-                let line = String(repeating: "  ", count: depth) + "\(type(of: v)) \(v.frame)"
-                return depth >= 6 ? [line] : [line] + v.subviews.flatMap { tree($0, depth + 1) }
-            }
-            report.append("DIAG sidebar before toggle: " + geometry())
             press("o", keyCode: 31, [.command, .control])
-            for i in 1...6 {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                report.append("DIAG sidebar +\(Double(i) * 0.5)s: " + geometry())
-            }
-            report.append("DIAG window view tree:\n" + (window.contentView?.superview.map { tree($0, 0) } ?? []).joined(separator: "\n"))
-            let shown = await waitUntil(timeout: 10) { scroll.frame.width < wide - 150 }
+            // The sidebar floats over the window (macOS 26): the scroll view keeps its frame and insets its content.
+            let shown = await waitUntil(timeout: 10) { tv.frame.width < wide - 150 }
             check(defaults.bool(forKey: Prefs.showTOC), "⌃⌘O turns the sidebar on")
-            check(shown, "the editor column narrows to make room for the sidebar", detail: "\(wide) → \(scroll.frame.width)")
+            check(shown, "the editor column narrows to make room for the sidebar", detail: "\(wide) → \(tv.frame.width)")
             let expected = coordinator.analysis.headings.map(\.plainTitle)
             let listed = await waitUntil(timeout: 10) { toc.rows.map(\.title) == expected }
             check(listed && expected.count >= 5, "sidebar lists every heading", detail: toc.rows.map(\.title).joined(separator: " | "))
@@ -253,8 +241,8 @@ enum SelfTest {
                 check(false, "sample has a level-2 heading to click")
             }
             press("o", keyCode: 31, [.command, .control])
-            let hidden = await waitUntil(timeout: 10) { abs(scroll.frame.width - wide) < 2 }
-            check(!defaults.bool(forKey: Prefs.showTOC) && hidden, "⌃⌘O turns the sidebar off again", detail: "\(scroll.frame.width)")
+            let hidden = await waitUntil(timeout: 10) { abs(tv.frame.width - wide) < 2 }
+            check(!defaults.bool(forKey: Prefs.showTOC) && hidden, "⌃⌘O turns the sidebar off again", detail: "\(tv.frame.width)")
             tv.scrollToBeginningOfDocument(nil)
         } else {
             check(false, "editor feeds a table-of-contents model")
