@@ -89,6 +89,11 @@ enum SelfTest {
         press("f", keyCode: 3, .command)
         try? await Task.sleep(nanoseconds: 400_000_000)
         check(tv.enclosingScrollView?.isFindBarVisible == true, "⌘F opens the find bar")
+        let hide = NSMenuItem()
+        hide.tag = NSTextFinder.Action.hideFindInterface.rawValue
+        tv.performTextFinderAction(hide)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        check(tv.enclosingScrollView?.isFindBarVisible == false, "find bar closes again")
         tv.window?.makeFirstResponder(tv)
         tv.setSelectedRange(word)
         press("b", keyCode: 11, .command)
