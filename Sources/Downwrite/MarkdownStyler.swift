@@ -1,11 +1,11 @@
 import AppKit
 import DownwriteCore
 
-/// Extra, non-textual state the styler needs: how tall each Mermaid preview is and which are collapsed.
+/// Extra, non-textual state the styler needs: how tall each preview card is and which source blocks are collapsed.
 struct PreviewState {
-    /// Reserved height below a Mermaid block, keyed by the block's first line.
+    /// Reserved height below a preview block (diagram or image), keyed by the block's first line.
     var heights: [Int: CGFloat] = [:]
-    /// Mermaid blocks whose source is collapsed (caret outside).
+    /// Preview blocks whose source is collapsed (caret outside), keyed by first line.
     var collapsed: Set<Int> = []
 }
 
@@ -82,17 +82,17 @@ final class MarkdownStyler {
 
         // Whole-line collapsing: hidden fences, collapsed Mermaid sources.
         let hiddenFence = line.kind == .fence && runs.contains { $0.flags.contains(.hidden) }
-        let mermaid = analysis.mermaid.first { index >= $0.firstLine && index <= $0.lastLine }
-        let collapseMermaid = mermaid.map { preview.collapsed.contains($0.firstLine) } ?? false
-        if hiddenFence || collapseMermaid {
+        let block = analysis.previewBlocks.first { index >= $0.firstLine && index <= $0.lastLine }
+        let collapsePreview = block.map { preview.collapsed.contains($0.firstLine) } ?? false
+        if hiddenFence || collapsePreview {
             let p = NSMutableParagraphStyle()
             p.minimumLineHeight = 0.1
             p.maximumLineHeight = 0.1
-            if let m = mermaid, index == m.lastLine, let h = preview.heights[m.firstLine] { p.paragraphSpacing = h }
+            if let b = block, index == b.lastLine, let h = preview.heights[b.firstLine] { p.paragraphSpacing = h }
             storage.setAttributes([.font: hiddenFont, .foregroundColor: NSColor.clear, .paragraphStyle: p], range: r)
             return
         }
-        if let m = mermaid, index == m.lastLine, let h = preview.heights[m.firstLine] {
+        if let b = block, index == b.lastLine, let h = preview.heights[b.firstLine] {
             look.paragraph.paragraphSpacing = h
         }
         if line.kind == .hr, runs.contains(where: { $0.flags.contains(.hidden) }) {

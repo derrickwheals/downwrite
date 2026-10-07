@@ -52,9 +52,21 @@ private struct Builder {
     }
 
     func finish() -> MarkdownAnalysis {
-        MarkdownAnalysis(
+        // An image that is the whole content of its line gets a preview.
+        var blocks: [ImageBlock] = []
+        for img in images {
+            let l = src.lineIndex(containing: img.range.location)
+            guard lines[l].kind == .body, lines[l].quoteDepth == 0 else { continue }
+            let content = lines[l].contentRange
+            let before = src.string(NSRange(location: content.location, length: img.range.location - content.location))
+            let after = src.string(NSRange(location: NSMaxRange(img.range), length: NSMaxRange(content) - NSMaxRange(img.range)))
+            if before.allSatisfy({ $0 == " " || $0 == "\t" }) && after.allSatisfy({ $0 == " " || $0 == "\t" }) && !img.source.isEmpty {
+                blocks.append(ImageBlock(line: l, range: img.range, alt: img.alt, source: img.source))
+            }
+        }
+        return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
-            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: headings
+            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: headings, imageBlocks: blocks
         )
     }
 

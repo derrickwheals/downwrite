@@ -103,14 +103,15 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     func reanalyze() {
         guard let tv = textView else { return }
         analysis = MarkdownAnalyzer.analyze(tv.string)
-        overlay.sync(blocks: analysis.mermaid, dark: isDark)
+        overlay.baseURL = fileURL?.deletingLastPathComponent()
+        overlay.sync(blocks: analysis.previewBlocks, dark: isDark)
         preview.heights = overlay.reservedHeights
-        preview.collapsed = collapsedMermaid(selection: tv.selectedRange())
+        preview.collapsed = collapsedPreviews(selection: tv.selectedRange())
         restyleAll()
     }
 
-    private func collapsedMermaid(selection: NSRange) -> Set<Int> {
-        Set(analysis.mermaid.filter { !MarkdownAnalysis.isRevealed($0.range, by: selection) }.map(\.firstLine))
+    private func collapsedPreviews(selection: NSRange) -> Set<Int> {
+        Set(analysis.previewBlocks.filter { !MarkdownAnalysis.isRevealed($0.reveal, by: selection) }.map(\.firstLine))
     }
 
     func restyleAll() {
@@ -148,7 +149,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     private func reservedHeightsChanged() {
         guard let tv = textView, let storage = tv.textStorage, analysis.length == storage.length else { return }
         preview.heights = overlay.reservedHeights
-        let lines = Set(analysis.mermaid.map(\.lastLine))
+        let lines = Set(analysis.previewBlocks.map(\.lastLine))
         isStyling = true
         styler.style(lines: lines, storage: storage, analysis: analysis, selection: tv.selectedRange(), preview: preview)
         isStyling = false
@@ -191,10 +192,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         for i in hidden.symmetricDifference(lastHidden) where i < analysis.markers.count {
             dirty.insert(analysis.lineIndex(at: analysis.markers[i].range.location))
         }
-        let collapsed = collapsedMermaid(selection: sel)
+        let collapsed = collapsedPreviews(selection: sel)
         let collapseChanged = collapsed != preview.collapsed
         for first in collapsed.symmetricDifference(preview.collapsed) {
-            if let b = analysis.mermaid.first(where: { $0.firstLine == first }) { for l in b.firstLine...b.lastLine { dirty.insert(l) } }
+            if let b = analysis.previewBlocks.first(where: { $0.firstLine == first }) { for l in b.firstLine...b.lastLine { dirty.insert(l) } }
         }
         preview.collapsed = collapsed
         lastHidden = hidden

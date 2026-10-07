@@ -76,6 +76,26 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertTrue(a.links.contains { $0.destination == "https://b.example" })
     }
 
+    func testImageOnItsOwnLineGetsPreviewBlock() {
+        let s = "text\n\n![A cat](cat.png)\n\ninline ![x](y.png) here\n\n> ![q](q.png)\n\n  ![ok](ok.png)  \n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.imageBlocks.map(\.source), ["cat.png", "ok.png"])
+        XCTAssertEqual(a.imageBlocks[0].line, 2)
+        XCTAssertEqual(a.imageBlocks[0].alt, "A cat")
+        XCTAssertEqual(ns(s, a.imageBlocks[0].range), "![A cat](cat.png)")
+    }
+
+    func testPreviewBlocksMergeMermaidAndImagesInOrder() {
+        let s = "![a](a.png)\n\n```mermaid\ngraph TD\n A-->B\n```\n\n![b](b.png)\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        let blocks = a.previewBlocks
+        XCTAssertEqual(blocks.map(\.firstLine), [0, 2, 7])
+        XCTAssertEqual(blocks[1].lastLine, 5)
+        if case .mermaid(let src) = blocks[1].kind { XCTAssertEqual(src, "graph TD\n A-->B") } else { XCTFail("kind") }
+        if case .image(let src, let alt) = blocks[2].kind { XCTAssertEqual(src, "b.png"); XCTAssertEqual(alt, "b") } else { XCTFail("kind") }
+        XCTAssertEqual(blocks[0].reveal, NSRange(location: 0, length: 11))
+    }
+
     func testBareURLsBecomeLinks() {
         let s = "Visit https://example.com/a?b=1, or www.example.org. Not (https://wrapped.example) nor `https://code.example`."
         let a = MarkdownAnalyzer.analyze(s)

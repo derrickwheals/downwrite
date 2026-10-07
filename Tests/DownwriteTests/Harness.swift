@@ -15,7 +15,7 @@ struct EditorHarness {
     let coordinator: EditorCoordinator
     let box: TextBox
 
-    init(text: String, dark: Bool = false, size: NSSize = NSSize(width: 960, height: 760), font: FontChoice = .avenirNext) {
+    init(text: String, dark: Bool = false, size: NSSize = NSSize(width: 960, height: 760), font: FontChoice = .avenirNext, fileURL: URL? = nil) {
         _ = NSApplication.shared
         let b = TextBox(text)
         box = b
@@ -31,6 +31,7 @@ struct EditorHarness {
         s.frame = NSRect(origin: .zero, size: size)
         w.contentView = s
         window = w
+        c.fileURL = fileURL
         c.attach(scroll: s, textView: tv, settings: EditorSettings(font: font, size: 17, lineHeight: 1.45, width: 720), initialText: text)
         w.orderFront(nil)
         c.appearanceDidChange()

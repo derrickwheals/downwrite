@@ -79,6 +79,27 @@ public struct MermaidBlock: Equatable, Sendable {
     public var lastLine: Int
 }
 
+/// A line that consists of nothing but one image (`![alt](src)`): previewed under the line.
+public struct ImageBlock: Equatable, Sendable {
+    public var line: Int
+    public var range: NSRange
+    public var alt: String
+    public var source: String
+}
+
+/// Anything shown as a rendered card under (or instead of) its source: Mermaid diagrams and standalone images.
+public struct PreviewBlock: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        case mermaid(source: String)
+        case image(source: String, alt: String)
+    }
+    public var kind: Kind
+    public var firstLine: Int
+    public var lastLine: Int
+    /// The source collapses while the selection is outside this range.
+    public var reveal: NSRange
+}
+
 public struct TableBlock: Equatable, Sendable {
     public var range: NSRange
     public var firstLine: Int
@@ -138,6 +159,18 @@ public struct MarkdownAnalysis: Sendable {
     public let mermaid: [MermaidBlock]
     public let tables: [TableBlock]
     public let headings: [HeadingInfo]
+    public let imageBlocks: [ImageBlock]
+
+    /// Mermaid diagrams and standalone images in document order.
+    public var previewBlocks: [PreviewBlock] {
+        var out: [PreviewBlock] = mermaid.map {
+            PreviewBlock(kind: .mermaid(source: $0.source), firstLine: $0.firstLine, lastLine: $0.lastLine, reveal: $0.range)
+        }
+        out += imageBlocks.map {
+            PreviewBlock(kind: .image(source: $0.source, alt: $0.alt), firstLine: $0.line, lastLine: $0.line, reveal: lines[$0.line].contentRange)
+        }
+        return out.sorted { $0.firstLine < $1.firstLine }
+    }
 
     /// Index of the line containing `offset` (offsets past the end map to the last line).
     public func lineIndex(at offset: Int) -> Int {
