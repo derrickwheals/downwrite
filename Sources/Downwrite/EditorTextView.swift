@@ -87,6 +87,23 @@ final class EditorTextView: NSTextView {
         coordinator?.appearanceDidChange()
     }
 
+    // MARK: Placeholder
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, !hasMarkedText(), let coordinator, let styler = coordinator.styler else { return }
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: coordinator.typography.font(),
+            .foregroundColor: styler.palette.marker.nsColor.withAlphaComponent(0.8),
+        ]
+        "Start writing…".draw(at: NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y), withAttributes: attrs)
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        if string.utf16.count <= 1 { needsDisplay = true }
+    }
+
     // MARK: Applying edits
 
     /// Applies a computed edit through the text system so that undo, the delegate and SwiftUI all see it.

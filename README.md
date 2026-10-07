@@ -5,9 +5,14 @@ A quiet, native Markdown editor for the Mac — light-weight, beautiful to type 
 Markdown syntax **disappears while you read** and **comes back when your cursor touches it**. Click into a bold word and the asterisks fade in; move away and they vanish. Everything is built with SwiftUI + AppKit, with no Electron, no web editor and no account.
 
 <p align="center">
-  <img src="docs/screenshots/welcome-light.png" width="48%" alt="Downwrite in light mode">
-  <img src="docs/screenshots/welcome-dark.png" width="48%" alt="Downwrite in dark mode">
+  <img src="docs/screenshots/window-light.png" width="48%" alt="Downwrite in light mode">
+  <img src="docs/screenshots/window-dark.png" width="48%" alt="Downwrite in dark mode">
 </p>
+<p align="center">
+  <img src="docs/screenshots/window-light-diagram.png" width="60%" alt="A Mermaid diagram rendered inline">
+</p>
+
+<sub>Screenshots are captured automatically from the real app on a macOS 26 runner by the end-to-end self-test (see Testing).</sub>
 
 ## Features
 
@@ -17,9 +22,10 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
 - **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The Dock icon switches between light and dark artwork too.
 - **Liquid Glass.** Built for macOS 26 "Tahoe" and ready for macOS 27 "Golden Gate": system toolbar and window chrome adopt Liquid Glass automatically, and the floating word-count pill uses `glassEffect`.
-- **A proper Mac document app.** Tabs, Versions, autosave, Open Recent, Quick Look-friendly files, drag-and-drop, Find (⌘F), full undo/redo. Opens and saves UTF-8 (± BOM), UTF-16 and legacy Windows-1252 files and **preserves line endings** (LF / CRLF) so it never rewrites a file's format behind your back.
+- **A proper Mac document app.** Tabs, Versions, autosave, Open Recent, drag-and-drop onto the Dock icon, Find (⌘F), full undo/redo. Opens and saves UTF-8 (± BOM), UTF-16 and legacy Windows-1252 files and **preserves line endings** (LF / CRLF) so it never rewrites a file's format behind your back.
 - **Smart keys.** Return continues lists, tasks, numbered lists and quotes (press it twice to leave); Tab / ⇧Tab indent and outdent; paste a URL over selected text to make a link.
-- **Small.** ~4 MB, almost all of it the Mermaid engine.
+- **Small.** About 4 MB on disk, almost all of it the bundled Mermaid engine. No network access needed except for remote images.
+- **Inline images.** `![alt](path)` on its own line shows the picture below the (collapsed) Markdown.
 
 ## Keyboard shortcuts
 
@@ -141,7 +147,7 @@ How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gf
 
 ## Known limitations
 
-- Images (`![](…)`) are styled but not yet previewed inline.
+- Images are previewed inline when they sit on a line of their own (local paths are resolved relative to the document; `http(s)` images load from the network). Images inside a paragraph are styled but not previewed.
 - Math (`$…$`, `$$…$$`) is styled, not typeset.
 - Liquid Glass chrome comes from the system on macOS 26+; Downwrite deliberately keeps the writing surface opaque for legibility. Icon Composer light/dark/tinted variants are compiled with `actool` when it succeeds in `scripts/build-app.sh`; otherwise the app falls back to the bundled `.icns` (the Dock icon still switches light/dark at runtime).
 - Built and tested against the macOS 26 SDK (Xcode 26.x). macOS 27 specific APIs are not required.

@@ -54,8 +54,10 @@ jobs:
 
       - name: Package app bundle
         run: |
-          scripts/build-app.sh 2>&1 | tail -15
-          ls dist/Downwrite.app/Contents/Resources | head -20
+          scripts/build-app.sh > artifacts/package.log 2>&1 || { tail -30 artifacts/package.log; exit 1; }
+          tail -12 artifacts/package.log
+          ls dist/Downwrite.app/Contents/Resources | head -20 | tee -a artifacts/package.log
+          du -sh dist/Downwrite.app | tee -a artifacts/package.log
 
       - name: End-to-end self-test (real app, real window)
         id: e2e
@@ -85,7 +87,7 @@ jobs:
         if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
         run: |
           mkdir -p docs/screenshots docs/ci
-          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt docs/ci/ 2>/dev/null || true
+          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt artifacts/package.log docs/ci/ 2>/dev/null || true
           grep -E "Executed [0-9]+ tests" test.log | tail -1 > docs/ci/test-summary.txt || true
           grep -E "error:" test.log | sort -u | head -40 >> docs/ci/test-summary.txt || true
           cp artifacts/e2e/window-*.png docs/screenshots/ 2>/dev/null || true

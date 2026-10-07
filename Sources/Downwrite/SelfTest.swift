@@ -86,6 +86,10 @@ enum SelfTest {
                                      isARepeat: false, keyCode: keyCode)!
             _ = NSApp.mainMenu?.performKeyEquivalent(with: e)
         }
+        press("f", keyCode: 3, .command)
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        check(tv.enclosingScrollView?.isFindBarVisible == true, "⌘F opens the find bar")
+        tv.window?.makeFirstResponder(tv)
         tv.setSelectedRange(word)
         press("b", keyCode: 11, .command)
         check(tv.string.contains("**\(probe)**"), "⌘B wraps selection in **")
@@ -214,6 +218,10 @@ enum SelfTest {
             for item in top.submenu?.items ?? [] where !item.isSeparatorItem {
                 let key = item.keyEquivalent.isEmpty ? "" : "  [\(item.keyEquivalentModifierMask.rawValue):\(item.keyEquivalent)]"
                 lines.append("  - \(item.title)\(key)")
+                for sub in item.submenu?.items ?? [] where !sub.isSeparatorItem {
+                    let k = sub.keyEquivalent.isEmpty ? "" : "  [\(sub.keyEquivalentModifierMask.rawValue):\(sub.keyEquivalent)]"
+                    lines.append("      · \(sub.title)\(k)")
+                }
             }
         }
         try? lines.joined(separator: "\n").write(to: dir.appendingPathComponent("menus.txt"), atomically: true, encoding: .utf8)
