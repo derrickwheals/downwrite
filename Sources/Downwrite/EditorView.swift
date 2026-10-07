@@ -15,11 +15,14 @@ struct EditorView: NSViewRepresentable {
     @Binding var text: String
     var settings: EditorSettings
     var fileURL: URL?
+    /// Feeds the table-of-contents sidebar.
+    var toc: TOCModel?
 
     func makeCoordinator() -> EditorCoordinator { EditorCoordinator(text: $text) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let (scroll, textView) = EditorTextView.make()
+        context.coordinator.toc = toc
         context.coordinator.attach(scroll: scroll, textView: textView, settings: settings, initialText: text)
         context.coordinator.fileURL = fileURL
         return scroll
@@ -28,6 +31,7 @@ struct EditorView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.text = $text
         context.coordinator.fileURL = fileURL
+        context.coordinator.toc = toc
         context.coordinator.update(text: text, settings: settings)
     }
 }
@@ -47,12 +51,23 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// Ends as soon as the caret leaves the table.
     private(set) var sourceTableFirstLine: Int?
     let typography = Typography()
+    /// The table-of-contents sidebar's model; nil when no sidebar is attached.
+    var toc: TOCModel? {
+        didSet {
+            guard toc !== oldValue else { return }
+            oldValue?.onSelect = nil
+            toc?.onSelect = { [weak self] id in self?.revealHeading(at: id) }
+            scheduleTOCPublish()
+        }
+    }
 
     private var settings: EditorSettings?
     private var preview = PreviewState()
     private var lastHidden = Set<Int>()
     private var isStyling = false
     private var repositionScheduled = false
+    private var tocPublishScheduled = false
+    private var tableOfContents = TableOfContents(headings: [])
     private var debounce: DispatchWorkItem?
 
     init(text: Binding<String>) {
@@ -111,6 +126,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     func reanalyze() {
         guard let tv = textView else { return }
         analysis = MarkdownAnalyzer.analyze(tv.string)
+        tableOfContents = analysis.tableOfContents
+        scheduleTOCPublish()
         if let first = sourceTableFirstLine, !analysis.tables.contains(where: { $0.isGrid && $0.firstLine == first }) {
             sourceTableFirstLine = nil
         }
@@ -212,6 +229,33 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         }
     }
 
+    // MARK: Table of contents
+
+    /// Hands the sidebar its rows and active heading. Deferred one turn of the run loop: `reanalyze` also runs from
+    /// `updateNSView`, where SwiftUI forbids publishing changes.
+    private func scheduleTOCPublish() {
+        guard toc != nil, !tocPublishScheduled else { return }
+        tocPublishScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.tocPublishScheduled = false
+            guard let toc = self.toc, let tv = self.textView else { return }
+            toc.update(rows: self.tableOfContents.rows, activeID: self.analysis.headingIndex(at: tv.selectedRange().location))
+        }
+    }
+
+    /// Sidebar click: puts the caret at the end of heading `index` (a `TOCRow.id`), gives the editor the keyboard so
+    /// typing carries on there, and scrolls the heading to the top of the window.
+    func revealHeading(at index: Int, animated: Bool = true) {
+        guard let tv = textView, let storage = tv.textStorage else { return }
+        if analysis.length != storage.length { reanalyze() }
+        guard analysis.headings.indices.contains(index) else { return }
+        let heading = analysis.headings[index]
+        tv.window?.makeFirstResponder(tv)
+        tv.setSelectedRange(NSRange(location: NSMaxRange(heading.range), length: 0))
+        tv.scrollToTop(of: heading.range, animated: animated)
+    }
+
     // MARK: NSTextViewDelegate
 
     func textDidChange(_ notification: Notification) {
@@ -233,6 +277,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         guard !isStyling, let tv = textView, let storage = tv.textStorage,
               analysis.length == storage.length, !tv.hasMarkedText() else { return }
         let sel = tv.selectedRange()
+        scheduleTOCPublish()
         // Markdown source of a table is only shown while the caret is in it.
         if let first = sourceTableFirstLine,
            let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),

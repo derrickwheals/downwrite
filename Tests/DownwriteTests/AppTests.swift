@@ -38,6 +38,39 @@ final class AppTests: XCTestCase {
         XCTAssertNil(NSApp.appearance)
     }
 
+    private func assertWhite(_ c: NSColor, _ message: String, accuracy: CGFloat) {
+        XCTAssertEqual(c.redComponent, 1, accuracy: accuracy, message)
+        XCTAssertEqual(c.greenComponent, 1, accuracy: accuracy, message)
+        XCTAssertEqual(c.blueComponent, 1, accuracy: accuracy, message)
+    }
+
+    func testLightEditorBackgroundIsPureWhite() throws {
+        let h = EditorHarness(text: "# Hello\n\nSome text.\n", dark: false)
+        for (name, colour) in [("text view", h.textView.backgroundColor), ("scroll view", h.scroll.backgroundColor)] {
+            let c = try XCTUnwrap(colour.usingColorSpace(.sRGB), name)
+            assertWhite(c, "\(name) is white", accuracy: 0.001)
+        }
+        // …and what is actually painted: an empty patch of the margin, next to the text column.
+        h.window.displayIfNeeded()
+        let view = h.window.contentView!
+        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let px = try XCTUnwrap(rep.colorAt(x: 6, y: rep.pixelsHigh - 6)?.usingColorSpace(.sRGB))
+        assertWhite(px, "painted margin is white", accuracy: 0.01)
+    }
+
+    func testDarkEditorBackgroundIsUnchanged() throws {
+        let h = EditorHarness(text: "# Hello\n", dark: true)
+        let c = try XCTUnwrap(h.textView.backgroundColor.usingColorSpace(.sRGB))
+        XCTAssertLessThan(c.redComponent + c.greenComponent + c.blueComponent, 0.5)
+    }
+
+    func testTableOfContentsPreferenceIsRegisteredOff() {
+        Prefs.registerDefaults()
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: Prefs.showTOC), "the sidebar starts hidden")
+        XCTAssertEqual(Prefs.showTOC, "showTOC")
+    }
+
     func testDocumentTypesAndMarkdownIdentifier() {
         XCTAssertEqual(UTType.markdown.identifier, "net.daringfireball.markdown")
         XCTAssertTrue(MarkdownDocument.readableContentTypes.contains(.markdown))
