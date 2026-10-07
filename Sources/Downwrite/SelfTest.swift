@@ -42,7 +42,9 @@ enum SelfTest {
             check(false, "open document", detail: "\(error)")
             return finish(outDir)
         }
-        guard let tv = await waitForEditor(containing: "Welcome") ?? (await waitForEditor(containing: "")) else {
+        var found = await waitForEditor(containing: "Welcome")
+        if found == nil { found = await waitForEditor(containing: "") }
+        guard let tv = found else {
             check(false, "editor window appears")
             return finish(outDir)
         }

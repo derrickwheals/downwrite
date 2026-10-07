@@ -115,7 +115,7 @@ final class MarkdownStyler {
         }
     }
 
-    private func lineLook(_ line: LineStyle, index: Int, analysis: MarkdownAnalysis, storage: NSStorageLike, preview: PreviewState) -> LineLook {
+    private func lineLook(_ line: LineStyle, index: Int, analysis: MarkdownAnalysis, storage: NSTextStorage, preview: PreviewState) -> LineLook {
         var look = LineLook(size: typography.size, color: palette.text.nsColor)
         let p = look.paragraph
         p.lineHeightMultiple = typography.lineHeight
@@ -162,9 +162,8 @@ final class MarkdownStyler {
             if case .body = line.kind { look.color = palette.text.nsColor.withAlphaComponent(0.82) }
         }
         if line.listPrefixLength > 0, case .body = line.kind {
-            let text = (storage.string as NSString)
             let prefixRange = NSRange(location: line.range.location, length: min(line.listPrefixLength, line.contentEnd - line.range.location))
-            let prefix = text.substring(with: prefixRange).replacingOccurrences(of: "\t", with: "    ")
+            let prefix = storage.attributedSubstring(from: prefixRange).string.replacingOccurrences(of: "\t", with: "    ")
             let width = (prefix as NSString).size(withAttributes: [.font: typography.font(size: look.size, bold: look.bold)]).width
             p.headIndent += width
             p.paragraphSpacing = typography.size * 0.12
@@ -229,7 +228,3 @@ final class MarkdownStyler {
         return attrs
     }
 }
-
-/// Lets `lineLook` read the text without depending on the concrete storage type in signatures.
-protocol NSStorageLike { var string: String { get } }
-extension NSTextStorage: NSStorageLike {}

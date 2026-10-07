@@ -101,3 +101,14 @@ jobs:
       - name: Fail if e2e failed
         if: steps.e2e.outcome == 'failure'
         run: echo "e2e self-test failed"; exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "################ SUMMARY ################"
+          echo "--- build errors ---"; grep -E "error:" build.log 2>/dev/null | sort -u | head -25
+          echo "--- test result ---"; grep -E "Executed [0-9]+ tests" test.log 2>/dev/null | tail -1
+          echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
+          echo "--- e2e report ---"; cat artifacts/e2e/selftest-report.txt 2>/dev/null | head -60
+          echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null
+          echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -70

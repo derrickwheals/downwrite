@@ -276,10 +276,9 @@ final class DiagramOverlay {
         for block in analysis.mermaid {
             guard let e = entries[block.firstLine], block.lastLine < analysis.lines.count else { continue }
             let line = analysis.lines[block.lastLine]
-            let charRange = line.range.length > 0 ? NSRange(location: line.range.location, length: 1)
-                                                   : NSRange(location: max(0, tv.string.utf16.count - 1), length: 0)
-            guard tv.string.utf16.count > 0 else { continue }
-            let glyph = lm.glyphIndexForCharacter(at: min(charRange.location, tv.string.utf16.count - 1))
+            let total = tv.textStorage?.length ?? 0
+            guard total > 0 else { continue }
+            let glyph = lm.glyphIndexForCharacter(at: min(max(0, line.range.location), total - 1))
             let frag = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             let height = max(40, e.reserved - 14)
             let frame = NSRect(x: origin.x, y: frag.maxY + origin.y + 4, width: width, height: height)
