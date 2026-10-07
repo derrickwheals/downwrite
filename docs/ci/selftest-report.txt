@@ -1,0 +1,29 @@
+PASS  editor window appears
+PASS  document text loaded into editor — 1449 vs 1449 chars
+PASS  Format menu is installed
+PASS  sample contains **disappears**
+PASS  markers hidden when caret is elsewhere
+PASS  markers revealed when caret enters the pair
+PASS  ⌘B wraps selection in **
+PASS  ⌘B again unwraps
+PASS  ⌘I wraps selection in *
+PASS  ⌘E wraps selection in backticks
+PASS  ⌘2 makes a level-2 heading
+PASS  ⌘2 again removes the heading
+PASS  ⌘K inserts a link
+PASS  undo reverts the link
+PASS  typed text is saved to disk by the document system
+PASS  mermaid diagram rendered into a card
+PASS  diagram card has a sensible frame — (132.0, 1515.3374999999987, 719.0, 156.9375)
+DIAG mermaid lines 39…45: first y=1311.6999999999994 h=0.1, last y=1312.299999999999 h=171.0375, card y=1515.337499999999 h=156.9375, reserved=170.9375
+FAIL  collapsed Mermaid source takes no vertical space — heights 0.1/171.0375
+FAIL  diagram card sits directly under its collapsed source — gap 32.0
+PASS  theme light applies to the app
+PASS  editor palette follows light
+PASS  screenshot of real window (light)
+PASS  theme dark applies to the app
+PASS  editor palette follows dark
+PASS  screenshot of real window (dark)
+PASS  system theme clears the appearance override
+
+2 CHECK(S) FAILED

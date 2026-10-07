@@ -1,0 +1,75 @@
+# Downwrite
+  - About Downwrite
+  - Make Downwrite the Default Markdown App
+  - Settings…  [1048576:,]
+  - Services
+  - Hide Downwrite  [1048576:h]
+  - Hide Others  [1572864:h]
+  - Show All
+  - Quit Downwrite  [1048576:q]
+# File
+  - New  [1048576:n]
+  - Open…  [1048576:o]
+  - Open Recent
+  - Close  [1048576:w]
+  - Close All  [1572864:w]
+  - Save  [1048576:s]
+  - Save As…  [1703936:s]
+  - Duplicate  [1179648:s]
+  - Rename…
+  - Move To…
+  - Revert To Saved
+  - Revert To
+  - Share
+# Edit
+  - Undo  [1048576:z]
+  - Redo  [1179648:z]
+  - Cut  [1048576:x]
+  - Copy  [1048576:c]
+  - Paste  [1048576:v]
+  - Delete
+  - Select All  [1048576:a]
+  - Find
+  - AutoFill
+  - Start Dictation…
+  - Start Dictation…  [8388608:d]
+  - Emoji & Symbols  [1048576: ]
+  - Emoji & Symbols  [1310720: ]
+  - Emoji & Symbols  [8388608:e]
+# Format
+  - Bold  [1048576:b]
+  - Italic  [1048576:i]
+  - Strikethrough  [1179648:x]
+  - Highlight  [1179648:h]
+  - Code  [1048576:e]
+  - Link…  [1048576:k]
+  - Heading 1  [1048576:1]
+  - Heading 2  [1048576:2]
+  - Heading 3  [1048576:3]
+  - Heading 4  [1048576:4]
+  - Heading 5  [1048576:5]
+  - Heading 6  [1048576:6]
+  - Body Text  [1048576:0]
+  - Bulleted List  [1179648:8]
+  - Numbered List  [1179648:7]
+  - Task List  [1179648:9]
+  - Block Quote  [1179648:.]
+  - Code Block  [1572864:c]
+  - Horizontal Rule  [1572864:-]
+  - Insert Table  [1572864:t]
+  - Format Table  [1703936:t]
+  - Indent  [1048576:]]
+  - Outdent  [1048576:[]
+# View
+  - Appearance
+  - Bigger Text  [1048576:=]
+  - Smaller Text  [1048576:-]
+  - Actual Size  [1572864:0]
+# Window
+  - Minimize  [1048576:m]
+  - Zoom
+  - Bring All to Front
+  - work.md
+# Help
+  - Welcome to Downwrite
+  - Markdown Syntax Guide
