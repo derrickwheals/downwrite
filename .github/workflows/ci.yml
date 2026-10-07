@@ -80,6 +80,30 @@ jobs:
           echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -80
           grep -q "ALL CHECKS PASSED" artifacts/e2e/selftest-report.txt
 
+      - name: Crash report (if the app died)
+        if: always()
+        run: |
+          mkdir -p artifacts/e2e
+          R=$(ls -t ~/Library/Logs/DiagnosticReports/Downwrite*.ips 2>/dev/null | head -1)
+          if [ -n "$R" ]; then
+            python3 - "$R" > artifacts/e2e/crash.txt <<'PY'
+          import json, sys
+          text = open(sys.argv[1], errors="replace").read()
+          body = json.loads(text.split("\n", 1)[1])
+          print("exception:", body.get("exception"))
+          print("termination:", body.get("termination"))
+          print("asi:", body.get("asi"))
+          faulting = body.get("faultingThread", 0)
+          images = body.get("usedImages", [])
+          for i, f in enumerate(body["threads"][faulting]["frames"][:40]):
+              img = images[f["imageIndex"]]["name"] if "imageIndex" in f and f["imageIndex"] < len(images) else "?"
+              print("%2d %-28s %s %s:%s" % (i, img, f.get("symbol", "?"), f.get("sourceFile", ""), f.get("sourceLine", "")))
+          PY
+            echo "crash report found: $R"; head -50 artifacts/e2e/crash.txt
+          else
+            echo "no crash report for Downwrite"
+          fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -94,7 +118,10 @@ jobs:
         if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
         run: |
           mkdir -p docs/screenshots docs/ci
-          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt artifacts/package.log docs/ci/ 2>/dev/null || true
+          rm -f docs/ci/selftest-report.txt docs/ci/crash.txt docs/ci/e2e-stdout.txt   # absent means this run did not produce one
+          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt artifacts/e2e/crash.txt artifacts/package.log docs/ci/ 2>/dev/null || true
+          rm -f docs/ci/crash.txt.stale; [ -f artifacts/e2e/crash.txt ] || rm -f docs/ci/crash.txt
+          tail -40 artifacts/e2e/stdout.txt > docs/ci/e2e-stdout.txt 2>/dev/null || true
           grep -E "Executed [0-9]+ tests" test.log | tail -1 > docs/ci/test-summary.txt || true
           grep -E "error:" test.log | sort -u | head -40 >> docs/ci/test-summary.txt || true
           cp artifacts/e2e/window-*.png docs/screenshots/ 2>/dev/null || true

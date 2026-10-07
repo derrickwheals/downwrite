@@ -25,16 +25,25 @@ enum SelfTest {
     }
 
     private static var report: [String] = []
+    private static var reportURL: URL?
+
+    /// Written after every check, so a crash part-way through still leaves everything that happened before it.
+    private static func flush() {
+        guard let url = reportURL else { return }
+        try? (report + ["(in progress)"]).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
     private static var failures = 0
 
     private static func check(_ ok: Bool, _ name: String, detail: String = "") {
         report.append((ok ? "PASS  " : "FAIL  ") + name + (detail.isEmpty ? "" : " — " + detail))
         if !ok { failures += 1 }
+        flush()
     }
 
     static func run() async {
         guard let (outDir, input) = arguments else { return }
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        reportURL = outDir.appendingPathComponent("selftest-report.txt")
         let work = outDir.appendingPathComponent("work.md")
         try? FileManager.default.removeItem(at: work)
         try? FileManager.default.copyItem(at: input, to: work)
