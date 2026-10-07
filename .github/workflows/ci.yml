@@ -75,7 +75,7 @@ jobs:
           APP=$!
           for i in $(seq 1 150); do kill -0 $APP 2>/dev/null || break; sleep 1; done
           kill $APP 2>/dev/null
-          wait $APP; echo "exit=$?"
+          wait $APP; CODE=$?; echo "exit=$CODE"; echo "app exit status: $CODE (128+N means killed by signal N: 11 = SIGSEGV, 6 = SIGABRT, 9 = SIGKILL)" > artifacts/e2e/exit.txt
           cat artifacts/e2e/selftest-report.txt 2>/dev/null || { echo "no report; app output:"; tail -40 artifacts/e2e/stdout.txt; }
           echo "--- menus ---"; cat artifacts/e2e/menus.txt 2>/dev/null | head -80
           grep -q "ALL CHECKS PASSED" artifacts/e2e/selftest-report.txt
@@ -84,6 +84,8 @@ jobs:
         if: always()
         run: |
           mkdir -p artifacts/e2e
+          # macOS writes the report a few seconds after the process dies.
+          for i in $(seq 1 25); do ls ~/Library/Logs/DiagnosticReports/Downwrite*.ips >/dev/null 2>&1 && break; sleep 1; done
           R=$(ls -t ~/Library/Logs/DiagnosticReports/Downwrite*.ips 2>/dev/null | head -1)
           if [ -n "$R" ]; then
             python3 - "$R" > artifacts/e2e/crash.txt <<'PY'
@@ -118,8 +120,8 @@ jobs:
         if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
         run: |
           mkdir -p docs/screenshots docs/ci
-          rm -f docs/ci/selftest-report.txt docs/ci/crash.txt docs/ci/e2e-stdout.txt   # absent means this run did not produce one
-          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt artifacts/e2e/crash.txt artifacts/package.log docs/ci/ 2>/dev/null || true
+          rm -f docs/ci/selftest-report.txt docs/ci/crash.txt docs/ci/e2e-stdout.txt docs/ci/exit.txt   # absent means this run did not produce one
+          cp artifacts/e2e/selftest-report.txt artifacts/e2e/menus.txt artifacts/e2e/crash.txt artifacts/e2e/exit.txt artifacts/package.log docs/ci/ 2>/dev/null || true
           rm -f docs/ci/crash.txt.stale; [ -f artifacts/e2e/crash.txt ] || rm -f docs/ci/crash.txt
           tail -40 artifacts/e2e/stdout.txt > docs/ci/e2e-stdout.txt 2>/dev/null || true
           grep -E "Executed [0-9]+ tests" test.log | tail -1 > docs/ci/test-summary.txt || true
