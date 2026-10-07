@@ -139,8 +139,13 @@ public struct TableBlock: Equatable, Sendable {
 
 public struct HeadingInfo: Equatable, Sendable {
     public var level: Int
+    /// The heading line's text without `#` / setext syntax; inline Markdown is left in.
     public var title: String
+    /// The heading line's content (the first line, for setext headings), syntax included.
     public var range: NSRange
+    /// What the editor shows for the heading while the caret is elsewhere: `title` with every syntax marker
+    /// (`**`, link brackets, quote `>` …) removed and whitespace collapsed. Empty for a bare `#`.
+    public var plainTitle: String = ""
 }
 
 public enum LineKind: Equatable, Sendable {

@@ -103,8 +103,43 @@ private struct Builder {
         }
         return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
-            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: headings, imageBlocks: blocks
+            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks
         )
+    }
+
+    /// Fills in `HeadingInfo.plainTitle`: each heading line minus the marker ranges that fall on it.
+    private func withPlainTitles(_ headings: [HeadingInfo]) -> [HeadingInfo] {
+        guard !headings.isEmpty else { return headings }
+        let sorted = markers.sorted { $0.range.location < $1.range.location }
+        return headings.map { h in
+            var lo = 0, hi = sorted.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if sorted[mid].range.location < h.range.location { lo = mid + 1 } else { hi = mid }
+            }
+            let end = NSMaxRange(h.range)
+            var visible: [UInt16] = []
+            var p = h.range.location
+            var i = lo
+            var sawHeadingMarker = false
+            while i < sorted.count, sorted[i].range.location < end {
+                let m = sorted[i].range
+                if sorted[i].flags.contains(.headingMarker) { sawHeadingMarker = true }
+                if m.location > p { visible += src.units[p..<m.location] }
+                p = max(p, min(NSMaxRange(m), end))
+                i += 1
+            }
+            if p < end { visible += src.units[p..<end] }
+            var title = String(decoding: visible, as: UTF16.self).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if !sawHeadingMarker {
+                // `# Title` inside a quote or list item is not marked up as an ATX heading; drop its syntax here.
+                title = title.replacingOccurrences(of: "^(?:(?:[-*+]|[0-9]{1,9}[.)])\\s+)*(?:#{1,6}(?:\\s+|$))?", with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "\\s+#+$", with: "", options: .regularExpression)
+            }
+            var out = h
+            out.plainTitle = title
+            return out
+        }
     }
 
     /// YAML front matter (`---` … `---` at the very top) is blanked out before parsing so cmark does not
