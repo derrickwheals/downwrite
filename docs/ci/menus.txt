@@ -11,6 +11,7 @@
   - New  [1048576:n]
   - Open…  [1048576:o]
   - Open Recent
+      · Clear Menu
   - Close  [1048576:w]
   - Close All  [1572864:w]
   - Save  [1048576:s]
@@ -30,7 +31,14 @@
   - Delete
   - Select All  [1048576:a]
   - Find
+      · Find…  [1048576:f]
+      · Find Next  [1048576:g]
+      · Find Previous  [1179648:g]
+      · Use Selection for Find  [1310720:e]
   - AutoFill
+      · Contact…
+      · Passwords…
+      · Credit Card…
   - Start Dictation…
   - Start Dictation…  [8388608:d]
   - Emoji & Symbols  [1048576: ]
@@ -62,6 +70,9 @@
   - Outdent  [1048576:[]
 # View
   - Appearance
+      · System
+      · Light
+      · Dark
   - Bigger Text  [1048576:=]
   - Smaller Text  [1048576:-]
   - Actual Size  [1572864:0]
