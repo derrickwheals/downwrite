@@ -262,11 +262,57 @@ enum SelfTest {
             check(false, "editor feeds a table-of-contents model")
         }
 
-        // 5d. Regression: with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
+        // 6. Themes: light/dark follow the preference and palettes change.
+        var shots: [String] = []
+        for theme in [ThemeChoice.light, .dark] {
+            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            check(isDark == (theme == .dark), "theme \(theme.rawValue) applies to the app")
+            check(coordinator.styler.palette == Palette.palette(for: theme == .dark ? .dark : .light), "editor palette follows \(theme.rawValue)")
+            tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "comes back", plus: 3), length: 0))
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            let file = outDir.appendingPathComponent("window-\(theme.rawValue).png")
+            let ok = capture(window: window, to: file)
+            shots.append(file.lastPathComponent)
+            check(ok, "screenshot of real window (\(theme.rawValue))", detail: ok ? "" : "screencapture unavailable; see in-process snapshots")
+            if let card = tv.subviews.compactMap({ $0 as? DiagramView }).first {
+                tv.scrollToVisible(card.frame.insetBy(dx: 0, dy: -150))
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-diagram.png"))
+            }
+            if let grid = coordinator.tableOverlay.grids.first {
+                tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -160))
+                grid.focus(TableCellPosition(row: 2, column: 1), atEnd: true)
+                grid.simulateHover(row: 2, column: 1)
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-table.png"))
+                grid.simulateHover(row: nil, column: nil)
+                window.makeFirstResponder(tv)
+            }
+            // The sidebar next to the editor, with the section holding the caret highlighted.
+            UserDefaults.standard.set(true, forKey: Prefs.showTOC)
+            tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "Lists that keep up", plus: 3), length: 0))
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let tocShot = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-toc.png"))
+            check(tocShot, "screenshot with the table of contents open (\(theme.rawValue))", detail: tocShot ? "" : "screencapture unavailable")
+            UserDefaults.standard.set(false, forKey: Prefs.showTOC)
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        // 7. Back to system theme leaves the app following macOS.
+        UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
+        ThemeChoice.applyCurrent()
+        check(NSApp.appearance == nil, "system theme clears the appearance override")
+
+        // 8. Regression (runs last because it replaces the document): with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
         // and keep the right reserved height while the sidebar opens and closes, however fast.
         if let extra = extraFile, let readme = try? String(contentsOf: extra, encoding: .utf8), let tables = coordinator.tableOverlay {
-            let welcomeText = tv.string
-            let whole = NSRange(location: 0, length: welcomeText.utf16.count)
+            let whole = NSRange(location: 0, length: tv.string.utf16.count)
             tv.setSelectedRange(whole)
             tv.insertText(readme, replacementRange: whole)
             tv.setSelectedRange(NSRange(location: 0, length: 0))
@@ -316,65 +362,18 @@ enum SelfTest {
             check(problems.isEmpty, "README tables are lined up after rapid sidebar toggling", detail: problems.joined(separator: "; "))
 
             defaults.set(false, forKey: Prefs.showTOC)
-            let back = NSRange(location: 0, length: tv.string.utf16.count)
-            tv.setSelectedRange(back)
-            tv.insertText(welcomeText, replacementRange: back)
-            tv.setSelectedRange(NSRange(location: 0, length: 0))
-            window.makeFirstResponder(tv)
-            try? await Task.sleep(nanoseconds: 500_000_000)
         }
-
-        // 6. Themes: light/dark follow the preference and palettes change.
-        var shots: [String] = []
-        for theme in [ThemeChoice.light, .dark] {
-            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
-            ThemeChoice.applyCurrent()
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            check(isDark == (theme == .dark), "theme \(theme.rawValue) applies to the app")
-            check(coordinator.styler.palette == Palette.palette(for: theme == .dark ? .dark : .light), "editor palette follows \(theme.rawValue)")
-            tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "comes back").location + 3, length: 0))
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            tv.scrollToBeginningOfDocument(nil)
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            let file = outDir.appendingPathComponent("window-\(theme.rawValue).png")
-            let ok = capture(window: window, to: file)
-            shots.append(file.lastPathComponent)
-            check(ok, "screenshot of real window (\(theme.rawValue))", detail: ok ? "" : "screencapture unavailable; see in-process snapshots")
-            if let card = tv.subviews.compactMap({ $0 as? DiagramView }).first {
-                tv.scrollToVisible(card.frame.insetBy(dx: 0, dy: -150))
-                try? await Task.sleep(nanoseconds: 900_000_000)
-                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-diagram.png"))
-            }
-            if let grid = coordinator.tableOverlay.grids.first {
-                tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -160))
-                grid.focus(TableCellPosition(row: 2, column: 1), atEnd: true)
-                grid.simulateHover(row: 2, column: 1)
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-table.png"))
-                grid.simulateHover(row: nil, column: nil)
-                window.makeFirstResponder(tv)
-            }
-            // The sidebar next to the editor, with the section holding the caret highlighted.
-            UserDefaults.standard.set(true, forKey: Prefs.showTOC)
-            tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "Lists that keep up").location + 3, length: 0))
-            tv.scrollToBeginningOfDocument(nil)
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            let tocShot = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-toc.png"))
-            check(tocShot, "screenshot with the table of contents open (\(theme.rawValue))", detail: tocShot ? "" : "screencapture unavailable")
-            UserDefaults.standard.set(false, forKey: Prefs.showTOC)
-            try? await Task.sleep(nanoseconds: 500_000_000)
-        }
-
-        // 7. Back to system theme leaves the app following macOS.
-        UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
-        ThemeChoice.applyCurrent()
-        check(NSApp.appearance == nil, "system theme clears the appearance override")
 
         finish(outDir)
     }
 
     // MARK: Helpers
+
+    /// Offset `plus` characters into the first occurrence of `text`, or 0 when it is not in the document.
+    private static func caretOffset(in tv: EditorTextView, after text: String, plus: Int) -> Int {
+        let r = (tv.string as NSString).range(of: text)
+        return r.location == NSNotFound ? 0 : min(r.location + plus, tv.string.utf16.count)
+    }
 
     private static func editors() -> [EditorTextView] {
         func find(_ v: NSView) -> [EditorTextView] {
