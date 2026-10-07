@@ -42,6 +42,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     private(set) var analysis = MarkdownAnalyzer.analyze("")
     private(set) var styler: MarkdownStyler!
     private(set) var overlay: DiagramOverlay!
+    private(set) var tableOverlay: TableOverlay!
+    /// First line of the grid table that is currently shown as Markdown source (chosen with "Edit as Markdown").
+    /// Ends as soon as the caret leaves the table.
+    private(set) var sourceTableFirstLine: Int?
     let typography = Typography()
 
     private var settings: EditorSettings?
@@ -69,6 +73,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         styler = MarkdownStyler(typography: typography, palette: AppearanceResolver.palette(for: tv.effectiveAppearance))
         overlay = DiagramOverlay(textView: tv, palette: styler.palette)
         overlay.onReservedHeightsChanged = { [weak self] in self?.reservedHeightsChanged() }
+        tableOverlay = TableOverlay(coordinator: self, textView: tv)
+        tableOverlay.onReservedHeightsChanged = { [weak self] in self?.reservedHeightsChanged() }
         tv.string = initialText
         applyChrome()
         reanalyze()
@@ -105,15 +111,51 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     func reanalyze() {
         guard let tv = textView else { return }
         analysis = MarkdownAnalyzer.analyze(tv.string)
+        if let first = sourceTableFirstLine, !analysis.tables.contains(where: { $0.isGrid && $0.firstLine == first }) {
+            sourceTableFirstLine = nil
+        }
         overlay.baseURL = fileURL?.deletingLastPathComponent()
         overlay.sync(blocks: analysis.previewBlocks, dark: isDark)
-        preview.heights = overlay.reservedHeights
-        preview.collapsed = collapsedPreviews(selection: tv.selectedRange())
+        tableOverlay.sync()
+        preview.heights = combinedHeights()
+        preview.collapsed = collapsedBlocks(selection: tv.selectedRange())
         restyleAll()
     }
 
-    private func collapsedPreviews(selection: NSRange) -> Set<Int> {
-        Set(analysis.previewBlocks.filter { !MarkdownAnalysis.isRevealed($0.reveal, by: selection) }.map(\.firstLine))
+    private func combinedHeights() -> [Int: CGFloat] {
+        overlay.reservedHeights.merging(tableOverlay.reservedHeights()) { a, _ in a }
+    }
+
+    /// Blocks whose source is hidden behind a card or grid: Mermaid/image previews while the caret is outside, and
+    /// every grid table except the one being edited as Markdown. Keyed by first line.
+    private func collapsedBlocks(selection: NSRange) -> Set<Int> {
+        var set = Set(analysis.previewBlocks.filter { !MarkdownAnalysis.isRevealed($0.reveal, by: selection) }.map(\.firstLine))
+        for t in analysis.tables where t.isGrid && t.firstLine != sourceTableFirstLine { set.insert(t.firstLine) }
+        return set
+    }
+
+    /// Shows the grid again for a table that was being edited as Markdown (unless the caret is still inside it).
+    func endTableSource() {
+        guard let first = sourceTableFirstLine, let tv = textView else { return }
+        if let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),
+           tableOverlay.hasFocus || !MarkdownAnalysis.isRevealed(t.range, by: tv.selectedRange()) {
+            sourceTableFirstLine = nil
+            reanalyze()
+        }
+    }
+
+    /// "Edit as Markdown": shows one table as source until the caret leaves it.
+    func showTableSource(order: Int, at pos: TableCellPosition) {
+        let blocks = analysis.tables.filter(\.isGrid)
+        guard let tv = textView, order < blocks.count else { return }
+        let block = blocks[order]
+        sourceTableFirstLine = block.firstLine
+        let caret = NSRange(location: block.range(of: pos)?.location ?? block.range.location, length: 0)
+        tv.window?.makeFirstResponder(tv)
+        tv.setSelectedRange(caret)
+        reanalyze()
+        tv.setSelectedRange(caret)
+        tv.scrollRangeToVisible(caret)
     }
 
     func restyleAll() {
@@ -144,14 +186,15 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         guard palette != styler.palette else { return }
         styler.palette = palette
         overlay.setPalette(palette)
+        tableOverlay.setPalette()
         applyChrome()
         reanalyze()
     }
 
     private func reservedHeightsChanged() {
         guard let tv = textView, let storage = tv.textStorage, analysis.length == storage.length else { return }
-        preview.heights = overlay.reservedHeights
-        let lines = Set(analysis.previewBlocks.map(\.lastLine))
+        preview.heights = combinedHeights()
+        let lines = Set(analysis.previewBlocks.map(\.lastLine)).union(analysis.tables.filter(\.isGrid).map(\.lastLine))
         isStyling = true
         styler.style(lines: lines, storage: storage, analysis: analysis, selection: tv.selectedRange(), preview: preview)
         isStyling = false
@@ -165,6 +208,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
             guard let self else { return }
             self.repositionScheduled = false
             self.overlay.reposition(analysis: self.analysis)
+            self.tableOverlay.reposition()
         }
     }
 
@@ -189,15 +233,24 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         guard !isStyling, let tv = textView, let storage = tv.textStorage,
               analysis.length == storage.length, !tv.hasMarkedText() else { return }
         let sel = tv.selectedRange()
+        // Markdown source of a table is only shown while the caret is in it.
+        if let first = sourceTableFirstLine,
+           let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),
+           !MarkdownAnalysis.isRevealed(t.range, by: sel) {
+            sourceTableFirstLine = nil
+            reanalyze()
+            tableOverlay.scheduleHandOff()
+            return
+        }
         let hidden = analysis.hiddenMarkerIndices(selection: sel)
         var dirty = Set<Int>()
         for i in hidden.symmetricDifference(lastHidden) where i < analysis.markers.count {
             dirty.insert(analysis.lineIndex(at: analysis.markers[i].range.location))
         }
-        let collapsed = collapsedPreviews(selection: sel)
+        let collapsed = collapsedBlocks(selection: sel)
         let collapseChanged = collapsed != preview.collapsed
         for first in collapsed.symmetricDifference(preview.collapsed) {
-            if let b = analysis.previewBlocks.first(where: { $0.firstLine == first }) { for l in b.firstLine...b.lastLine { dirty.insert(l) } }
+            if let e = analysis.collapsibleExtent(containingLine: first) { for l in e.first...e.last { dirty.insert(l) } }
         }
         preview.collapsed = collapsed
         lastHidden = hidden
@@ -208,6 +261,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         }
         tv.typingAttributes = styler.baseAttributes()
         if collapseChanged { scheduleReposition() }
+        tableOverlay.highlightSelection()
+        tableOverlay.scheduleHandOff()
     }
 
     // MARK: NSLayoutManagerDelegate

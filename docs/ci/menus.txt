@@ -66,6 +66,26 @@
   - Horizontal Rule  [1572864:-]
   - Insert Table  [1572864:t]
   - Format Table  [1703936:t]
+  - Table
+      · Insert Row Above
+      · Insert Row Below
+      · Insert Column Left
+      · Insert Column Right
+      · Move Row Up
+      · Move Row Down
+      · Move Column Left
+      · Move Column Right
+      · Duplicate Row
+      · Duplicate Column
+      · Delete Row
+      · Delete Column
+      · Align Column Left
+      · Align Column Center
+      · Align Column Right
+      · Sort Column A → Z
+      · Sort Column Z → A
+      · Edit Table as Markdown
+      · Delete Table
   - Indent  [1048576:]]
   - Outdent  [1048576:[]
 # View

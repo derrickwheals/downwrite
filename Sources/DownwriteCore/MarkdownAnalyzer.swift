@@ -12,6 +12,41 @@ public enum MarkdownAnalyzer {
         b.run()
         return b.finish()
     }
+
+    /// Inline analysis of one table cell's source text, as if it were rendered inside a table: spans, markers (which
+    /// hide and reveal like anywhere else) and links, all relative to `text`. Block syntax (`#`, `-`, `>`) is not
+    /// interpreted, and a bare `|` cannot split the cell (it is masked before parsing; offsets are unchanged).
+    public static func analyzeTableCell(_ text: String) -> MarkdownAnalysis {
+        let masked = String(String.UnicodeScalarView(text.unicodeScalars.map { s -> Unicode.Scalar in
+            (s == "\n" || s == "\r" || s == "\t" || s == "\u{2028}" || s == "\u{2029}") ? " " : s
+        }))
+        var units = Array(masked.utf16)
+        var i = 0
+        while i < units.count {                       // mask unescaped pipes, keeping UTF-16 length
+            if units[i] == 92, i + 1 < units.count { i += 2; continue }
+            if units[i] == 124 { units[i] = 0x00A6 }  // ¦
+            i += 1
+        }
+        let cell = String(decoding: units, as: UTF16.self)
+        let prefix = "| x |\n| - |\n| "
+        let shift = prefix.utf16.count
+        var b = Builder(prefix + cell + " |")
+        b.cellMode = true
+        b.run()
+        let whole = b.finish()
+        let window = NSRange(location: shift, length: units.count)
+        func inside(_ r: NSRange) -> Bool { r.location >= window.location && NSMaxRange(r) <= NSMaxRange(window) }
+        func moved(_ r: NSRange) -> NSRange { NSRange(location: r.location - shift, length: r.length) }
+        let spans = whole.spans.filter { inside($0.range) && !$0.flags.contains(.table) && !$0.flags.contains(.dim) }
+            .map { FormatSpan(range: moved($0.range), flags: $0.flags) }
+        let markers = whole.markers.filter { inside($0.range) }
+            .map { Marker(range: moved($0.range), reveal: moved($0.reveal), flags: $0.flags) }
+        let links = whole.links.filter { inside($0.range) }
+            .map { LinkSpan(range: moved($0.range), textRange: moved($0.textRange), destination: $0.destination) }
+        let line = LineStyle(range: NSRange(location: 0, length: units.count), contentEnd: units.count)
+        return MarkdownAnalysis(length: units.count, spans: spans, markers: markers, lines: [line], links: links, images: [],
+                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [])
+    }
 }
 
 // MARK: - Builder
@@ -33,6 +68,8 @@ private struct Builder {
     var mermaid: [MermaidBlock] = []
     var tables: [TableBlock] = []
     var headings: [HeadingInfo] = []
+    /// Analysing a single table cell: inline markers keep their real reveal ranges instead of staying visible.
+    var cellMode = false
 
     init(_ text: String) {
         original = text
@@ -348,13 +385,26 @@ private struct Builder {
                 i += 1
             }
         }
-        tables.append(TableBlock(range: NSRange(location: src.lineStarts[ls.lowerBound],
-                                                length: src.lineContentEnds[ls.upperBound] - src.lineStarts[ls.lowerBound]),
-                                 firstLine: ls.lowerBound, lastLine: ls.upperBound))
-        // Inline formatting inside cells. Markers stay visible there: hiding them would shift the monospaced columns.
+        var block = TableBlock(range: NSRange(location: src.lineStarts[ls.lowerBound],
+                                              length: src.lineContentEnds[ls.upperBound] - src.lineStarts[ls.lowerBound]),
+                               firstLine: ls.lowerBound, lastLine: ls.upperBound)
+        // Top-level tables are edited as a grid; the model must agree with what cmark parsed, otherwise fall back to source.
+        if !cellMode, ctx.quoteDepth == 0, ctx.listDepth == 0,
+           let parsed = TableModel.parse(lines: ls.map { content($0) }),
+           parsed.model.columnCount == t.head.childCount, parsed.model.rowCount == 1 + t.body.childCount {
+            block.model = parsed.model
+            block.cellRanges = parsed.cellRanges.enumerated().map { (r, row) in
+                let start = src.lineStarts[ls.lowerBound + (r == 0 ? 0 : r + 1)]
+                return row.map { NSRange(location: start + $0.lowerBound, length: $0.count) }
+            }
+        }
+        tables.append(block)
+        // Inline formatting inside cells. In the source view markers stay visible: hiding them would shift the
+        // monospaced columns. (Cells of the grid are analysed on their own and do hide them.)
         let firstMarker = markers.count
         for cell in t.head.children { inlineContent(of: cell) }
         for row in t.body.children { for cell in row.children { inlineContent(of: cell) } }
+        guard !cellMode else { return }
         let always = NSRange(location: 0, length: src.length)
         for i in firstMarker..<markers.count { markers[i].reveal = always }
     }

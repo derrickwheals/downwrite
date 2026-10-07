@@ -1,1 +1,1 @@
-	 Executed 159 tests, with 0 failures (0 unexpected) in 24.499 (24.550) seconds
+	 Executed 242 tests, with 0 failures (0 unexpected) in 32.710 (32.853) seconds
