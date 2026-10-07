@@ -7,7 +7,12 @@ import DownwriteCore
 /// A rounded card showing one rendered preview: a Mermaid diagram (WebKit) or an image. It never takes mouse
 /// events, so clicks and scrolling fall through to the text view underneath.
 final class DiagramView: NSView {
-    private let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    /// Display-only web view: the SVG is already rendered, so scripting is switched off entirely.
+    private let web: WKWebView = {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = false
+        return WKWebView(frame: .zero, configuration: config)
+    }()
     private let imageView = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private(set) var naturalSize: MermaidSupport.Size?

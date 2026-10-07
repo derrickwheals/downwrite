@@ -84,6 +84,13 @@ final class SnapshotTests: XCTestCase {
         try assertNotBlank(try await render(h, name: "code-table-diagram-light"), "code-table-diagram-light")
     }
 
+    func testSnapshotEmptyDocumentShowsPlaceholder() async throws {
+        let h = EditorHarness(text: "", dark: false, size: NSSize(width: 760, height: 300))
+        h.window.makeFirstResponder(h.textView)
+        let image = try await render(h, name: "empty-light")
+        try assertNotBlank(image, "empty") // background + placeholder text
+    }
+
     func testSnapshotEditingStates() async throws {
         let h = EditorHarness(text: "# Notes\n\nThis has **bold**, *italic*, `code` and a [link](https://example.com).\n\n> A quote\n\n- [ ] one\n- [x] two\n", dark: true, size: NSSize(width: 760, height: 420))
         h.select(h.index(of: "bold") + 1)
