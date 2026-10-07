@@ -80,11 +80,10 @@ final class MarkdownStyler {
     /// Markers hide and reveal exactly like in the main editor.
     func styleCell(storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, header: Bool, alignment: NSTextAlignment) {
         let all = NSRange(location: 0, length: storage.length)
-        guard all.length > 0, analysis.length == all.length else { return }
+        guard all.length > 0, analysis.length == all.length, let line = analysis.lines.first else { return }
         let base = cellBaseAttributes(header: header, alignment: alignment)
         var look = LineLook(size: cellFontSize, color: palette.text.nsColor)
         look.bold = header
-        let line = analysis.lines.first ?? LineStyle(range: all, contentEnd: all.length)
         storage.beginEditing()
         storage.setAttributes(base, range: all)
         for run in analysis.runs(in: all, selection: selection) {

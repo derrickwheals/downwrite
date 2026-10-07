@@ -276,6 +276,19 @@ final class TableModelTests: XCTestCase {
         XCTAssertNil(a.gridTableIndex(containing: 1))
     }
 
+    func testRowsOfEmptyCellsStayRowsAndKeepTheGrid() throws {
+        for text in ["| a | b |\n| - | - |\n|     |     |\n", "| a |\n| - |\n|     |\n| x |\n", "| a | b |\n| - | - |\n| | |\n"] {
+            let t = try XCTUnwrap(MarkdownAnalyzer.analyze(text).tables.first, text)
+            XCTAssertTrue(t.isGrid, "empty body row must not disable the grid: \(text.debugDescription)")
+        }
+        var m = TableModel.blank(columns: 2, bodyRows: 2)
+        m.setCell("x", at: .init(row: 2, column: 1))
+        let again = try XCTUnwrap(MarkdownAnalyzer.analyze(m.markdown + "\n").tables.first?.model)
+        XCTAssertEqual(again, m, "a table with empty cells survives a trip through Markdown")
+        let single = TableModel(rows: [["n"], ["1"], [""], ["3"]], alignments: [.none])
+        XCTAssertEqual(MarkdownAnalyzer.analyze(single.markdown + "\n").tables.first?.model, single)
+    }
+
     func testQuotedAndListedTablesStayRawSource() {
         let quoted = MarkdownAnalyzer.analyze("> | a | b |\n> | - | - |\n> | 1 | 2 |\n")
         XCTAssertTrue(quoted.tables.allSatisfy { !$0.isGrid })
