@@ -23,6 +23,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 
 - **Hidden syntax, Bear-style.** `**bold**`, `*italic*`, `` `code` ``, `[links](…)`, `# headings`, `> quotes`, code fences… all collapse to clean typography and re-expand around the caret.
 - **CommonMark + GFM + extras.** Full CommonMark (via Apple's `swift-markdown` / cmark-gfm), plus tables, task lists (click to tick), strikethrough, autolinks, `==highlight==`, `[^footnotes]`, `$math$` styling and YAML front matter.
+- **Editable tables.** Tables are shown as a real grid you type into, not as pipes and dashes. **Tab** jumps to the next cell (and adds a row from the last cell), **Return** moves down, arrows step across cell edges, ⇧Return adds a line break. Drag the grips left of each row / above each column to reorder them, click a grip (or right-click any cell) for insert / delete / move / duplicate / align / sort, and use the **+** strips to append a row or column. Cell text keeps its Markdown (bold, links, code hide their syntax like everywhere else), pasting spreadsheet data fills several cells, and *Edit as Markdown* shows the source. The document text stays plain GFM, aligned and tidy.
 - **Mermaid diagrams.** Fenced ```` ```mermaid ```` blocks render as live diagrams (flowcharts, sequence, class, state, ER, Gantt, pie, journey, git graph, mind maps…). Mermaid is bundled, so it works offline. Click a diagram to edit its source; it re-renders as you type.
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
 - **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The app icon is an Icon Composer asset (light, dark and tinted variants chosen by macOS) and the Dock icon also swaps between the light and dark artwork while the app runs.
@@ -45,6 +46,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 | Heading 1–6 | ⌘1 … ⌘6 | Insert / format table | ⌥⌘T / ⇧⌥⌘T |
 | Body text | ⌘0 | Indent / outdent | ⌘] / ⌘[ (or Tab / ⇧Tab in lists) |
 | Find | ⌘F | Bigger / smaller text | ⌘= / ⌘- |
+| Next / previous table cell | Tab / ⇧Tab | New table row (in the last cell) | Tab or Return |
 
 Pressing a formatting shortcut again removes the formatting. With nothing selected it wraps the word under the caret (or inserts an empty pair). Standard shortcuts (⌘Z, ⇧⌘Z, ⌘C/V/X, ⌘A, ⌘S, ⌘W, ⌘T …) work as in any Mac app. ⌘-click a link to open it.
 
@@ -151,12 +153,13 @@ ThirdParty/              Third-party licence texts (swift-markdown, cmark-gfm, M
 LICENSE                  GNU GPL v3.0
 ```
 
-How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gfm and produces an immutable `MarkdownAnalysis` — style spans, *marker* ranges (the syntax characters) with the range that reveals each one, and per-line block styles. `MarkdownStyler` turns that into `NSTextStorage` attributes; hidden markers get a 0.1 pt clear font so they stay in the text (copy, undo and find keep working) but take no space. When the caret moves, only the lines whose markers changed state are restyled. Mermaid blocks are rendered once in a hidden `WKWebView` to SVG and shown in a click-through card placed in vertical space reserved under the collapsed source.
+How it works, in one paragraph: `MarkdownAnalyzer` parses the text with cmark-gfm and produces an immutable `MarkdownAnalysis` — style spans, *marker* ranges (the syntax characters) with the range that reveals each one, and per-line block styles. `MarkdownStyler` turns that into `NSTextStorage` attributes; hidden markers get a 0.1 pt clear font so they stay in the text (copy, undo and find keep working) but take no space. When the caret moves, only the lines whose markers changed state are restyled. Top-level tables are parsed into a `TableModel` (cell source text, alignments, where each cell sits in the document) and shown by `TableGridView`, a grid of small TextKit 1 editors laid over the table's collapsed source; every edit goes back through `TableModel.markdown` so the document text is the single source of truth and undo just works. Mermaid blocks are rendered once in a hidden `WKWebView` to SVG and shown in a click-through card placed in vertical space reserved under the collapsed source.
 
 ## Known limitations
 
 - Images are previewed inline when they sit on a line of their own (local paths are resolved relative to the document; `http(s)` images load from the network). Images inside a paragraph are styled but not previewed.
 - Math (`$…$`, `$$…$$`) is styled, not typeset.
+- Tables inside block quotes or list items stay as Markdown source (only top-level tables become a grid). Column widths are automatic — Markdown has nowhere to store them — and cells cannot hold real line breaks (use `<br>`, which ⇧Return inserts).
 - Liquid Glass chrome comes from the system on macOS 26+; Downwrite deliberately keeps the writing surface opaque for legibility. Icon Composer light/dark/tinted variants are compiled with `actool` when it succeeds in `scripts/build-app.sh`; otherwise the app falls back to the bundled `.icns` (the Dock icon still switches light/dark at runtime).
 - Built and tested against the macOS 26 SDK (Xcode 26.x). macOS 27 specific APIs are not required.
 

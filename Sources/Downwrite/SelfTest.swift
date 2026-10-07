@@ -148,6 +148,53 @@ enum SelfTest {
             check(gap >= 0 && gap < 12, "diagram card sits directly under its collapsed source", detail: "gap \(gap)")
         }
 
+        // 5b. Tables are an editable grid: real key events, the right-click menu and undo.
+        let tables = coordinator.tableOverlay!
+        let gridShown = await waitUntil(timeout: 10) { !tables.grids.isEmpty && tables.grids[0].tableSize.width > 0 }
+        check(gridShown, "table is shown as an editable grid")
+        if gridShown {
+            let grid = tables.grids[0]
+            func sendKey(_ chars: String, keyCode: UInt16, _ flags: NSEvent.ModifierFlags = []) {
+                let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                         windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                         isARepeat: false, keyCode: keyCode)!
+                NSApp.sendEvent(e)
+            }
+            tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -120))
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            let rows = grid.model.rowCount, cols = grid.model.columnCount
+            check(rows >= 3 && cols == 2, "grid has the Welcome table's shape", detail: "\(rows)×\(cols)")
+            check(grid.frame.height > 100 && grid.frame.width > 300, "grid has a sensible frame", detail: "\(grid.frame)")
+            grid.focus(TableCellPosition(row: 1, column: 0), atEnd: true)
+            check(window.firstResponder is TableCellView, "clicking into a cell gives it the keyboard")
+            sendKey("\t", keyCode: 48)
+            check(grid.focusedPosition == TableCellPosition(row: 1, column: 1), "Tab jumps to the next cell", detail: "\(String(describing: grid.focusedPosition))")
+            sendKey("\u{19}", keyCode: 48, [.shift])
+            check(grid.focusedPosition == TableCellPosition(row: 1, column: 0), "⇧Tab jumps back", detail: "\(String(describing: grid.focusedPosition))")
+            grid.focus(TableCellPosition(row: rows - 1, column: cols - 1), atEnd: true)
+            sendKey("\t", keyCode: 48)
+            check(grid.model.rowCount == rows + 1, "Tab in the last cell adds a row", detail: "\(grid.model.rowCount) rows")
+            check(grid.focusedPosition == TableCellPosition(row: rows, column: 0), "focus lands in the new row", detail: "\(String(describing: grid.focusedPosition))")
+            sendKey("Q", keyCode: 12, [.shift])
+            sendKey("z", keyCode: 6)
+            check(tv.string.contains("| Qz"), "typing in the new cell writes Markdown into the document")
+            check(grid.model.cell(rows, 0) == "Qz", "model follows what was typed", detail: grid.model.cell(rows, 0))
+            let menu = grid.makeMenu(at: TableCellPosition(row: 1, column: 0), includeEditing: true)
+            let titles = menu.items.map(\.title).filter { !$0.isEmpty }
+            report.append("DIAG table menu: " + titles.joined(separator: " | "))
+            check(titles.contains("Insert Row Below") && titles.contains("Delete Column") && titles.contains("Column Alignment"), "right-click menu has the table actions")
+            if let item = menu.items.first(where: { $0.title == "Insert Column Right" }), let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+                check(grid.model.columnCount == cols + 1, "menu: Insert Column Right adds a column", detail: "\(grid.model.columnCount) columns")
+            } else {
+                check(false, "menu has Insert Column Right")
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            for _ in 0..<3 { window.undoManager?.undo(); try? await Task.sleep(nanoseconds: 60_000_000) }
+            check(grid.model.rowCount == rows && grid.model.columnCount == cols, "undo walks the table back", detail: "\(grid.model.rowCount)×\(grid.model.columnCount)")
+            window.makeFirstResponder(tv)
+        }
+
         // 6. Themes: light/dark follow the preference and palettes change.
         var shots: [String] = []
         for theme in [ThemeChoice.light, .dark] {
@@ -169,6 +216,15 @@ enum SelfTest {
                 tv.scrollToVisible(card.frame.insetBy(dx: 0, dy: -150))
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-diagram.png"))
+            }
+            if let grid = coordinator.tableOverlay.grids.first {
+                tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -160))
+                grid.focus(TableCellPosition(row: 2, column: 1), atEnd: true)
+                grid.simulateHover(row: 2, column: 1)
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-table.png"))
+                grid.simulateHover(row: nil, column: nil)
+                window.makeFirstResponder(tv)
             }
         }
 

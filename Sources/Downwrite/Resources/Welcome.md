@@ -26,6 +26,8 @@ func greet(_ name: String) -> String {
 }
 ```
 
+Tables are editable grids: click a cell and type, press Tab to jump to the next cell (from the last one it adds a row), drag the grips to reorder rows and columns, and right-click for everything else.
+
 | Shortcut | Action          |
 | -------- | --------------- |
 | ⌘B       | **Bold**        |

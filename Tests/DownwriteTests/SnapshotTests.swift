@@ -18,6 +18,7 @@ final class SnapshotTests: XCTestCase {
         h.window.displayIfNeeded()
         h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
         h.coordinator.overlay.reposition(analysis: h.coordinator.analysis)
+        h.coordinator.tableOverlay.reposition()
         try await Task.sleep(nanoseconds: 700_000_000)   // let web views paint
         let view = h.window.contentView!
         let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
@@ -82,6 +83,65 @@ final class SnapshotTests: XCTestCase {
         h.textView.scrollRangeToVisible(NSRange(location: loc + 900, length: 10))
         h.textView.scroll(NSPoint(x: 0, y: max(0, h.textView.layoutManager!.boundingRect(forGlyphRange: NSRange(location: loc, length: 1), in: h.textView.textContainer!).minY - 20)))
         try assertNotBlank(try await render(h, name: "code-table-diagram-light"), "code-table-diagram-light")
+    }
+
+    static let tableDoc = """
+    # Tables
+
+    Plain text above the first table, then the grid.
+
+    | Task | Owner | Status | Hours |
+    | :--- | :---: | ---: | ---: |
+    | Draft the **spec** | Ana | done | 6 |
+    | Review the `API` notes with the whole team and write up a long summary of every decision we made | Ben | *in progress* | 12.5 |
+    | Ship | Caz | ==todo== | |
+
+    A paragraph after the table, and then a small one:
+
+    | Key | Action |
+    | --- | --- |
+    | ⌘B | Bold |
+    | ⌘I | Italic |
+
+    The end.
+
+    """
+
+    func testSnapshotTableGridLight() async throws {
+        let h = EditorHarness(text: Self.tableDoc, dark: false, size: NSSize(width: 960, height: 760))
+        h.window.makeFirstResponder(h.textView)
+        let grid = h.coordinator.tableOverlay.grids[0]
+        grid.focus(TableCellPosition(row: 1, column: 0), selection: NSRange(location: 14, length: 0))   // inside **spec**
+        grid.simulateHover(row: 1, column: 0)
+        try assertNotBlank(try await render(h, name: "table-grid-light"), "table-grid-light")
+        XCTAssertEqual(h.coordinator.tableOverlay.grids.count, 2)
+    }
+
+    func testSnapshotTableGridDark() async throws {
+        let h = EditorHarness(text: Self.tableDoc, dark: true, size: NSSize(width: 960, height: 760))
+        h.window.makeFirstResponder(h.textView)
+        let grid = h.coordinator.tableOverlay.grids[0]
+        grid.focus(TableCellPosition(row: 2, column: 1), atEnd: true)
+        grid.simulateHover(row: 2, column: 1, add: false)
+        try assertNotBlank(try await render(h, name: "table-grid-dark"), "table-grid-dark")
+    }
+
+    func testSnapshotTableDragAndMenuStates() async throws {
+        let h = EditorHarness(text: Self.tableDoc, dark: false, size: NSSize(width: 960, height: 760))
+        h.window.makeFirstResponder(h.textView)
+        let grid = h.coordinator.tableOverlay.grids[0]
+        grid.simulateDrag(isRow: true, index: 1, gap: 3)
+        try assertNotBlank(try await render(h, name: "table-grid-drag-row"), "table-grid-drag-row")
+        grid.simulateDrag(isRow: false, index: 0, gap: 2)
+        try assertNotBlank(try await render(h, name: "table-grid-drag-column"), "table-grid-drag-column")
+        grid.endSimulatedDrag()
+    }
+
+    func testSnapshotTableSourceView() async throws {
+        let h = EditorHarness(text: Self.tableDoc, dark: false, size: NSSize(width: 960, height: 760))
+        h.window.makeFirstResponder(h.textView)
+        h.coordinator.showTableSource(order: 0, at: TableCellPosition(row: 1, column: 1))
+        try assertNotBlank(try await render(h, name: "table-source-light"), "table-source-light")
     }
 
     func testSnapshotEmptyDocumentShowsPlaceholder() async throws {

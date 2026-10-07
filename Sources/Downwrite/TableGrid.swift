@@ -769,6 +769,20 @@ final class TableGridView: NSView {
         if relayout(maxTableWidth: maxTableWidth) { overlay.heightsChanged() }
     }
 
+    /// Puts the grid into its hover (or drag) look without a pointer — for snapshots and tests.
+    func simulateHover(row: Int?, column: Int?, add: Bool = false) {
+        pointerInside = row != nil || column != nil || add
+        hoverRow = row; hoverColumn = column; hoverAdd = add ? .row : nil
+        needsDisplay = true
+    }
+
+    func simulateDrag(isRow: Bool, index: Int, gap: Int) {
+        drag = Drag(isRow: isRow, index: index, gap: gap)
+        needsDisplay = true
+    }
+
+    func endSimulatedDrag() { drag = nil; needsDisplay = true }
+
     func forwardFindAction(_ sender: Any?) { overlay.forwardFindAction(sender) }
     func open(destination: String) { overlay.open(destination: destination) }
 
