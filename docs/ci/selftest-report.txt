@@ -17,9 +17,10 @@ PASS  undo reverts the link
 PASS  typed text is saved to disk by the document system
 PASS  mermaid diagram rendered into a card
 PASS  diagram card has a sensible frame — (132.0, 1603.7999999999984, 719.0, 156.9375)
-DIAG mermaid lines 41…47: first y=1551.749999999999 h=0.09999999999990905, last y=1552.3499999999985 h=0.09999999999990905, card y=1603.7999999999984 h=156.9375, reserved=170.9375
+DIAG gap before/after ensureLayout: last.y 1552.3499999999985 → 1571.6999999999985; table spacing 258.0 vs grid 258.0 frame Optional((104.0, 1151.6199999999994, 775.0, 258.0))
+DIAG mermaid lines 41…47: first y=1571.099999999999 h=0.09999999999990905, last y=1571.6999999999985 h=0.09999999999990905, card y=1603.7999999999984 h=156.9375, reserved=170.9375
 PASS  collapsed Mermaid source takes no vertical space — heights 0.09999999999990905/0.09999999999990905
-FAIL  diagram card sits directly under its collapsed source — gap 23.34999999999991
+PASS  diagram card sits directly under its collapsed source — gap 4.0
 PASS  table is shown as an editable grid
 PASS  grid has the Welcome table's shape — 5×2
 PASS  grid has a sensible frame — (104.0, 1151.6199999999994, 775.0, 258.0)
@@ -42,4 +43,4 @@ PASS  editor palette follows dark
 PASS  screenshot of real window (dark)
 PASS  system theme clears the appearance override
 
-1 CHECK(S) FAILED
+ALL CHECKS PASSED
