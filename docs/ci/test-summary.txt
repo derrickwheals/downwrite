@@ -1,3 +1,1 @@
-	 Executed 7 tests, with 0 failures (0 unexpected) in 3.772 (3.774) seconds
-Fatal error: Attempted to read an unowned reference but object 0xae517f700 was already destroyed
-Test Case '-[DownwriteTests.MermaidTests testScrierror: Process '/Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xctest /Users/runner/work/downwrite/downwrite/.build/arm64-apple-macosx/debug/DownwritePackageTests.xctest' exited with unexpected signal code 6
+	 Executed 242 tests, with 0 failures (0 unexpected) in 25.694 (25.747) seconds
