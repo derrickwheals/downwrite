@@ -121,9 +121,11 @@ final class TOCTests: XCTestCase {
     func testActiveHeadingFollowsTheCaret() async {
         let (h, model) = make("Preface\n\n# One\n\ntext\n\n## Two\n\nmore\n\n### Three\n")
         _ = await waitUntil { model.rows.count == 3 }
-        XCTAssertNil(model.activeID, "nothing is active before the first heading")
+        h.select(0)
+        var ok = await waitUntil { model.activeID == nil && model.rows.count == 3 }
+        XCTAssertTrue(ok, "nothing is active before the first heading")
         h.select(h.index(of: "text") + 1)
-        var ok = await waitUntil { model.activeID == 0 }
+        ok = await waitUntil { model.activeID == 0 }
         XCTAssertTrue(ok, "body text belongs to the heading above it")
         h.select(h.index(of: "more"))
         ok = await waitUntil { model.activeID == 1 }
