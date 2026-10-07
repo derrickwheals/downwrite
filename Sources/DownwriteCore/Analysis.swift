@@ -106,6 +106,35 @@ public struct TableBlock: Equatable, Sendable {
     public var range: NSRange
     public var firstLine: Int
     public var lastLine: Int
+    /// The parsed table. Only set for top-level tables (not inside a quote or list), which the editor shows as a grid.
+    public var model: TableModel?
+    /// `cellRanges[row][column]`: document range of each cell's text (row 0 = header; the delimiter line is skipped).
+    public var cellRanges: [[NSRange]] = []
+
+    /// Whether the editor presents this table as an editable grid.
+    public var isGrid: Bool { model != nil }
+
+    /// Index of the source line holding model row `row`.
+    public func line(forRow row: Int) -> Int { row == 0 ? firstLine : firstLine + 1 + row }
+
+    /// Document range of one cell's text.
+    public func range(of p: TableCellPosition) -> NSRange? {
+        guard cellRanges.indices.contains(p.row), cellRanges[p.row].indices.contains(p.column) else { return nil }
+        return cellRanges[p.row][p.column]
+    }
+
+    /// The cell closest to a document offset, with the offset clamped into that cell's text (`local` is relative to it).
+    public func cell(nearest offset: Int) -> (position: TableCellPosition, local: Int)? {
+        var best: (p: TableCellPosition, distance: Int, range: NSRange)?
+        for (r, row) in cellRanges.enumerated() {
+            for (c, range) in row.enumerated() {
+                let d = offset < range.location ? range.location - offset : (offset > NSMaxRange(range) ? offset - NSMaxRange(range) : 0)
+                if best == nil || d < best!.distance { best = (TableCellPosition(row: r, column: c), d, range) }
+            }
+        }
+        guard let b = best else { return nil }
+        return (b.p, min(max(offset, b.range.location), NSMaxRange(b.range)) - b.range.location)
+    }
 }
 
 public struct HeadingInfo: Equatable, Sendable {
@@ -240,5 +269,17 @@ public struct MarkdownAnalysis: Sendable {
 
     public func mermaidBlock(containing offset: Int) -> MermaidBlock? {
         mermaid.first { offset >= $0.range.location && offset <= NSMaxRange($0.range) }
+    }
+
+    /// Index into `tables` of the grid table whose source contains `offset` (end of the last line included).
+    public func gridTableIndex(containing offset: Int) -> Int? {
+        tables.firstIndex { $0.isGrid && offset >= $0.range.location && offset <= NSMaxRange($0.range) }
+    }
+
+    /// First and last source line of whichever collapsible block (preview or grid table) contains `line`.
+    public func collapsibleExtent(containingLine line: Int) -> (first: Int, last: Int)? {
+        if let b = previewBlocks.first(where: { line >= $0.firstLine && line <= $0.lastLine }) { return (b.firstLine, b.lastLine) }
+        if let t = tables.first(where: { $0.isGrid && line >= $0.firstLine && line <= $0.lastLine }) { return (t.firstLine, t.lastLine) }
+        return nil
     }
 }

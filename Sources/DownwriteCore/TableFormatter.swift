@@ -1,51 +1,8 @@
 import Foundation
 
-/// Aligns GitHub-flavoured Markdown tables.
+/// Aligns GitHub-flavoured Markdown tables (the "Format Table" command and the Markdown-source view).
+/// Parsing and serialising live in `TableModel`; this type finds the table around the caret and swaps the text.
 public enum TableFormatter {
-    enum Alignment { case left, center, right, none }
-
-    /// Splits a table row into trimmed cells, honouring `\|` and code spans.
-    static func cells(of line: String) -> [String] {
-        var cells: [String] = []
-        var current = ""
-        var inCode = false
-        var prevBackslash = false
-        var trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
-        for ch in trimmed {
-            if ch == "`" { inCode.toggle() }
-            if ch == "|" && !prevBackslash && !inCode {
-                cells.append(current.trimmingCharacters(in: .whitespaces))
-                current = ""
-            } else {
-                current.append(ch)
-            }
-            prevBackslash = (ch == "\\" && !prevBackslash)
-        }
-        let last = current.trimmingCharacters(in: .whitespaces)
-        if !last.isEmpty || !trimmed.hasSuffix("|") { cells.append(last) }
-        return cells
-    }
-
-    static func isDelimiterRow(_ line: String) -> Bool {
-        let c = cells(of: line)
-        guard !c.isEmpty else { return false }
-        return c.allSatisfy { cell in
-            let t = cell.trimmingCharacters(in: .whitespaces)
-            return t.count >= 1 && t.allSatisfy { $0 == "-" || $0 == ":" } && t.contains("-")
-        }
-    }
-
-    static func alignment(of cell: String) -> Alignment {
-        let t = cell.trimmingCharacters(in: .whitespaces)
-        switch (t.hasPrefix(":"), t.hasSuffix(":")) {
-        case (true, true): return .center
-        case (true, false): return .left
-        case (false, true): return .right
-        default: return .none
-        }
-    }
-
     /// Display width: wide (CJK / emoji) characters count as two columns.
     static func width(_ s: String) -> Int {
         s.reduce(0) { acc, ch in
@@ -58,40 +15,8 @@ public enum TableFormatter {
     }
 
     public static func format(_ lines: [String]) -> [String] {
-        guard lines.count >= 2, isDelimiterRow(lines[1]) else { return lines }
-        let rows = lines.map { cells(of: $0) }
-        let cols = rows.map(\.count).max() ?? 0
-        guard cols > 0 else { return lines }
-        let aligns: [Alignment] = (0..<cols).map { $0 < rows[1].count ? alignment(of: rows[1][$0]) : .none }
-        var widths = [Int](repeating: 3, count: cols)
-        for (r, row) in rows.enumerated() where r != 1 {
-            for (c, cell) in row.enumerated() { widths[c] = max(widths[c], width(cell)) }
-        }
-        func pad(_ s: String, _ w: Int, _ a: Alignment) -> String {
-            let gap = max(0, w - width(s))
-            switch a {
-            case .right: return String(repeating: " ", count: gap) + s
-            case .center:
-                let l = gap / 2
-                return String(repeating: " ", count: l) + s + String(repeating: " ", count: gap - l)
-            default: return s + String(repeating: " ", count: gap)
-            }
-        }
-        return rows.enumerated().map { (r, row) -> String in
-            let parts = (0..<cols).map { c -> String in
-                if r == 1 {
-                    let w = widths[c]
-                    switch aligns[c] {
-                    case .center: return ":" + String(repeating: "-", count: w - 2) + ":"
-                    case .left: return ":" + String(repeating: "-", count: w - 1)
-                    case .right: return String(repeating: "-", count: w - 1) + ":"
-                    case .none: return String(repeating: "-", count: w)
-                    }
-                }
-                return pad(c < row.count ? row[c] : "", widths[c], aligns[c])
-            }
-            return "| " + parts.joined(separator: " | ") + " |"
-        }
+        guard let model = TableModel(markdownLines: lines) else { return lines }
+        return model.markdownLines()
     }
 
     /// Line range of the table containing the caret, if the caret is inside one.
@@ -113,7 +38,7 @@ public enum TableFormatter {
         }
         let range = NSRange(location: start.location, length: NSMaxRange(end) - start.location)
         let lines = lineText(range).components(separatedBy: "\n")
-        guard lines.count >= 2, isDelimiterRow(lines[1]) else { return nil }
+        guard lines.count >= 2, TableModel.isDelimiterRow(lines[1]) else { return nil }
         return (range, lines)
     }
 
@@ -126,7 +51,7 @@ public enum TableFormatter {
     }
 
     public static func insertEdit(in text: String, selection: NSRange) -> TextEdit {
-        let table = format(["| Column 1 | Column 2 | Column 3 |", "| --- | --- | --- |", "| | | |"]).joined(separator: "\n")
+        let table = TableModel.blank().markdown
         let ns = NSString(string: text)
         let line = ns.lineRange(for: selection)
         let atLineStart = selection.location == line.location
