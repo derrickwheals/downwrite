@@ -1,0 +1,243 @@
+import SwiftUI
+import AppKit
+import DownwriteCore
+
+struct EditorSettings: Equatable {
+    var font: FontChoice
+    var size: Double
+    var lineHeight: Double
+    var width: Double
+}
+
+/// SwiftUI wrapper around the AppKit editor.
+struct EditorView: NSViewRepresentable {
+    @Binding var text: String
+    var settings: EditorSettings
+    var fileURL: URL?
+
+    func makeCoordinator() -> EditorCoordinator { EditorCoordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let (scroll, textView) = EditorTextView.make()
+        context.coordinator.attach(scroll: scroll, textView: textView, settings: settings, initialText: text)
+        context.coordinator.fileURL = fileURL
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.fileURL = fileURL
+        context.coordinator.update(text: text, settings: settings)
+    }
+}
+
+/// Owns the analysis → styling → overlay pipeline for one editor.
+@MainActor
+final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
+    var text: Binding<String>
+    var fileURL: URL?
+    private(set) weak var textView: EditorTextView?
+    private weak var scroll: NSScrollView?
+    private(set) var analysis = MarkdownAnalyzer.analyze("")
+    private(set) var styler: MarkdownStyler!
+    private(set) var overlay: DiagramOverlay!
+    let typography = Typography()
+
+    private var settings: EditorSettings?
+    private var preview = PreviewState()
+    private var lastHidden = Set<Int>()
+    private var isStyling = false
+    private var repositionScheduled = false
+    private var debounce: DispatchWorkItem?
+
+    init(text: Binding<String>) {
+        self.text = text
+        super.init()
+    }
+
+    // MARK: Setup
+
+    func attach(scroll: NSScrollView, textView tv: EditorTextView, settings s: EditorSettings, initialText: String) {
+        self.scroll = scroll
+        textView = tv
+        tv.coordinator = self
+        tv.delegate = self
+        tv.layoutManager?.delegate = self
+        tv.layoutManager?.allowsNonContiguousLayout = true
+        applySettings(s)
+        styler = MarkdownStyler(typography: typography, palette: AppearanceResolver.palette(for: tv.effectiveAppearance))
+        overlay = DiagramOverlay(textView: tv, palette: styler.palette)
+        overlay.onReservedHeightsChanged = { [weak self] in self?.reservedHeightsChanged() }
+        tv.string = initialText
+        applyChrome()
+        reanalyze()
+    }
+
+    private func applySettings(_ s: EditorSettings) {
+        settings = s
+        typography.update(choice: s.font, size: CGFloat(s.size), lineHeight: CGFloat(s.lineHeight), readableWidth: CGFloat(s.width))
+        textView?.maxContentWidth = CGFloat(s.width)
+    }
+
+    func update(text newText: String, settings s: EditorSettings) {
+        guard let tv = textView else { return }
+        var reanalyzeNeeded = false
+        if tv.string != newText {
+            let sel = tv.selectedRange()
+            tv.string = newText
+            let loc = min(sel.location, (newText as NSString).length)
+            tv.setSelectedRange(NSRange(location: loc, length: 0))
+            reanalyzeNeeded = true
+        }
+        if s != settings {
+            applySettings(s)
+            reanalyzeNeeded = true
+        }
+        if reanalyzeNeeded { reanalyze() }
+    }
+
+    // MARK: Pipeline
+
+    private var isDark: Bool { styler.palette == Palette.palette(for: .dark) }
+
+    func reanalyze() {
+        guard let tv = textView else { return }
+        analysis = MarkdownAnalyzer.analyze(tv.string)
+        overlay.sync(blocks: analysis.mermaid, dark: isDark)
+        preview.heights = overlay.reservedHeights
+        preview.collapsed = collapsedMermaid(selection: tv.selectedRange())
+        restyleAll()
+    }
+
+    private func collapsedMermaid(selection: NSRange) -> Set<Int> {
+        Set(analysis.mermaid.filter { !MarkdownAnalysis.isRevealed($0.range, by: selection) }.map(\.firstLine))
+    }
+
+    func restyleAll() {
+        guard let tv = textView, let storage = tv.textStorage else { return }
+        isStyling = true
+        defer { isStyling = false }
+        let sel = tv.selectedRange()
+        styler.styleAll(storage: storage, analysis: analysis, selection: sel, preview: preview)
+        lastHidden = analysis.hiddenMarkerIndices(selection: sel)
+        tv.typingAttributes = styler.baseAttributes()
+        scheduleReposition()
+    }
+
+    func applyChrome() {
+        guard let tv = textView else { return }
+        let p = styler.palette
+        tv.backgroundColor = p.background.nsColor
+        tv.insertionPointColor = p.accent.nsColor
+        tv.selectedTextAttributes = [.backgroundColor: p.selection.nsColor]
+        tv.linkTextAttributes = [:]
+        scroll?.backgroundColor = p.background.nsColor
+        scroll?.drawsBackground = true
+    }
+
+    func appearanceDidChange() {
+        guard let tv = textView, styler != nil else { return }
+        let palette = AppearanceResolver.palette(for: tv.effectiveAppearance)
+        guard palette != styler.palette else { return }
+        styler.palette = palette
+        overlay.setPalette(palette)
+        applyChrome()
+        reanalyze()
+    }
+
+    private func reservedHeightsChanged() {
+        guard let tv = textView, let storage = tv.textStorage, analysis.length == storage.length else { return }
+        preview.heights = overlay.reservedHeights
+        let lines = Set(analysis.mermaid.map(\.lastLine))
+        isStyling = true
+        styler.style(lines: lines, storage: storage, analysis: analysis, selection: tv.selectedRange(), preview: preview)
+        isStyling = false
+        scheduleReposition()
+    }
+
+    func scheduleReposition() {
+        guard !repositionScheduled else { return }
+        repositionScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.repositionScheduled = false
+            self.overlay.reposition(analysis: self.analysis)
+        }
+    }
+
+    // MARK: NSTextViewDelegate
+
+    func textDidChange(_ notification: Notification) {
+        guard !isStyling, let tv = textView else { return }
+        let s = tv.string
+        if text.wrappedValue != s { text.wrappedValue = s }
+        if tv.hasMarkedText() { return }
+        debounce?.cancel()
+        if s.utf16.count > 400_000 {
+            let work = DispatchWorkItem { [weak self] in self?.reanalyze() }
+            debounce = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        } else {
+            reanalyze()
+        }
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard !isStyling, let tv = textView, let storage = tv.textStorage,
+              analysis.length == storage.length, !tv.hasMarkedText() else { return }
+        let sel = tv.selectedRange()
+        let hidden = analysis.hiddenMarkerIndices(selection: sel)
+        var dirty = Set<Int>()
+        for i in hidden.symmetricDifference(lastHidden) where i < analysis.markers.count {
+            dirty.insert(analysis.lineIndex(at: analysis.markers[i].range.location))
+        }
+        let collapsed = collapsedMermaid(selection: sel)
+        let collapseChanged = collapsed != preview.collapsed
+        for first in collapsed.symmetricDifference(preview.collapsed) {
+            if let b = analysis.mermaid.first(where: { $0.firstLine == first }) { for l in b.firstLine...b.lastLine { dirty.insert(l) } }
+        }
+        preview.collapsed = collapsed
+        lastHidden = hidden
+        if !dirty.isEmpty {
+            isStyling = true
+            styler.style(lines: dirty, storage: storage, analysis: analysis, selection: sel, preview: preview)
+            isStyling = false
+        }
+        tv.typingAttributes = styler.baseAttributes()
+        if collapseChanged { scheduleReposition() }
+    }
+
+    // MARK: NSLayoutManagerDelegate
+
+    nonisolated func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
+        Task { @MainActor in self.scheduleReposition() }
+    }
+
+    // MARK: Links
+
+    func open(destination: String) {
+        let dest = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !dest.isEmpty else { return }
+        if dest.hasPrefix("#") { scrollToHeading(slug: String(dest.dropFirst())); return }
+        if let url = URL(string: dest), let scheme = url.scheme, !scheme.isEmpty {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let base = fileURL?.deletingLastPathComponent() ?? textView?.window?.representedURL?.deletingLastPathComponent()
+        let path = dest.removingPercentEncoding ?? dest
+        let url = path.hasPrefix("/") ? URL(fileURLWithPath: path) : URL(fileURLWithPath: path, relativeTo: base)
+        NSWorkspace.shared.open(url)
+    }
+
+    static func slug(_ title: String) -> String {
+        let lowered = title.lowercased()
+        let allowed = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == " " || $0 == "-" }
+        return String(String.UnicodeScalarView(allowed)).replacingOccurrences(of: " ", with: "-")
+    }
+
+    private func scrollToHeading(slug: String) {
+        guard let tv = textView, let h = analysis.headings.first(where: { Self.slug($0.title) == slug.lowercased() }) else { return }
+        tv.setSelectedRange(NSRange(location: h.range.location, length: 0))
+        tv.scrollRangeToVisible(h.range)
+    }
+}

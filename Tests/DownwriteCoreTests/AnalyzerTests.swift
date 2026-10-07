@@ -311,6 +311,11 @@ final class AnalyzerTests: XCTestCase {
     func testLargeDocumentPerformance() {
         var s = ""
         for i in 0..<3000 { s += "## Heading \(i)\n\nSome **bold** and *italic* text with a [link](https://x.y/\(i)) and `code`.\n\n- item\n- [ ] task\n\n" }
-        measure { _ = MarkdownAnalyzer.analyze(s) }
+        let start = Date()
+        let a = MarkdownAnalyzer.analyze(s)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertGreaterThan(a.headings.count, 2999)
+        // ~190 KB; generous bound because this runs in an unoptimised debug build.
+        XCTAssertLessThan(elapsed, 4.0, "analysis took \(elapsed)s")
     }
 }
