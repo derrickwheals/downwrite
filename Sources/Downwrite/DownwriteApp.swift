@@ -92,6 +92,9 @@ enum Responder {
     static func format(_ command: FormatCommand) {
         NSApp.sendAction(#selector(EditorTextView.dwApplyFormat(_:)), to: nil, from: FormatCommandBox(command))
     }
+    static func table(_ command: TableCommand) {
+        NSApp.sendAction(#selector(TableGridView.dwTableCommand(_:)), to: nil, from: TableCommandBox(command))
+    }
     static func indent() { NSApp.sendAction(#selector(EditorTextView.dwIndent(_:)), to: nil, from: nil) }
     static func outdent() { NSApp.sendAction(#selector(EditorTextView.dwOutdent(_:)), to: nil, from: nil) }
 
@@ -132,9 +135,41 @@ struct FormatMenuItems: View {
             Button("Horizontal Rule") { Responder.format(.horizontalRule) }.keyboardShortcut("-", modifiers: [.command, .option])
             Button("Insert Table") { Responder.format(.insertTable) }.keyboardShortcut("t", modifiers: [.command, .option])
             Button("Format Table") { Responder.format(.formatTable) }.keyboardShortcut("t", modifiers: [.command, .option, .shift])
+            TableMenuItems()
             Divider()
             Button("Indent") { Responder.indent() }.keyboardShortcut("]", modifiers: .command)
             Button("Outdent") { Responder.outdent() }.keyboardShortcut("[", modifiers: .command)
+        }
+    }
+}
+
+/// Format ▸ Table: the same commands as the grid's right-click menu, for the cell that has focus.
+struct TableMenuItems: View {
+    var body: some View {
+        Menu("Table") {
+            Button("Insert Row Above") { Responder.table(.insertRowAbove) }
+            Button("Insert Row Below") { Responder.table(.insertRowBelow) }
+            Button("Insert Column Left") { Responder.table(.insertColumnLeft) }
+            Button("Insert Column Right") { Responder.table(.insertColumnRight) }
+            Divider()
+            Button("Move Row Up") { Responder.table(.moveRowUp) }
+            Button("Move Row Down") { Responder.table(.moveRowDown) }
+            Button("Move Column Left") { Responder.table(.moveColumnLeft) }
+            Button("Move Column Right") { Responder.table(.moveColumnRight) }
+            Divider()
+            Button("Duplicate Row") { Responder.table(.duplicateRow) }
+            Button("Duplicate Column") { Responder.table(.duplicateColumn) }
+            Button("Delete Row") { Responder.table(.deleteRow) }
+            Button("Delete Column") { Responder.table(.deleteColumn) }
+            Divider()
+            Button("Align Column Left") { Responder.table(.align(.left)) }
+            Button("Align Column Center") { Responder.table(.align(.center)) }
+            Button("Align Column Right") { Responder.table(.align(.right)) }
+            Button("Sort Column A → Z") { Responder.table(.sortAscending) }
+            Button("Sort Column Z → A") { Responder.table(.sortDescending) }
+            Divider()
+            Button("Edit Table as Markdown") { Responder.table(.editAsMarkdown) }
+            Button("Delete Table") { Responder.table(.deleteTable) }
         }
     }
 }

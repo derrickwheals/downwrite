@@ -57,6 +57,43 @@ final class MarkdownStyler {
         storage.endEditing()
     }
 
+    // MARK: Table cells
+
+    /// Font size of grid-table cell text (a little under body text so tables stay compact).
+    var cellFontSize: CGFloat { typography.size * 0.94 }
+
+    /// Height of one line of cell text, used for empty cells and as the minimum row height.
+    var cellLineHeight: CGFloat {
+        let f = typography.font(size: cellFontSize)
+        return ceil((f.ascender - f.descender + f.leading) * 1.25)
+    }
+
+    func cellBaseAttributes(header: Bool, alignment: NSTextAlignment) -> [NSAttributedString.Key: Any] {
+        let p = NSMutableParagraphStyle()
+        p.lineHeightMultiple = 1.25
+        p.alignment = alignment
+        p.lineBreakMode = .byWordWrapping
+        return [.font: typography.font(size: cellFontSize, bold: header), .foregroundColor: palette.text.nsColor, .paragraphStyle: p]
+    }
+
+    /// Styles the text storage of one grid cell from the cell's own inline analysis (`MarkdownAnalyzer.analyzeTableCell`).
+    /// Markers hide and reveal exactly like in the main editor.
+    func styleCell(storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, header: Bool, alignment: NSTextAlignment) {
+        let all = NSRange(location: 0, length: storage.length)
+        guard all.length > 0, analysis.length == all.length else { return }
+        let base = cellBaseAttributes(header: header, alignment: alignment)
+        var look = LineLook(size: cellFontSize, color: palette.text.nsColor)
+        look.bold = header
+        let line = analysis.lines.first ?? LineStyle(range: all, contentEnd: all.length)
+        storage.beginEditing()
+        storage.setAttributes(base, range: all)
+        for run in analysis.runs(in: all, selection: selection) {
+            let attrs = runAttributes(run.flags, line: line, look: look)
+            if !attrs.isEmpty { storage.addAttributes(attrs, range: run.range) }
+        }
+        storage.endEditing()
+    }
+
     func baseAttributes() -> [NSAttributedString.Key: Any] {
         let p = NSMutableParagraphStyle()
         p.lineHeightMultiple = typography.lineHeight
@@ -80,19 +117,19 @@ final class MarkdownStyler {
         let r = line.range
         var look = lineLook(line, index: index, analysis: analysis, storage: storage, preview: preview)
 
-        // Whole-line collapsing: hidden fences, collapsed Mermaid sources.
+        // Whole-line collapsing: hidden fences, collapsed Mermaid sources and grid tables (their cards/grids are overlays).
         let hiddenFence = line.kind == .fence && runs.contains { $0.flags.contains(.hidden) }
-        let block = analysis.previewBlocks.first { index >= $0.firstLine && index <= $0.lastLine }
-        let collapsePreview = block.map { preview.collapsed.contains($0.firstLine) } ?? false
+        let extent = analysis.collapsibleExtent(containingLine: index)
+        let collapsePreview = extent.map { preview.collapsed.contains($0.first) } ?? false
         if hiddenFence || collapsePreview {
             let p = NSMutableParagraphStyle()
             p.minimumLineHeight = 0.1
             p.maximumLineHeight = 0.1
-            if let b = block, index == b.lastLine, let h = preview.heights[b.firstLine] { p.paragraphSpacing = h }
+            if let e = extent, index == e.last, let h = preview.heights[e.first] { p.paragraphSpacing = h }
             storage.setAttributes([.font: hiddenFont, .foregroundColor: NSColor.clear, .paragraphStyle: p], range: r)
             return
         }
-        if let b = block, index == b.lastLine, let h = preview.heights[b.firstLine] {
+        if let e = extent, index == e.last, let h = preview.heights[e.first] {
             look.paragraph.paragraphSpacing = h
         }
         if line.kind == .hr, runs.contains(where: { $0.flags.contains(.hidden) }) {

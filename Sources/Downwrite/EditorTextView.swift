@@ -11,6 +11,9 @@ final class FormatCommandBox: NSObject {
 /// clickable task boxes and a centred readable column.
 final class EditorTextView: NSTextView {
     weak var coordinator: EditorCoordinator?
+    /// Identifies the cell whose keystrokes are currently being merged into one undo step (see `applyTableText`).
+    var gridTypingKey: AnyHashable?
+    private var isApplyingGridEdit = false
     var maxContentWidth: CGFloat = 720 { didSet { if oldValue != maxContentWidth { updateInsets() } } }
     private let minSideInset: CGFloat = 30
 
@@ -101,7 +104,14 @@ final class EditorTextView: NSTextView {
 
     override func didChangeText() {
         super.didChangeText()
+        if !isApplyingGridEdit { gridTypingKey = nil }
         if string.utf16.count <= 1 { needsDisplay = true }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { coordinator?.tableOverlay?.scheduleHandOff() }
+        return ok
     }
 
     // MARK: Applying edits
@@ -113,6 +123,40 @@ final class EditorTextView: NSTextView {
         didChangeText()
         setSelectedRange(edit.selection)
         scrollRangeToVisible(edit.selection)
+    }
+
+    /// Replaces the Markdown of the grid table that starts at `tableStart` — the one write path for everything done in a
+    /// grid. Undo is registered by hand so that a run of keystrokes in one cell (`coalesceKey`) is a single step and
+    /// every structural change (add row, move column …) is its own.
+    func applyTableText(tableStart: Int, markdown: String, undoName: String, coalesceKey: AnyHashable? = nil) {
+        guard let storage = textStorage, let analysis = coordinator?.analysis, analysis.length == storage.length,
+              let block = analysis.tables.first(where: { $0.isGrid && $0.range.location == tableStart }) else { return }
+        let old = (string as NSString).substring(with: block.range)
+        guard old != markdown else { return }
+        let um = undoManager
+        let undoing = um?.isUndoing == true || um?.isRedoing == true
+        let continuing = coalesceKey != nil && coalesceKey == gridTypingKey && !undoing
+        um?.disableUndoRegistration()
+        isApplyingGridEdit = true
+        if shouldChangeText(in: block.range, replacementString: markdown) {
+            storage.replaceCharacters(in: block.range, with: markdown)
+            didChangeText()
+        }
+        isApplyingGridEdit = false
+        um?.enableUndoRegistration()
+        if !continuing {
+            let payload: [String: Any] = ["start": tableStart, "text": old, "name": undoName]
+            um?.registerUndo(withTarget: self, selector: #selector(dwUndoTableEdit(_:)), object: payload as NSDictionary)
+            um?.setActionName(undoName)
+        }
+        gridTypingKey = undoing ? nil : coalesceKey
+    }
+
+    /// Undo/redo of `applyTableText`: puts the remembered Markdown back (which registers the opposite action).
+    @objc func dwUndoTableEdit(_ payload: Any?) {
+        guard let d = payload as? [String: Any], let start = d["start"] as? Int, let text = d["text"] as? String else { return }
+        gridTypingKey = nil
+        applyTableText(tableStart: start, markdown: text, undoName: (d["name"] as? String) ?? "Table Edit")
     }
 
     func perform(_ command: FormatCommand) {
@@ -127,10 +171,29 @@ final class EditorTextView: NSTextView {
         perform(box.command)
     }
 
+    /// Table commands from the Format menu when the caret is in a table whose Markdown is showing.
+    @objc func dwTableCommand(_ sender: Any?) {
+        guard let box = sender as? TableCommandBox, let overlay = coordinator?.tableOverlay else { NSSound.beep(); return }
+        overlay.perform(box.command, atOffset: selectedRange().location)
+    }
+
     @objc func dwIndent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: false)) }
     @objc func dwOutdent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: true)) }
 
     // MARK: Smart keys
+
+    /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source.
+    override func deleteBackward(_ sender: Any?) {
+        if !hasMarkedText(), selectedRange().length == 0,
+           coordinator?.tableOverlay?.enterTable(adjacentToCaret: selectedRange().location, backwards: true) == true { return }
+        super.deleteBackward(sender)
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        if !hasMarkedText(), selectedRange().length == 0,
+           coordinator?.tableOverlay?.enterTable(adjacentToCaret: selectedRange().location, backwards: false) == true { return }
+        super.deleteForward(sender)
+    }
 
     override func insertNewline(_ sender: Any?) {
         if !hasMarkedText(), let edit = ListEditing.returnKey(in: string, selection: selectedRange()) {
@@ -171,6 +234,7 @@ final class EditorTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if coordinator?.tableOverlay?.focusNearestCell(atTextViewPoint: point) == true { return }
         if let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer {
             let index = characterIndexForInsertion(at: point)
             if event.clickCount == 1, let box = analysis.taskBox(at: index) {
