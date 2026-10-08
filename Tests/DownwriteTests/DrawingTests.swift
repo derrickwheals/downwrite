@@ -169,12 +169,25 @@ final class DrawingTests: XCTestCase {
         }
         let open = try box(0), done = try box(h.index(of: "- [x]"))
         let rep = render(h)
-        func at(_ r: NSRect, _ fx: CGFloat, _ fy: CGFloat) -> NSColor {
-            color(rep, atViewPoint: NSPoint(x: r.minX + r.width * fx, y: r.minY + r.height * fy), in: h)
+        /// Share of the pixels in `r` that are within `tolerance` of `target`.
+        func share(_ r: NSRect, _ target: NSColor, tolerance: CGFloat = 0.15) -> CGFloat {
+            var hit = 0, total = 0
+            var y = r.minY
+            while y < r.maxY {
+                var x = r.minX
+                while x < r.maxX {
+                    total += 1
+                    if distance(color(rep, atViewPoint: NSPoint(x: x, y: y), in: h), target) < tolerance { hit += 1 }
+                    x += 0.5
+                }
+                y += 0.5
+            }
+            return total == 0 ? 0 : CGFloat(hit) / CGFloat(total)
         }
-        XCTAssertLessThan(distance(at(done, 0.12, 0.5), palette.accent.nsColor), 0.09, "a ticked box is filled with the accent colour")
-        XCTAssertLessThan(distance(at(open, 0.5, 0.5), palette.background.nsColor), 0.09, "an open box is empty inside")
-        XCTAssertLessThan(at(open, 0.03, 0.5).brightnessComponent, 0.85, "…with an outline")
-        XCTAssertGreaterThan(at(open, -0.2, 0.5).brightnessComponent, 0.95, "nothing is drawn outside the box")
+        XCTAssertGreaterThan(share(done, palette.accent.nsColor), 0.4, "a ticked box is mostly filled with the accent colour")
+        XCTAssertLessThan(share(open, palette.accent.nsColor), 0.02, "an open box is not filled")
+        XCTAssertGreaterThan(share(open.insetBy(dx: 3, dy: 3), palette.background.nsColor), 0.9, "an open box is empty inside")
+        XCTAssertLessThan(share(open, palette.background.nsColor), 0.9, "…but has an outline")
+        XCTAssertGreaterThan(share(open.insetBy(dx: -6, dy: -1).offsetBy(dx: -open.width, dy: 0), palette.background.nsColor), 0.97, "nothing is drawn left of the box")
     }
 }
