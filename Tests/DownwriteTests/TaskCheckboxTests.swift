@@ -157,4 +157,51 @@ final class TaskCheckboxTests: XCTestCase {
         XCTAssertGreaterThan(nested.minX, top.minX + 4, "the nested box is indented")
         XCTAssertGreaterThan(nested.minY, top.maxY - 1, "…and on its own line")
     }
+
+    // MARK: Empty items (just after pressing Return)
+
+    /// The drawn box must lie inside its own line, which must be as tall as the line above it.
+    private func assertBoxFitsItsLine(_ h: EditorHarness, itemAt index: Int, like reference: Int, file: StaticString = #filePath, line: UInt = #line) throws {
+        let layout = lm(h)
+        let box = try XCTUnwrap(layout.checkboxRect(forCharacterAt: index), file: file, line: line)
+        let refBox = try XCTUnwrap(layout.checkboxRect(forCharacterAt: reference), file: file, line: line)
+        let frag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: index), effectiveRange: nil)
+        let refFrag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: reference), effectiveRange: nil)
+        XCTAssertEqual(frag.height, refFrag.height, accuracy: 1.0, "an empty item is as tall as one with text", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(box.minY, frag.minY - 0.5, "the box does not rise above its own line", file: file, line: line)
+        XCTAssertLessThanOrEqual(box.maxY, frag.maxY + 0.5, "…or sink below it", file: file, line: line)
+        XCTAssertEqual(box.minY - frag.minY, refBox.minY - refFrag.minY, accuracy: 1.5, "same place in its line as the box above", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(box.minY, refBox.maxY - 0.5, "the two boxes do not overlap", file: file, line: line)
+    }
+
+    func testEmptyTaskItemKeepsANormalLineAndItsBoxStaysInIt() throws {
+        let h = EditorHarness(text: "- [ ] first\n- [ ] ")
+        h.select(h.textView.string.utf16.count)             // caret at the end of the empty item
+        XCTAssertNotNil(h.attrs(at: 12)[.dwCheckbox], "the empty item still shows a checkbox")
+        try assertBoxFitsItsLine(h, itemAt: 12, like: 0)
+    }
+
+    func testReturnAfterATaskStartsANewCheckboxBelowIt() throws {
+        let h = EditorHarness(text: "- [x] checkboxes")
+        h.window.makeFirstResponder(h.textView)
+        h.select(h.textView.string.utf16.count)
+        h.textView.insertNewline(nil)
+        XCTAssertEqual(h.textView.string, "- [x] checkboxes\n- [ ] ")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: h.textView.string.utf16.count, length: 0))
+        try assertBoxFitsItsLine(h, itemAt: 17, like: 0)
+        // Typing into it keeps the box where it was.
+        let before = try XCTUnwrap(lm(h).checkboxRect(forCharacterAt: 17))
+        h.textView.insertText("another", replacementRange: NSRange(location: NSNotFound, length: 0))
+        let after = try XCTUnwrap(lm(h).checkboxRect(forCharacterAt: 17))
+        XCTAssertEqual(after.minY, before.minY, accuracy: 1.5, "the box does not jump when the first character is typed")
+        XCTAssertEqual(after.minX, before.minX, accuracy: 0.5)
+        try assertBoxFitsItsLine(h, itemAt: 17, like: 0)
+    }
+
+    func testEmptyTaskItemInTheMiddleOfAList() throws {
+        let h = EditorHarness(text: "- [ ] one\n- [ ] \n- [ ] three\n")
+        h.select(0)
+        try assertBoxFitsItsLine(h, itemAt: 10, like: 0)
+        try assertBoxFitsItsLine(h, itemAt: 17, like: 0)
+    }
 }

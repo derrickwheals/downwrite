@@ -374,6 +374,37 @@ enum SelfTest {
             click()
             try? await Task.sleep(nanoseconds: 500_000_000)
             check(tv.string.contains("- [ ] Try ticking this one"), "a second click unticks it again (\(theme.rawValue))")
+
+            // Return after a task: the fresh, still empty item gets its own checkbox on its own full-height line (it used to
+            // collapse to a sliver and draw its box over the one above).
+            let lineEnd = NSMaxRange(open)
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: lineEnd, length: 0))
+            tv.insertNewline(nil)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            let fresh = lineEnd + 1
+            check(tv.string.utf16.count > fresh && tv.textStorage?.attribute(.dwCheckbox, at: fresh, effectiveRange: nil) != nil, "Return after a task starts a new checkbox item (\(theme.rawValue))")
+            if let newBox = layout.checkboxRect(forCharacterAt: fresh), let oldBox = layout.checkboxRect(forCharacterAt: open.location) {
+                let frag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: fresh), effectiveRange: nil)
+                let oldFrag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: open.location), effectiveRange: nil)
+                check(abs(frag.height - oldFrag.height) < 1.5, "the empty item's line is as tall as a normal one (\(theme.rawValue))", detail: "\(frag.height) vs \(oldFrag.height)")
+                check(newBox.minY >= frag.minY - 0.5 && newBox.maxY <= frag.maxY + 0.5, "its checkbox stays inside its own line (\(theme.rawValue))", detail: "box \(newBox) line \(frag)")
+                check(newBox.minY >= oldBox.maxY - 0.5, "…and does not overlap the checkbox above (\(theme.rawValue))", detail: "\(newBox) vs \(oldBox)")
+            } else {
+                check(false, "the new item has a checkbox rect (\(theme.rawValue))")
+            }
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-task-new.png"))
+            tv.insertText("another", replacementRange: NSRange(location: NSNotFound, length: 0))
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-task-typed.png"))
+            // Take the added line out again so later steps see the sample as it was.
+            let added = NSRange(location: lineEnd, length: "\n- [ ] another".utf16.count)
+            if NSMaxRange(added) <= tv.string.utf16.count, (tv.string as NSString).substring(with: added) == "\n- [ ] another" {
+                tv.insertText("", replacementRange: added)
+            } else {
+                check(false, "the added task line is where expected (\(theme.rawValue))", detail: "\(tv.string.suffix(40))")
+            }
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
         }
         tv.setSelectedRange(NSRange(location: 0, length: 0))
 
