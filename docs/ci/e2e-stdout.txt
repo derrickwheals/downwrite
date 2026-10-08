@@ -30,11 +30,11 @@ PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
 DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,2674 775×606", "104,6270 775×1507"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,2808 729×606", "2,6459 729×1617"]
+DIAG README sidebar open: text view 774 pt, inset 30.0, grid frames ["2,2674 770×606", "2,6270 770×1507"]
 PASS  README tables stay lined up with the sidebar open
 DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,2674 775×606", "104,6270 775×1507"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 733 pt, inset 30.0, grid frames ["2,2808 729×606", "2,6459 729×1617"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,2674 775×606", "104,6270 775×1507"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
