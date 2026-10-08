@@ -1,3 +1,1 @@
-	 Executed 338 tests, with 2 failures (0 unexpected) in 45.108 (45.192) seconds
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/DrawingTests.swift:187: error: -[DownwriteTests.DrawingTests testCheckboxIsFilledWhenCheckedAndOutlinedWhenNot] : XCTAssertGreaterThan failed: ("0.0") is not greater than ("0.4") - a ticked box is mostly filled with the accent colour
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/DrawingTests.swift:191: error: -[DownwriteTests.DrawingTests testCheckboxIsFilledWhenCheckedAndOutlinedWhenNot] : XCTAssertGreaterThan failed: ("0.9038461538461539") is not greater than ("0.97") - nothing is drawn left of the box
+	 Executed 338 tests, with 0 failures (0 unexpected) in 39.178 (39.266) seconds
