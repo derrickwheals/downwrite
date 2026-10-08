@@ -10,3 +10,4 @@ test
 5. Enhancement: Add a "source" view, where the raw markdown text is shown and is editable like a normal text editor. I should be able to toggle this setting from a button to the left of the text formatting button in the toolbar.
 6. Enhancement: Additional theme choices. Take inspiration from Bear and https://vscodethemes.com. Just 3 or 4 light and dark themes each. Possibility to add themes using a standard JSON format like used by VS Code
 7. Enhancement: Add a "Keep on top" Window menu item that keeps the current app window floating above other windows
+8. Refresh the rendered file if it is changed on disk by another process.

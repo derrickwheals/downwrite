@@ -14,6 +14,7 @@ struct DownwriteApp: App {
         .commands {
             FormatCommands()
             ViewCommands()
+            WindowCommands()
             AppCommands()
         }
 
@@ -38,6 +39,8 @@ struct EditorScene: View {
     @StateObject private var toc = TOCModel()
     /// The source view is per window and starts off.
     @State private var sourceMode = false
+    /// "Keep on Top" (Window menu) is per window and starts off.
+    @State private var keepOnTop = false
 
     private var settings: EditorSettings {
         EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
@@ -58,6 +61,8 @@ struct EditorScene: View {
             }
             .frame(minWidth: 420, minHeight: 320)
             .focusedSceneValue(\.sourceMode, $sourceMode)
+            .focusedSceneValue(\.keepOnTop, $keepOnTop)
+            .background(WindowLevelSetter(floating: keepOnTop))
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Toggle(isOn: $sourceMode) {

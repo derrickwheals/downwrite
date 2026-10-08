@@ -1,8 +1,3 @@
-PASS  its checkbox stays inside its own line (light) — box (0.0, 678.2120000000001, 14.0, 14.0) line (0.0, 662.8600000000001, 719.0, 35.39)
-PASS  …and does not overlap the checkbox above (light) — (0.0, 678.2120000000001, 14.0, 14.0) vs (0.0, 642.822, 14.0, 14.0)
-PASS  sample has an unticked task (dark)
-PASS  task shows a checkbox while the caret is elsewhere (dark)
-PASS  clicking the checkbox ticks it (dark)
 PASS  …without moving the caret (dark) — {0, 0}
 PASS  a second click unticks it again (dark)
 PASS  Return after a task starts a new checkbox item (dark)
@@ -26,15 +21,20 @@ PASS  no table grids in the source view (dark)
 PASS  no diagram or image cards in the source view (dark)
 PASS  ⌘/ again returns to the formatted editor (dark)
 PASS  the table grid is back and the text is unchanged (dark)
+PASS  Window menu has Keep on Top
+PASS  the window starts at the normal level
+PASS  Keep on Top is enabled while an editor window is frontmost
+PASS  Keep on Top floats the window above others
+PASS  choosing it again puts the window back
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,2843 775×606", "104,6439 775×1507"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3010 729×633", "2,6688 729×1617"]
+DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3078 729×633", "2,6757 729×1617"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,2843 775×606", "104,6439 775×1507"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,2843 775×606", "104,6439 775×1507"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
