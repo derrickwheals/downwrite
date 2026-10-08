@@ -89,6 +89,7 @@
   - Indent  [1048576:]]
   - Outdent  [1048576:[]
 # View
+  - Show Markdown Source  [1048576:/]
   - Show Table of Contents  [1310720:o]
   - Appearance
       · System
