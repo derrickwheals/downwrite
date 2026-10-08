@@ -99,6 +99,23 @@ final class MarkdownStyler {
         return [.font: typography.font(), .foregroundColor: palette.text.nsColor, .paragraphStyle: p]
     }
 
+    // MARK: Source view
+
+    /// The source view's look: the whole document in one plain monospaced style — nothing hidden, no cards, pills, bars,
+    /// rules or checkboxes.
+    func sourceAttributes() -> [NSAttributedString.Key: Any] {
+        let p = NSMutableParagraphStyle()
+        p.lineHeightMultiple = typography.lineHeight
+        return [.font: typography.font(size: (typography.size * 0.92).rounded(), mono: true), .foregroundColor: palette.text.nsColor, .paragraphStyle: p]
+    }
+
+    func styleSource(storage: NSTextStorage) {
+        guard storage.length > 0 else { return }
+        storage.beginEditing()
+        storage.setAttributes(sourceAttributes(), range: NSRange(location: 0, length: storage.length))
+        storage.endEditing()
+    }
+
     // MARK: Per-line styling
 
     private struct LineLook {

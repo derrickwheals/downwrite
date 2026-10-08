@@ -36,6 +36,8 @@ struct EditorScene: View {
     @AppStorage(Prefs.spellCheck) private var spellCheck = false
     @AppStorage(Prefs.showTOC) private var showTOC = false
     @StateObject private var toc = TOCModel()
+    /// The source view is per window and starts off.
+    @State private var sourceMode = false
 
     private var settings: EditorSettings {
         EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
@@ -43,7 +45,7 @@ struct EditorScene: View {
     }
 
     var body: some View {
-        EditorView(text: $document.text, settings: settings, fileURL: fileURL, toc: toc)
+        EditorView(text: $document.text, settings: settings, fileURL: fileURL, toc: toc, sourceMode: sourceMode)
             .ignoresSafeArea()
             .overlay(alignment: .bottomTrailing) {
                 StatusPill(text: document.text)
@@ -55,7 +57,16 @@ struct EditorScene: View {
                     .inspectorColumnWidth(min: 200, ideal: 250, max: 380)
             }
             .frame(minWidth: 420, minHeight: 320)
+            .focusedSceneValue(\.sourceMode, $sourceMode)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Toggle(isOn: $sourceMode) {
+                        Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                    .toggleStyle(.button)
+                    .help(sourceMode ? "Back to the formatted view (⌘/)" : "Show the Markdown source (⌘/)")
+                    .accessibilityIdentifier("source-toggle")
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         FormatMenuItems()
@@ -74,6 +85,16 @@ struct EditorScene: View {
                     .accessibilityIdentifier("toc-toggle")
                 }
             }
+    }
+}
+
+/// The frontmost window's source-view switch, for the View menu.
+struct SourceModeKey: FocusedValueKey { typealias Value = Binding<Bool> }
+
+extension FocusedValues {
+    var sourceMode: Binding<Bool>? {
+        get { self[SourceModeKey.self] }
+        set { self[SourceModeKey.self] = newValue }
     }
 }
 
@@ -207,9 +228,13 @@ struct ViewCommands: Commands {
     @AppStorage(Prefs.theme) private var theme = ThemeChoice.system.rawValue
     @AppStorage(Prefs.fontSize) private var fontSize = 17.0
     @AppStorage(Prefs.showTOC) private var showTOC = false
+    @FocusedBinding(\.sourceMode) private var sourceMode
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
+            Button(sourceMode == true ? "Hide Markdown Source" : "Show Markdown Source") { sourceMode?.toggle() }
+                .keyboardShortcut("/", modifiers: .command)
+                .disabled(sourceMode == nil)
             Button(showTOC ? "Hide Table of Contents" : "Show Table of Contents") { showTOC.toggle() }
                 .keyboardShortcut("o", modifiers: [.command, .control])
             Divider()
