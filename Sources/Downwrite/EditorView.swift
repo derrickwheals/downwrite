@@ -11,6 +11,8 @@ struct EditorSettings: Equatable {
     /// Colour themes (`ThemeCatalog` ids) used while the editor is light / dark.
     var lightTheme: String = ThemeCatalog.defaultLightID
     var darkTheme: String = ThemeCatalog.defaultDarkID
+    /// `ThemeStore.revision`: changes when imported themes are added, replaced or removed, so editors repaint.
+    var themeRevision = 0
 }
 
 /// SwiftUI wrapper around the AppKit editor.

@@ -89,10 +89,11 @@ enum AppearanceResolver {
         Palette.palette(for: theme(for: appearance))
     }
 
-    /// The palette of the chosen light or dark theme, whichever matches the appearance.
+    /// The palette of the chosen light or dark theme (built in or imported), whichever matches the appearance.
+    @MainActor
     static func palette(for appearance: NSAppearance, lightTheme: String, darkTheme: String) -> Palette {
         let theme = theme(for: appearance)
-        return ThemeCatalog.palette(id: theme == .dark ? darkTheme : lightTheme, for: theme)
+        return ThemeStore.shared.library.palette(id: theme == .dark ? darkTheme : lightTheme, for: theme)
     }
 }
 
