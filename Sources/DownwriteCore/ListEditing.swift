@@ -117,11 +117,12 @@ public enum ListEditing {
                         selection: NSRange(location: block.location, length: joined.utf16.count - (trailing ? 1 : 0)))
     }
 
-    /// Flip `[ ]` ↔ `[x]` at the given range (the three-character checkbox).
-    public static func toggleTask(in text: String, box: NSRange) -> TextEdit {
+    /// Flip `[ ]` ↔ `[x]` at the given range (the three-character checkbox). The caret ends up after the box, unless
+    /// `selection` is given (clicking a drawn checkbox must not move the caret into the hidden `- [ ] `, which would show it).
+    public static func toggleTask(in text: String, box: NSRange, keeping selection: NSRange? = nil) -> TextEdit {
         let ns = NSString(string: text)
         let current = ns.substring(with: box)
         let replacement = current == "[ ]" ? "[x]" : "[ ]"
-        return TextEdit(range: box, replacement: replacement, selection: NSRange(location: NSMaxRange(box), length: 0))
+        return TextEdit(range: box, replacement: replacement, selection: selection ?? NSRange(location: NSMaxRange(box), length: 0))
     }
 }

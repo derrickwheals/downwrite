@@ -154,4 +154,44 @@ final class DrawingTests: XCTestCase {
         let range = NSRange(location: start, length: 40 * 5)
         XCTAssertGreaterThan(lm(h).pillRects(forCharacterRange: range).count, 1)
     }
+
+    // MARK: Task checkboxes
+
+    func testCheckboxIsFilledWhenCheckedAndOutlinedWhenNot() throws {
+        let h = EditorHarness(text: "- [ ] open\n- [x] done\n")
+        makeKey(h)
+        h.select(h.textView.string.utf16.count)
+        let palette = AppearanceResolver.palette(for: h.textView.effectiveAppearance)
+        func box(_ at: Int) throws -> NSRect {
+            var r = try XCTUnwrap(lm(h).checkboxRect(forCharacterAt: at))
+            r.origin.x += h.textView.textContainerOrigin.x; r.origin.y += h.textView.textContainerOrigin.y
+            return r
+        }
+        let open = try box(0), done = try box(h.index(of: "- [x]"))
+        let rep = render(h)
+        /// Pixels in `r` that differ clearly from the page background (box fill, outline or tick), and their mean colour.
+        func ink(_ r: NSRect) -> (share: CGFloat, mean: NSColor) {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, hit: CGFloat = 0, total: CGFloat = 0
+            var y = r.minY
+            while y < r.maxY {
+                var x = r.minX
+                while x < r.maxX {
+                    total += 1
+                    let c = color(rep, atViewPoint: NSPoint(x: x, y: y), in: h)
+                    if distance(c, palette.background.nsColor) > 0.12 { hit += 1; red += c.redComponent; green += c.greenComponent; blue += c.blueComponent }
+                    x += 0.5
+                }
+                y += 0.5
+            }
+            guard total > 0, hit > 0 else { return (0, .white) }
+            return (hit / total, NSColor(srgbRed: red / hit, green: green / hit, blue: blue / hit, alpha: 1))
+        }
+        let filled = ink(done), outlined = ink(open)
+        XCTAssertGreaterThan(filled.share, 0.6, "a ticked box is a filled square")
+        XCTAssertGreaterThan(filled.mean.blueComponent - filled.mean.redComponent, 0.25, "…in the (blue) accent colour")
+        XCTAssertGreaterThan(outlined.share, 0.1, "an open box has an outline")
+        XCTAssertLessThan(outlined.share, 0.55, "…but is not filled")
+        XCTAssertEqual(ink(open.insetBy(dx: 3, dy: 3)).share, 0, accuracy: 0.02, "an open box is empty inside")
+        XCTAssertEqual(ink(open.offsetBy(dx: -(open.width + 8), dy: 0)).share, 0, accuracy: 0.02, "nothing is drawn to the left of the box")
+    }
 }

@@ -6,3 +6,6 @@ DerivedData/
 dist/
 .DS_Store
 /Package.resolved.bak
+/artifacts/
+/build.log
+/test.log

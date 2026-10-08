@@ -26,7 +26,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 ## Features
 
 - **Hidden syntax, Bear-style.** `**bold**`, `*italic*`, `` `code` ``, `[links](…)`, `# headings`, `> quotes`, code fences… all collapse to clean typography and re-expand around the caret.
-- **CommonMark + GFM + extras.** Full CommonMark (via Apple's `swift-markdown` / cmark-gfm), plus tables, task lists (click to tick), strikethrough, autolinks, `==highlight==`, `[^footnotes]`, `$math$` styling and YAML front matter.
+- **CommonMark + GFM + extras.** Full CommonMark (via Apple's `swift-markdown` / cmark-gfm), plus tables, task lists (drawn as rounded checkboxes — click to tick; the `- [ ]` source shows when the caret enters it), strikethrough, autolinks, `==highlight==`, `[^footnotes]`, `$math$` styling and YAML front matter.
 - **Editable tables.** Tables are shown as a real grid you type into, not as pipes and dashes. **Tab** jumps to the next cell (and adds a row from the last cell), **Return** moves down, arrows step across cell edges, ⇧Return adds a line break. Drag the grips left of each row / above each column to reorder them, click a grip (or right-click any cell) for insert / delete / move / duplicate / align / sort, and use the **+** strips to append a row or column. Cell text keeps its Markdown (bold, links, code hide their syntax like everywhere else), pasting spreadsheet data fills several cells, and *Edit as Markdown* shows the source. The document text stays plain GFM, aligned and tidy.
 - **Mermaid diagrams.** Fenced ```` ```mermaid ```` blocks render as live diagrams (flowcharts, sequence, class, state, ER, Gantt, pie, journey, git graph, mind maps…). Mermaid is bundled, so it works offline. Click a diagram to edit its source; it re-renders as you type.
 - **Table of contents.** Toggle a sidebar on the right (⌃⌘O, the toolbar button, or View ▸ Show Table of Contents) that lists the document's headings, nested by level, with the section holding the caret highlighted. Click a heading and the editor scrolls it to the top and puts the caret there, ready to type. Headings show as they read in the editor (no `#`, `**` or link syntax), update as you type, and the sidebar remembers whether you left it open.
@@ -154,7 +154,7 @@ Sources/Downwrite/       macOS app: SwiftUI shell, TextKit 1 editor, styler, Mer
 Tests/DownwriteCoreTests Linux + macOS unit tests
 Tests/DownwriteTests     macOS integration tests
 Packaging/               Info.plist, entitlements, icon artwork
-scripts/                 build-app.sh, make-dmg.sh, linux-test.sh, generate-icons.py
+scripts/                 build-app.sh, make-dmg.sh, linux-test.sh, ci-local.sh, generate-icons.py
 ThirdParty/              Third-party licence texts (swift-markdown, cmark-gfm, Mermaid)
 LICENSE                  GNU GPL v3.0
 ```

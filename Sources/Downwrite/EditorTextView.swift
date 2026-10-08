@@ -164,12 +164,12 @@ final class EditorTextView: NSTextView {
     // MARK: Applying edits
 
     /// Applies a computed edit through the text system so that undo, the delegate and SwiftUI all see it.
-    func apply(_ edit: TextEdit) {
+    func apply(_ edit: TextEdit, scrollToSelection: Bool = true) {
         guard shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
         textStorage?.replaceCharacters(in: edit.range, with: edit.replacement)
         didChangeText()
         setSelectedRange(edit.selection)
-        scrollRangeToVisible(edit.selection)
+        if scrollToSelection { scrollRangeToVisible(edit.selection) }
     }
 
     /// Replaces the Markdown of the grid table that starts at `tableStart` — the one write path for everything done in a
@@ -309,19 +309,38 @@ final class EditorTextView: NSTextView {
 
     // MARK: Mouse
 
+    /// The task whose checkbox is under `point` (text view coordinates): the drawn square while the `- [ ] ` source is
+    /// hidden, otherwise the raw `[ ]` characters.
+    func taskBox(at point: NSPoint) -> TaskBox? {
+        guard let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer else { return nil }
+        return taskBox(atPoint: point, index: characterIndexForInsertion(at: point), analysis: analysis, layout: lm, container: tc)
+    }
+
+    private func taskBox(atPoint point: NSPoint, index: Int, analysis: MarkdownAnalysis, layout lm: NSLayoutManager, container tc: NSTextContainer) -> TaskBox? {
+        let origin = textContainerOrigin
+        if let drawn = lm as? DWLayoutManager, let box = analysis.taskBox(onLine: analysis.lineIndex(at: index)), let prefix = box.prefix,
+           textStorage?.attribute(.dwCheckbox, at: prefix.location, effectiveRange: nil) != nil {
+            guard var rect = drawn.checkboxRect(forCharacterAt: prefix.location) else { return nil }
+            rect.origin.x += origin.x; rect.origin.y += origin.y
+            return rect.insetBy(dx: -4, dy: -4).contains(point) ? box : nil
+        }
+        guard let box = analysis.taskBox(at: index) else { return nil }
+        let glyphs = lm.glyphRange(forCharacterRange: box.range, actualCharacterRange: nil)
+        var rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
+        rect.origin.x += origin.x; rect.origin.y += origin.y
+        return rect.insetBy(dx: -4, dy: -3).contains(point) ? box : nil
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if coordinator?.tableOverlay?.focusNearestCell(atTextViewPoint: point) == true { return }
         if let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer {
             let index = characterIndexForInsertion(at: point)
-            if event.clickCount == 1, let box = analysis.taskBox(at: index) {
-                let glyphs = lm.glyphRange(forCharacterRange: box.range, actualCharacterRange: nil)
-                var rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
-                rect.origin.x += textContainerOrigin.x; rect.origin.y += textContainerOrigin.y
-                if rect.insetBy(dx: -4, dy: -3).contains(point) {
-                    apply(ListEditing.toggleTask(in: string, box: box.range))
-                    return
-                }
+            if event.clickCount == 1, let box = taskBox(atPoint: point, index: index, analysis: analysis, layout: lm, container: tc) {
+                // Keep the caret where it was: moving it into the hidden `- [ ] ` would reveal the source.
+                if window?.firstResponder !== self { window?.makeFirstResponder(self) }
+                apply(ListEditing.toggleTask(in: string, box: box.range, keeping: selectedRange()), scrollToSelection: false)
+                return
             }
             if event.modifierFlags.contains(.command), let link = analysis.link(at: index) {
                 coordinator?.open(destination: link.destination)

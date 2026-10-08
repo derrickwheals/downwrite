@@ -96,4 +96,36 @@ extension NSAttributedString.Key {
     static let dwQuoteDepth = NSAttributedString.Key("dw.quoteDepth")
     /// Marks a `-`/`*`/`+` list marker character that is displayed as a bullet glyph.
     static let dwBullet = NSAttributedString.Key("dw.bullet")
+    /// On the first character of a hidden `- [ ] ` task prefix: a `CheckboxMark` for the layout manager to draw.
+    static let dwCheckbox = NSAttributedString.Key("dw.checkbox")
+}
+
+/// What the layout manager draws in place of a hidden task prefix: a rounded square, filled with a tick when checked.
+/// Attached to the prefix's first character together with a `.kern` that reserves the room for it.
+final class CheckboxMark: NSObject {
+    let checked: Bool
+    /// Edge length of the square.
+    let side: CGFloat
+    /// Distance from the text baseline up to the vertical centre of the square.
+    let centerAboveBaseline: CGFloat
+    let accent: NSColor
+    let outline: NSColor
+    let tick: NSColor
+
+    init(checked: Bool, side: CGFloat, centerAboveBaseline: CGFloat, accent: NSColor, outline: NSColor, tick: NSColor) {
+        self.checked = checked; self.side = side; self.centerAboveBaseline = centerAboveBaseline
+        self.accent = accent; self.outline = outline; self.tick = tick
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let o = object as? CheckboxMark else { return false }
+        return checked == o.checked && side == o.side && centerAboveBaseline == o.centerAboveBaseline
+            && accent == o.accent && outline == o.outline && tick == o.tick
+    }
+
+    override var hash: Int {
+        var h = Hasher()
+        h.combine(checked); h.combine(side); h.combine(centerAboveBaseline)
+        return h.finalize()
+    }
 }

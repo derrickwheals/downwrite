@@ -11,7 +11,7 @@ Native macOS Markdown editor (SwiftUI + AppKit/TextKit 1). Goal: Bear-like editi
 | `Tests/DownwriteCoreTests` | Core unit tests — run on Linux and macOS. |
 | `Tests/DownwriteTests` | macOS integration tests (real `NSTextView`, WKWebView). |
 | `Packaging/` | `Info.plist` (template: `__VERSION__`/`__BUILD__`), entitlements, icon artwork + `AppIcon.icon`. |
-| `scripts/` | `build-app.sh`, `make-dmg.sh`, `linux-test.sh`, `generate-icons.py`. |
+| `scripts/` | `build-app.sh`, `make-dmg.sh`, `linux-test.sh`, `ci-local.sh`, `generate-icons.py`. |
 | `.github/workflows/` | `ci.yml` (Linux core + macOS build/test/e2e), `release.yml` (tag → DMG). |
 
 ## Commands
@@ -21,6 +21,7 @@ scripts/linux-test.sh                  # core tests in the Swift Docker image (w
 swift test                             # macOS: everything
 swift build && swift run Downwrite     # macOS: debug run
 scripts/build-app.sh                   # macOS: dist/Downwrite.app
+scripts/ci-local.sh [--shots] [--no-e2e]   # macOS: the whole macOS CI job locally (build, tests, package, real-app e2e) -> artifacts/summary.txt
 dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out=<dir> --selftest-input=<file.md>   # e2e, writes selftest-report.txt
 python3 scripts/generate-icons.py      # regenerate icon artwork (needs Pillow)
 ```
@@ -28,6 +29,7 @@ python3 scripts/generate-icons.py      # regenerate icon artwork (needs Pillow)
 In the cloud (Linux) container there is **no Xcode/macOS**. The app target cannot be compiled there. Workflow that works:
 1. Develop and test everything in `DownwriteCore` locally with `scripts/linux-test.sh` (Docker daemon may need `dockerd &`; pull `mirror.gcr.io/library/swift:6.1-noble` if Docker Hub rate-limits).
 2. Push the working branch; CI builds/tests the app on `macos-26` (Xcode 26.x, Swift 6.3). Read failures via the Actions logs (`get_job_logs` with a small `tail_lines`; the workflow already prints only error lines).
+   No Actions minutes? Run `scripts/ci-local.sh` on a Mac instead (same steps as the macOS job; `--shots` copies screenshots/reports into `docs/` for committing).
 3. Put `[shots]` in a commit message to make CI commit fresh screenshots to `docs/screenshots/` (normal push to the same branch — **never** force-push or push other branches from CI or by hand). `git pull --rebase` before your next push.
 
 ## Architecture rules
@@ -41,6 +43,7 @@ In the cloud (Linux) container there is **no Xcode/macOS**. The app target canno
 - Editor is **TextKit 1** (`DWLayoutManager`, explicit `NSTextStorage/NSLayoutManager/NSTextContainer`) for predictable custom drawing (code cards, pills, quote bars, rules). Do not touch `textView.textLayoutManager` — that silently flips it to TextKit 2/1 fallback.
 - Drawing order in `DWLayoutManager.drawBackground`: custom backgrounds (code cards, pills, quote bars, rules) first, `super` (system selection highlight) last — otherwise a selection inside code is painted over. Inline pills use `pillRects(forCharacterRange:)`: top = baseline − capHeight − gap, bottom = baseline − descender + gap (`pillGapRatio` × font size), *not* the whole line height. `DrawingTests` guard both with pixel checks.
 - Fence helpers (`FenceEditing`, Core): typing the third backtick at the start of a line (outside any open fence) replaces it with ```` ```\n\n``` ```` and leaves the caret after the opening fence; Return there steps into the empty body without inserting. `EditorTextView.insertText`/`insertNewline` call it before the normal paths.
+- Task checkboxes: a bulleted task's whole `- [ ] ` prefix is one marker (`StyleFlags.taskPrefix`, `TaskBox.prefix`) that reveals only while the caret is *inside* it (the reveal range is the interior, so a caret at the start of the item's text — where you type — never flips the layout; numbered tasks keep their number and raw box). While hidden, `MarkdownStyler` puts a `CheckboxMark` (`.dwCheckbox`) and a `.kern` of `checkboxColumn(size)` on the prefix's first character and `DWLayoutManager` draws the rounded square at that glyph's x (`checkboxRect(forCharacterAt:)`, also the click target); wrapped lines hang at indent + column. A click toggles through `ListEditing.toggleTask(..., keeping: selection)` so the caret never enters the hidden prefix.
 - Table of contents: `TableOfContents` (Core) flattens `analysis.headings` into `TOCRow`s (depth/parent; skipped levels add no depth) using `HeadingInfo.plainTitle` (the heading as the editor shows it, markers stripped); `MarkdownAnalysis.headingIndex(at:)` maps a caret offset to its section. The sidebar is a SwiftUI `.inspector` in `EditorScene` showing `TOCSidebar`; `TOCModel` (ObservableObject) is fed by `EditorCoordinator` (publishing is deferred one run-loop turn — `reanalyze` runs inside `updateNSView`, where publishing is forbidden) and clicks come back via `TOCModel.onSelect` → `EditorCoordinator.revealHeading(at:)` (caret to end of the heading line, editor first responder, `EditorTextView.scrollToTop`). Visibility is the `showTOC` default (⌃⌘O, toolbar button, View menu). Rows are keyed by heading index, never by offset, so ids stay stable while typing. On macOS 26 the inspector floats over the window: the `NSScrollView` keeps its full-width frame and insets its content (the text view narrows, `scroll.frame` does not) — measure `tv.frame.width` in tests, not the scroll view.
 - Light theme background is pure white (`Palette`); cards/rules are neutral greys to match. `AppTests.testLightEditorBackgroundIsPureWhite` and `testLightEditorBackgroundIsWhite` (Core) guard it.
 - Mermaid: `MermaidService` renders SVG in a hidden `WKWebView` (bundled `mermaid.min.js`, `securityLevel: strict`); `DiagramOverlay` owns one click-through `DiagramView` per block and tells the styler how much `paragraphSpacing` to reserve on the block's last line. Source collapses while the caret is outside the block.

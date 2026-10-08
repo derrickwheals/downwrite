@@ -62,4 +62,12 @@ final class ListEditingTests: XCTestCase {
         let e2 = ListEditing.toggleTask(in: t, box: NSRange(location: 10, length: 3))
         XCTAssertEqual(e2.apply(to: t), "- [ ] a\n- [ ] b")
     }
+
+    func testToggleTaskCanKeepTheCaretWhereItWas() {
+        let t = "- [ ] a\nline two"
+        let keep = NSRange(location: 12, length: 0)
+        let e = ListEditing.toggleTask(in: t, box: NSRange(location: 2, length: 3), keeping: keep)
+        XCTAssertEqual(e.apply(to: t), "- [x] a\nline two")
+        XCTAssertEqual(e.selection, keep, "clicking a drawn checkbox must not move the caret into the hidden prefix")
+    }
 }

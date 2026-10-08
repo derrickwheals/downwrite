@@ -341,6 +341,74 @@ enum SelfTest {
         }
         tv.setSelectedRange(NSRange(location: 0, length: 0))
 
+        // 6d. Task checkboxes: a drawn rounded square instead of `- [ ] `; a real mouse click ticks it and leaves the caret alone.
+        for theme in [ThemeChoice.light, .dark] {
+            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let open = (tv.string as NSString).range(of: "- [ ] Try ticking this one")
+            check(open.location != NSNotFound, "sample has an unticked task (\(theme.rawValue))")
+            guard open.location != NSNotFound, let layout = tv.layoutManager as? DWLayoutManager else { continue }
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            tv.scrollRangeToVisible(open)
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            check(tv.textStorage?.attribute(.dwCheckbox, at: open.location, effectiveRange: nil) != nil, "task shows a checkbox while the caret is elsewhere (\(theme.rawValue))")
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-tasks.png"))
+            guard var box = layout.checkboxRect(forCharacterAt: open.location) else { check(false, "checkbox has a rect"); continue }
+            box.origin.x += tv.textContainerOrigin.x; box.origin.y += tv.textContainerOrigin.y
+            let target = NSPoint(x: box.midX, y: box.midY)
+            guard tv.taskBox(at: target) != nil else { check(false, "the checkbox is a click target (\(theme.rawValue))"); continue }
+            func click() {
+                let p = tv.convert(target, to: nil)
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(e) }
+                }
+            }
+            click()
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            check(tv.string.contains("- [x] Try ticking this one"), "clicking the checkbox ticks it (\(theme.rawValue))")
+            check(tv.selectedRange() == NSRange(location: 0, length: 0), "…without moving the caret (\(theme.rawValue))", detail: "\(tv.selectedRange())")
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-tasks-ticked.png"))
+            click()
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            check(tv.string.contains("- [ ] Try ticking this one"), "a second click unticks it again (\(theme.rawValue))")
+
+            // Return after a task: the fresh, still empty item gets its own checkbox on its own full-height line (it used to
+            // collapse to a sliver and draw its box over the one above).
+            let lineEnd = NSMaxRange(open)
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: lineEnd, length: 0))
+            tv.insertNewline(nil)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            let fresh = lineEnd + 1
+            check(tv.string.utf16.count > fresh && tv.textStorage?.attribute(.dwCheckbox, at: fresh, effectiveRange: nil) != nil, "Return after a task starts a new checkbox item (\(theme.rawValue))")
+            if let newBox = layout.checkboxRect(forCharacterAt: fresh), let oldBox = layout.checkboxRect(forCharacterAt: open.location) {
+                let frag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: fresh), effectiveRange: nil)
+                let used = layout.lineFragmentUsedRect(forGlyphAt: layout.glyphIndexForCharacter(at: fresh), effectiveRange: nil).height
+                let oldUsed = layout.lineFragmentUsedRect(forGlyphAt: layout.glyphIndexForCharacter(at: open.location), effectiveRange: nil).height
+                check(abs(used - oldUsed) < 1.5, "the empty item's line is as tall as a normal one (\(theme.rawValue))", detail: "\(used) vs \(oldUsed)")
+                check(newBox.minY >= frag.minY - 0.5 && newBox.maxY <= frag.maxY + 0.5, "its checkbox stays inside its own line (\(theme.rawValue))", detail: "box \(newBox) line \(frag)")
+                check(newBox.minY >= oldBox.maxY - 0.5, "…and does not overlap the checkbox above (\(theme.rawValue))", detail: "\(newBox) vs \(oldBox)")
+            } else {
+                check(false, "the new item has a checkbox rect (\(theme.rawValue))")
+            }
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-task-new.png"))
+            tv.insertText("another", replacementRange: NSRange(location: NSNotFound, length: 0))
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-task-typed.png"))
+            // Take the added line out again so later steps see the sample as it was.
+            let added = NSRange(location: lineEnd, length: "\n- [ ] another".utf16.count)
+            if NSMaxRange(added) <= tv.string.utf16.count, (tv.string as NSString).substring(with: added) == "\n- [ ] another" {
+                tv.insertText("", replacementRange: added)
+            } else {
+                check(false, "the added task line is where expected (\(theme.rawValue))", detail: "\(tv.string.suffix(40))")
+            }
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+        }
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
