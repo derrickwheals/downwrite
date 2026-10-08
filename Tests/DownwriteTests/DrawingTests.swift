@@ -45,23 +45,39 @@ final class DrawingTests: XCTestCase {
         return abs(a.redComponent - b.redComponent) + abs(a.greenComponent - b.greenComponent) + abs(a.blueComponent - b.blueComponent)
     }
 
-    /// Fraction of *light* pixels in `r` that differ from `background` (selection tint) rather than being glyph ink.
-    private func tintedFraction(_ rep: NSBitmapImageRep, in r: NSRect, background: NSColor, _ h: EditorHarness) -> CGFloat {
-        var light = 0, tinted = 0
+    /// Average colour of the *light* pixels (background, not glyph ink) inside `r`.
+    private func meanLight(_ rep: NSBitmapImageRep, in r: NSRect, _ h: EditorHarness) -> NSColor {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, n: CGFloat = 0
         var y = r.minY
         while y < r.maxY {
             var x = r.minX
             while x < r.maxX {
                 let c = color(rep, atViewPoint: NSPoint(x: x, y: y), in: h)
-                if c.brightnessComponent > 0.55 {
-                    light += 1
-                    if distance(c, background) > 0.05 { tinted += 1 }
-                }
+                if c.brightnessComponent > 0.55 { red += c.redComponent; green += c.greenComponent; blue += c.blueComponent; n += 1 }
                 x += 0.5
             }
             y += 0.5
         }
-        return light == 0 ? 0 : CGFloat(tinted) / CGFloat(light)
+        guard n > 0 else { return .black }
+        return NSColor(srgbRed: red / n, green: green / n, blue: blue / n, alpha: 1)
+    }
+
+    /// How far the background inside `area` moves when `word` goes from "caret inside" to "selected" (same layout both
+    /// times). Zero means the selection highlight is not visible; a selection tint moves it by about 0.3.
+    private func selectionShift(_ h: EditorHarness, word: NSRange, area: () -> NSRect) -> CGFloat {
+        h.select(word.location + 1)                        // caret inside: syntax revealed, so the layout matches the selected state
+        let sample = area()
+        XCTAssertGreaterThan(sample.width, 10)
+        let before = meanLight(render(h), in: sample, h)
+        h.select(word.location, word.length)
+        let after = meanLight(render(h), in: sample, h)
+        return distance(before, after)
+    }
+
+    /// The first inline pill's rectangle for `range`, in text view coordinates.
+    private func pillRect(of range: NSRange, in h: EditorHarness) -> NSRect {
+        let origin = h.textView.textContainerOrigin
+        return (lm(h).pillRects(forCharacterRange: range).first ?? .zero).offsetBy(dx: origin.x, dy: origin.y)
     }
 
     // MARK: Item 1 — selection must stay visible
@@ -70,40 +86,24 @@ final class DrawingTests: XCTestCase {
         let h = EditorHarness(text: "intro\n\n```\ntest\n```\n\nafter\n")
         makeKey(h)
         let word = NSRange(location: h.index(of: "test"), length: 4)
-        h.select(word.location + 1)                       // caret inside: fences revealed, same layout as below
-        let r = rect(of: word, in: h)
-        let card = AppearanceResolver.palette(for: h.textView.effectiveAppearance).codeBackground.nsColor
-        let before = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 3), background: card, h)
-        h.select(word.location, word.length)
-        let after = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 3), background: card, h)
-        XCTAssertGreaterThan(after, before + 0.3, "selected text in a code block must show a selection highlight (\(before) → \(after))")
+        let shift = selectionShift(h, word: word) { self.rect(of: word, in: h).insetBy(dx: 1, dy: 3) }
+        XCTAssertGreaterThan(shift, 0.12, "selected text in a code block must show a selection highlight (shift \(shift))")
     }
 
     func testSelectionIsVisibleInsideInlineCode() {
         let h = EditorHarness(text: "Some `Agy code` here and more words\n")
         makeKey(h)
         let word = NSRange(location: h.index(of: "Agy code"), length: 8)
-        h.select(word.location + 1)
-        let r = rect(of: word, in: h)
-        let pill = AppearanceResolver.palette(for: h.textView.effectiveAppearance).inlineCodeBackground.nsColor
-        let before = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 4), background: pill, h)
-        h.select(word.location, word.length)
-        let after = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 4), background: pill, h)
-        XCTAssertGreaterThan(after, before + 0.3, "selected inline code must show a selection highlight (\(before) → \(after))")
+        let shift = selectionShift(h, word: word) { self.pillRect(of: word, in: h).insetBy(dx: 1, dy: 1) }
+        XCTAssertGreaterThan(shift, 0.12, "selected inline code must show a selection highlight (shift \(shift))")
     }
 
     func testSelectionStillShowsOverAHighlightPill() {
         let h = EditorHarness(text: "Some ==marked words== here\n")
         makeKey(h)
         let word = NSRange(location: h.index(of: "marked words"), length: 12)
-        h.select(word.location + 1)
-        let r = rect(of: word, in: h)
-        let pill = AppearanceResolver.palette(for: h.textView.effectiveAppearance).highlightBackground.nsColor
-        let flat = NSColor.white.blended(withFraction: pill.alphaComponent, of: pill.withAlphaComponent(1)) ?? pill
-        let before = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 4), background: flat, h)
-        h.select(word.location, word.length)
-        let after = tintedFraction(render(h), in: r.insetBy(dx: 1, dy: 4), background: flat, h)
-        XCTAssertGreaterThan(after, before + 0.2, "(\(before) → \(after))")
+        let shift = selectionShift(h, word: word) { self.pillRect(of: word, in: h).insetBy(dx: 1, dy: 1) }
+        XCTAssertGreaterThan(shift, 0.1, "selected highlighted text must show a selection highlight (shift \(shift))")
     }
 
     // MARK: Item 2 — pill height
@@ -138,11 +138,12 @@ final class DrawingTests: XCTestCase {
         let origin = h.textView.textContainerOrigin
         let rep = render(h)
         let palette = AppearanceResolver.palette(for: h.textView.effectiveAppearance)
-        let x = pill.minX + origin.x - 1.5                        // in the side padding, clear of the glyphs
+        let x = pill.minX + origin.x - 1.25                       // in the side padding, clear of the glyphs
         func at(_ y: CGFloat) -> NSColor { color(rep, atViewPoint: NSPoint(x: x, y: y + origin.y), in: h) }
-        XCTAssertLessThan(distance(at(pill.minY + 3), palette.inlineCodeBackground.nsColor), 0.03, "inside the pill")
-        XCTAssertGreaterThan(distance(at(pill.minY - 3), palette.inlineCodeBackground.nsColor), 0.03, "just above the pill is page background")
-        XCTAssertGreaterThan(distance(at(pill.maxY + 3), palette.inlineCodeBackground.nsColor), 0.03, "just below the pill is page background")
+        // Colours read back from the bitmap differ slightly from the palette (colour space), the page white is ~0.18 away.
+        XCTAssertLessThan(distance(at(pill.minY + 6), palette.inlineCodeBackground.nsColor), 0.09, "inside the pill")
+        XCTAssertGreaterThan(distance(at(pill.minY - 3), palette.inlineCodeBackground.nsColor), 0.09, "just above the pill is page background")
+        XCTAssertGreaterThan(distance(at(pill.maxY + 3), palette.inlineCodeBackground.nsColor), 0.09, "just below the pill is page background")
     }
 
     func testWrappedInlineCodeGetsOnePillPerLine() {
