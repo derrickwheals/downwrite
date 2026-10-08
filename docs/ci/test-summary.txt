@@ -1,1 +1,2 @@
-	 Executed 356 tests, with 0 failures (0 unexpected) in 38.132 (38.213) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 1.773 (1.775) seconds
+Test Case '-[DownwriteCoreTests.Formerror: Process '/Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xctest /Users/runner/work/downwrite/downwrite/.build/arm64-apple-macosx/debug/DownwritePackageTests.xctest' exited with unexpected signal code 11
