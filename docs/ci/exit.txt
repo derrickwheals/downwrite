@@ -1,1 +1,0 @@
-app exit status: 0 (128+N means killed by signal N: 11 = SIGSEGV, 6 = SIGABRT, 9 = SIGKILL)
