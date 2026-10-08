@@ -15,9 +15,12 @@ final class TaskCheckboxTests: XCTestCase {
         return r
     }
 
-    private func click(_ h: EditorHarness, at point: NSPoint, count: Int = 1) {
+    /// Sends a real mouse-down to the text view — but only after confirming the point hits a checkbox: a click that
+    /// misses falls through to `NSTextView`'s own mouse tracking, which waits for a mouse-up that never comes.
+    private func click(_ h: EditorHarness, at point: NSPoint) throws {
+        _ = try XCTUnwrap(h.textView.taskBox(at: point), "the point should be on a checkbox")
         let e = NSEvent.mouseEvent(with: .leftMouseDown, location: h.textView.convert(point, to: nil), modifierFlags: [], timestamp: 0,
-                                   windowNumber: h.window.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: 1)!
+                                   windowNumber: h.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
         h.textView.mouseDown(with: e)
     }
 
@@ -93,7 +96,7 @@ final class TaskCheckboxTests: XCTestCase {
         XCTAssertLessThan(box.maxY, line.maxY)
     }
 
-    func testClickingTheDrawnCheckboxTogglesWithoutMovingTheCaret() {
+    func testClickingTheDrawnCheckboxTogglesWithoutMovingTheCaret() throws {
         let h = EditorHarness(text: "intro\n\n- [ ] todo\nlast line\n")
         h.window.makeKeyAndOrderFront(nil)
         let end = h.textView.string.utf16.count
@@ -101,37 +104,38 @@ final class TaskCheckboxTests: XCTestCase {
         let p = h.index(of: "- [ ] todo")
         let r = boxRect(h, at: p)
         XCTAssertGreaterThan(r.width, 10)
-        click(h, at: NSPoint(x: r.midX, y: r.midY))
+        try click(h, at: NSPoint(x: r.midX, y: r.midY))
         XCTAssertEqual(h.textView.string, "intro\n\n- [x] todo\nlast line\n")
         XCTAssertEqual(h.textView.selectedRange(), NSRange(location: end, length: 0), "the caret stays put")
         XCTAssertNotNil(h.attrs(at: p)[.dwCheckbox], "…so the source stays hidden")
         XCTAssertEqual((h.attrs(at: p)[.dwCheckbox] as? CheckboxMark)?.checked, true)
-        click(h, at: NSPoint(x: r.midX, y: r.midY))
+        try click(h, at: NSPoint(x: r.midX, y: r.midY))
         XCTAssertEqual(h.textView.string, "intro\n\n- [ ] todo\nlast line\n", "a second click unticks it")
     }
 
-    func testClickingNextToTheCheckboxDoesNotToggle() {
+    func testOnlyTheCheckboxItselfIsAClickTarget() {
         let h = EditorHarness(text: "- [ ] todo\n")
-        h.window.makeKeyAndOrderFront(nil)
         h.select(h.textView.string.utf16.count)
         let r = boxRect(h, at: 0)
-        click(h, at: NSPoint(x: r.maxX + 40, y: r.midY))
-        XCTAssertEqual(h.textView.string, "- [ ] todo\n")
+        XCTAssertNotNil(h.textView.taskBox(at: NSPoint(x: r.midX, y: r.midY)))
+        XCTAssertNotNil(h.textView.taskBox(at: NSPoint(x: r.minX - 2, y: r.midY)), "a little slack around the box")
+        XCTAssertNil(h.textView.taskBox(at: NSPoint(x: r.maxX + 40, y: r.midY)), "the item's text is not a target")
+        XCTAssertNil(h.textView.taskBox(at: NSPoint(x: r.midX, y: r.maxY + 30)), "nor is the space below")
     }
 
-    func testToggleIsUndoable() {
+    func testToggleIsUndoable() throws {
         let h = EditorHarness(text: "- [ ] todo\n")
         h.window.makeKeyAndOrderFront(nil)
         h.window.makeFirstResponder(h.textView)
         h.select(h.textView.string.utf16.count)
         let r = boxRect(h, at: 0)
-        click(h, at: NSPoint(x: r.midX, y: r.midY))
+        try click(h, at: NSPoint(x: r.midX, y: r.midY))
         XCTAssertEqual(h.textView.string, "- [x] todo\n")
         h.textView.undoManager?.undo()
         XCTAssertEqual(h.textView.string, "- [ ] todo\n")
     }
 
-    func testClickingRawBoxStillTogglesWhileTheSourceIsShown() {
+    func testClickingRawBoxStillTogglesWhileTheSourceIsShown() throws {
         let h = EditorHarness(text: "- [ ] todo\n")
         h.window.makeKeyAndOrderFront(nil)
         h.select(3)                                         // caret inside the prefix: source shown
@@ -140,7 +144,7 @@ final class TaskCheckboxTests: XCTestCase {
         let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: 2, length: 3), actualCharacterRange: nil)
         var r = layout.boundingRect(forGlyphRange: glyphs, in: h.textView.textContainer!)
         r.origin.x += h.textView.textContainerOrigin.x; r.origin.y += h.textView.textContainerOrigin.y
-        click(h, at: NSPoint(x: r.midX, y: r.midY))
+        try click(h, at: NSPoint(x: r.midX, y: r.midY))
         XCTAssertEqual(h.textView.string, "- [x] todo\n")
     }
 

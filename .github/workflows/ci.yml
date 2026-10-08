@@ -42,6 +42,7 @@ jobs:
           fi
 
       - name: Unit and integration tests
+        timeout-minutes: 10   # a test stuck in an event-tracking loop must not hold the job for 40 minutes
         run: |
           swift test > test.log 2>&1
           STATUS=$?
@@ -150,6 +151,7 @@ jobs:
           echo "--- build errors ---"; grep -E "error:" build.log 2>/dev/null | sort -u | head -25
           echo "--- test result ---"; grep -E "Executed [0-9]+ tests" test.log 2>/dev/null | tail -1
           echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
+          echo "--- test log tail (a hung test is the last one started) ---"; tail -4 test.log 2>/dev/null
           echo "--- e2e report ---"; cat artifacts/e2e/selftest-report.txt 2>/dev/null | head -60
           echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null || true
           true

@@ -357,8 +357,10 @@ enum SelfTest {
             _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-tasks.png"))
             guard var box = layout.checkboxRect(forCharacterAt: open.location) else { check(false, "checkbox has a rect"); continue }
             box.origin.x += tv.textContainerOrigin.x; box.origin.y += tv.textContainerOrigin.y
+            let target = NSPoint(x: box.midX, y: box.midY)
+            guard tv.taskBox(at: target) != nil else { check(false, "the checkbox is a click target (\(theme.rawValue))"); continue }
             func click() {
-                let p = tv.convert(NSPoint(x: box.midX, y: box.midY), to: nil)
+                let p = tv.convert(target, to: nil)
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                   windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(e) }

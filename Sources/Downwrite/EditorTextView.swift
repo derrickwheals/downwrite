@@ -309,8 +309,13 @@ final class EditorTextView: NSTextView {
 
     // MARK: Mouse
 
-    /// The task whose checkbox is under `point`: the drawn square while the `- [ ] ` source is hidden, otherwise the
-    /// raw `[ ]` characters.
+    /// The task whose checkbox is under `point` (text view coordinates): the drawn square while the `- [ ] ` source is
+    /// hidden, otherwise the raw `[ ]` characters.
+    func taskBox(at point: NSPoint) -> TaskBox? {
+        guard let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer else { return nil }
+        return taskBox(atPoint: point, index: characterIndexForInsertion(at: point), analysis: analysis, layout: lm, container: tc)
+    }
+
     private func taskBox(atPoint point: NSPoint, index: Int, analysis: MarkdownAnalysis, layout lm: NSLayoutManager, container tc: NSTextContainer) -> TaskBox? {
         let origin = textContainerOrigin
         if let drawn = lm as? DWLayoutManager, let box = analysis.taskBox(onLine: analysis.lineIndex(at: index)), let prefix = box.prefix,
