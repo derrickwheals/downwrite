@@ -16,15 +16,25 @@ PASS  ⌘2 again removes the heading
 PASS  ⌘K inserts a link
 PASS  undo reverts the link
 PASS  typed text is saved to disk by the document system
+PASS  the saved document is not marked as edited before the outside change
+PASS  another process appends to the file
+PASS  a change made by another process appears without any action
+PASS  …and the caret stays where it was — {3, 0}
+PASS  …and the document is not marked as edited
+PASS  another process replaces the file atomically
+PASS  an atomic replace (temporary file + rename) is picked up too
+PASS  another process puts the original text back
+PASS  …and the editor follows it back — 1739 vs 1739 characters
+PASS  …still not marked as edited
 PASS  mermaid diagram rendered into a card
-PASS  diagram card has a sensible frame — (132.0, 1645.8999999999987, 719.0, 156.9375)
-DIAG gap before/after ensureLayout: last.y 1594.449999999999 → 1613.7999999999988; table spacing 300.0 vs grid 300.0 frame Optional((104.0, 1151.7199999999998, 775.0, 300.0))
-DIAG mermaid lines 42…48: first y=1613.1999999999994 h=0.09999999999990905, last y=1613.7999999999988 h=0.09999999999990905, card y=1645.8999999999987 h=156.9375, reserved=170.9375
+PASS  diagram card has a sensible frame — (132.0, 1645.8999999999983, 719.0, 156.9375)
+DIAG gap before/after ensureLayout: last.y 1613.7999999999984 → 1613.7999999999984; table spacing 300.0 vs grid 300.0 frame Optional((104.0, 1151.7199999999993, 775.0, 300.0))
+DIAG mermaid lines 42…48: first y=1613.199999999999 h=0.09999999999990905, last y=1613.7999999999984 h=0.09999999999990905, card y=1645.8999999999983 h=156.9375, reserved=170.9375
 PASS  collapsed Mermaid source takes no vertical space — heights 0.09999999999990905/0.09999999999990905
 PASS  diagram card sits directly under its collapsed source — gap 4.0
 PASS  table is shown as an editable grid
 PASS  grid has the Welcome table's shape — 6×2
-PASS  grid has a sensible frame — (104.0, 1151.7199999999998, 775.0, 300.0)
+PASS  grid has a sensible frame — (104.0, 1151.7199999999993, 775.0, 300.0)
 PASS  clicking into a cell gives it the keyboard
 PASS  Tab jumps to the next cell — Optional(DownwriteCore.TableCellPosition(row: 1, column: 1))
 PASS  ⇧Tab jumps back — Optional(DownwriteCore.TableCellPosition(row: 1, column: 0))
@@ -38,11 +48,11 @@ PASS  menu: Insert Column Right adds a column — 3 columns
 PASS  undo walks the table back — 6×2
 PASS  table of contents sidebar starts hidden
 PASS  ⌃⌘O turns the sidebar on
-PASS  the editor column narrows to make room for the sidebar — 983.0 → 733.0
+PASS  the editor column narrows to make room for the sidebar — 983.0 → 750.0
 PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
-PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1480.0
-PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1480.0, 983.0, 677.0)
+PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1484.0
+PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1484.0, 983.0, 677.0)
 PASS  the caret moves to the heading
 PASS  the editor keeps the keyboard after a click in the sidebar
 PASS  the clicked heading is highlighted in the sidebar
@@ -55,17 +65,14 @@ PASS  theme dark applies to the app
 PASS  editor palette follows dark
 PASS  screenshot of real window (dark)
 PASS  screenshot with the table of contents open (dark)
-PASS  typing the third backtick adds the closing fence — ike this one.
-
-
-```
+PASS  typing the third backtick adds the closing fence — the self-test.
 
 ```
-PASS  caret waits after the opening fence — {1701, 0}
-PASS  undo removes the auto-closed fence — .
 
-[^1]: Like this one.
-
+```
+PASS  caret waits after the opening fence — {1744, 0}
+PASS  undo removes the auto-closed fence — 
+Typed by the self-test.
 PASS  sample has a code block and inline code to select
 PASS  sample has a code block and inline code to select
 PASS  sample has an unticked task (light)
@@ -110,13 +117,13 @@ PASS  Keep on Top floats the window above others
 PASS  choosing it again puts the window back
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,3081 775×606", "104,6676 775×1507"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3078 729×633", "2,6757 729×1617"]
+DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3281 729×633", "2,6959 729×1617"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,3081 775×606", "104,6676 775×1507"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,2912 775×606", "104,6508 775×1507"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,3081 775×606", "104,6676 775×1507"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
