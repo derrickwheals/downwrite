@@ -4,8 +4,40 @@ import AppKit
 /// block-quote bars and horizontal rules. Everything is drawn *behind* the glyphs.
 final class DWLayoutManager: NSLayoutManager {
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        // Our cards, pills and bars go down first and the system's own background (which includes the selection
+        // highlight) last, so a selection inside a code block or inline code stays visible instead of being painted over.
+        drawCustomBackgrounds(forGlyphRange: glyphsToShow, at: origin)
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
-        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return }
+    }
+
+    /// Vertical breathing room between an inline pill's edge and the nearest ink (capital letters above, descenders
+    /// below), as a fraction of the font size.
+    static let pillGapRatio: CGFloat = 0.14
+
+    /// The rectangles (text-container coordinates) to fill for an inline pill covering `charRange`, one per line the
+    /// range occupies. A pill runs from just above the capital letters to just below the descenders of its font, with
+    /// the same gap at both ends, rather than filling the whole line height.
+    func pillRects(forCharacterRange charRange: NSRange) -> [NSRect] {
+        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return [] }
+        let glyphs = glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
+        var out: [NSRect] = []
+        enumerateLineFragments(forGlyphRange: glyphs) { lineRect, _, _, lineGlyphs, _ in
+            let part = NSIntersectionRange(glyphs, lineGlyphs)
+            guard part.length > 0 else { return }
+            let box = self.boundingRect(forGlyphRange: part, in: container)
+            let firstChar = min(self.characterIndexForGlyph(at: part.location), storage.length - 1)
+            let font = (storage.attribute(.font, at: firstChar, effectiveRange: nil) as? NSFont) ?? NSFont.systemFont(ofSize: 14)
+            let baseline = lineRect.minY + self.location(forGlyphAt: part.location).y
+            let gap = max(1.5, font.pointSize * Self.pillGapRatio)
+            let top = baseline - font.capHeight - gap
+            let bottom = baseline - font.descender + gap          // `descender` is negative
+            out.append(NSRect(x: box.minX, y: top, width: box.width, height: bottom - top))
+        }
+        return out
+    }
+
+    private func drawCustomBackgrounds(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        guard let storage = textStorage, textContainers.first != nil, storage.length > 0 else { return }
         let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
         let whole = NSRange(location: 0, length: storage.length)
 
@@ -27,14 +59,13 @@ final class DWLayoutManager: NSLayoutManager {
             NSBezierPath(roundedRect: card, xRadius: 9, yRadius: 9).fill()
         }
 
-        // Inline pills.
+        // Inline pills (inline code, highlights).
         storage.enumerateAttribute(.dwPill, in: charRange, options: []) { value, range, _ in
             guard let color = value as? NSColor else { return }
-            let glyphs = self.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-            self.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container) { rect, _ in
-                let r = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2.5, dy: 0.5)
+            for rect in self.pillRects(forCharacterRange: range) {
+                let r = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2.5, dy: 0)
                 color.setFill()
-                NSBezierPath(roundedRect: r, xRadius: 4.5, yRadius: 4.5).fill()
+                NSBezierPath(roundedRect: r, xRadius: min(4.5, r.height / 2), yRadius: min(4.5, r.height / 2)).fill()
             }
         }
 
