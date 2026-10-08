@@ -58,7 +58,7 @@ struct AppearancePane: View {
 
     var body: some View {
         Form {
-            Section("Appearance") {
+            Section("Theme") {
                 Picker("Appearance", selection: $theme) {
                     ForEach(ThemeChoice.allCases) { Text($0.label).tag($0.rawValue) }
                 }
