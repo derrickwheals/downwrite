@@ -526,19 +526,27 @@ enum SelfTest {
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 _ = capture(window: window, to: outDir.appendingPathComponent("window-theme-\(definition.id).png"))
             }
-            // Settings window with the pickers and previews (best effort: the window's title differs between macOS versions).
+            // The Settings window: opened with ⌘, and every tab captured; each must fit a small screen.
             defaults.set(ThemeCatalog.defaultLightID, forKey: Prefs.lightTheme)
             defaults.set(ThemeCatalog.defaultDarkID, forKey: Prefs.darkTheme)
             defaults.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
+            defaults.set(SettingsTab.appearance.rawValue, forKey: Prefs.settingsTab)
             ThemeChoice.applyCurrent()
             try? await Task.sleep(nanoseconds: 600_000_000)
             press(",", keyCode: 43, .command)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if let settings = NSApp.windows.first(where: { $0 !== window && $0.isVisible && $0.title.localizedCaseInsensitiveContains("settings") }) {
-                _ = capture(window: settings, to: outDir.appendingPathComponent("window-settings.png"))
-                settings.close()
-            } else {
-                report.append("DIAG settings window not found (titles: \(NSApp.windows.map(\.title)))")
+            let tabTitles = SettingsTab.allCases.map(\.title)
+            let settingsWindow = NSApp.windows.first { $0 !== window && $0.isVisible && (tabTitles.contains($0.title) || $0.title.localizedCaseInsensitiveContains("settings")) }
+            check(settingsWindow != nil, "⌘, opens the Settings window", detail: "windows: \(NSApp.windows.map(\.title))")
+            if let settingsWindow {
+                for tab in SettingsTab.allCases {
+                    defaults.set(tab.rawValue, forKey: Prefs.settingsTab)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    check(settingsWindow.frame.height < 620, "the \(tab.title) settings tab fits a small screen", detail: "\(Int(settingsWindow.frame.height)) pt tall, title “\(settingsWindow.title)”")
+                    _ = capture(window: settingsWindow, to: outDir.appendingPathComponent("window-settings-\(tab.rawValue).png"))
+                }
+                defaults.set(SettingsTab.appearance.rawValue, forKey: Prefs.settingsTab)
+                settingsWindow.close()
             }
             window.makeKeyAndOrderFront(nil)
         }

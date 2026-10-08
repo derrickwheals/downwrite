@@ -30,8 +30,9 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
   <img src="docs/screenshots/window-theme-radix-dark.png" width="32%" alt="Radix dark theme">
 </p>
 <p align="center">
-  <img src="docs/screenshots/window-light-source.png" width="48%" alt="The source view: raw Markdown in a plain monospaced editor">
-  <img src="docs/screenshots/window-settings.png" width="30%" alt="Settings: light and dark theme pickers with previews and the Add VS Code Theme button">
+  <img src="docs/screenshots/window-light-source.png" width="32%" alt="The source view: raw Markdown in a plain monospaced editor">
+  <img src="docs/screenshots/window-settings-appearance.png" width="32%" alt="Settings, Appearance tab: light and dark theme pickers with previews and the Add VS Code Theme button">
+  <img src="docs/screenshots/window-settings-editor.png" width="32%" alt="Settings, Editor tab: typography and spelling">
 </p>
 
 <sub>Screenshots are captured automatically from the real app on a macOS 26 runner by the end-to-end self-test (see Testing).</sub>
@@ -46,6 +47,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **Source view.** Prefer to see the raw Markdown? The **‹/›** button in the toolbar (left of Format), or View ▸ Show Markdown Source (⌘/), switches the window to a plain monospaced editor: every character shown, no hidden syntax, no table grids, diagram cards or checkboxes. Your text, caret and undo history carry across, formatting shortcuts still work on the raw text, and the table-of-contents sidebar keeps following your headings. It is per window and starts off.
 - **Follows the file on disk.** If another app (an editor, a sync client, `git checkout`…) changes the file while it is open and you have no unsaved edits, Downwrite reloads it within about a second — or the moment you switch back to it — keeping your place: only the changed text is replaced, so the scroll position and caret stay put. (With unsaved edits, macOS's usual "changed by another application" prompt applies when you save.)
 - **Keep on top.** Window ▸ Keep on Top (checkmarked while on) floats the current window above other windows, per window, until you turn it off.
+- **Settings in three tabs.** ⌘, opens **Appearance** (light / dark / system, the light and dark colour themes with previews, your imported VS Code themes), **Editor** (font, size, line spacing, text width, spell checking) and **General** (make Downwrite the default Markdown app, version, licences). It reopens on the tab you left it on.
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
 - **Colour themes.** Settings → Appearance has a **Light theme** and a **Dark theme** picker, each with a live preview: *Downwrite* (the original, the default), *Catppuccin* (Latte for light, Mocha for dark) and *Radix* (the slate and indigo scales of [Radix Colors](https://github.com/radix-ui/colors)). Which of the two shows follows the appearance setting below. Colour values are used under their MIT licences (see `THIRD-PARTY-NOTICES.md`).
 - **Your own themes from VS Code.** Settings ▸ Appearance ▸ **Add VS Code Theme…** takes a VS Code colour theme file (the `.json` files in a theme extension's `themes` folder; comments and trailing commas are fine, and `include`d base themes are followed). Downwrite uses the colours that make sense for prose (page, text, links, accent from the heading colour, code, quotes, highlight, selection), works out the rest, and nudges any colour that would be hard to read. The theme is offered under *Light theme* or *Dark theme* by how light its page is, selected straight away, and kept in `~/Library/Application Support/Downwrite/Themes` (remove it from the same Settings pane).
