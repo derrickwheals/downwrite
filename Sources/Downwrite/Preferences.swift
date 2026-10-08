@@ -1,8 +1,12 @@
 import AppKit
 import SwiftUI
+import DownwriteCore
 
 enum Prefs {
     static let theme = "theme"
+    /// Which colour theme is used while the editor is light / dark (`ThemeCatalog` ids).
+    static let lightTheme = "lightTheme"
+    static let darkTheme = "darkTheme"
     static let font = "fontChoice"
     static let fontSize = "fontSize"
     static let lineHeight = "lineHeight"
@@ -13,6 +17,8 @@ enum Prefs {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             theme: ThemeChoice.system.rawValue,
+            lightTheme: ThemeCatalog.defaultLightID,
+            darkTheme: ThemeCatalog.defaultDarkID,
             font: FontChoice.avenirNext.rawValue,
             fontSize: 17.0,
             lineHeight: 1.45,
