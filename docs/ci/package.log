@@ -1,43 +1,43 @@
 ▶ swift build (release)
 Building for production...
 [0/42] Write swift-version-7974D3F7F03D5E95.txt
-[1/42] Compiling cmark-gfm-extensions tasklist.c
-[2/42] Compiling cmark-gfm-extensions tagfilter.c
+[1/42] Compiling cmark-gfm-extensions tagfilter.c
+[2/42] Compiling cmark-gfm-extensions tasklist.c
 [3/42] Compiling cmark-gfm-extensions strikethrough.c
-[4/42] Compiling cmark-gfm-extensions ext_scanners.c
-[5/42] Compiling cmark-gfm-extensions core-extensions.c
-[6/42] Compiling cmark-gfm-extensions table.c
-[7/42] Compiling cmark-gfm xml.c
+[4/42] Compiling cmark-gfm-extensions core-extensions.c
+[5/42] Compiling cmark-gfm-extensions ext_scanners.c
+[6/42] Compiling cmark-gfm xml.c
+[7/42] Compiling cmark-gfm-extensions table.c
 [8/42] Compiling cmark-gfm syntax_extension.c
 [9/42] Compiling cmark-gfm-extensions autolink.c
 [10/42] Compiling cmark-gfm render.c
 [11/42] Compiling cmark-gfm registry.c
-[12/42] Compiling cmark-gfm scanners.c
-[13/42] Compiling cmark-gfm references.c
-[14/42] Compiling cmark-gfm plugin.c
-[15/42] Compiling cmark-gfm utf8.c
-[16/42] Compiling cmark-gfm plaintext.c
+[12/42] Compiling cmark-gfm references.c
+[13/42] Compiling cmark-gfm plugin.c
+[14/42] Compiling cmark-gfm plaintext.c
+[15/42] Compiling cmark-gfm scanners.c
+[16/42] Compiling cmark-gfm utf8.c
 [17/42] Compiling cmark-gfm map.c
-[18/42] Compiling cmark-gfm man.c
-[19/42] Compiling cmark-gfm linked_list.c
-[20/42] Compiling cmark-gfm latex.c
-[21/42] Compiling cmark-gfm node.c
+[18/42] Compiling cmark-gfm node.c
+[19/42] Compiling cmark-gfm man.c
+[20/42] Compiling cmark-gfm linked_list.c
+[21/42] Compiling cmark-gfm latex.c
 [22/42] Compiling cmark-gfm iterator.c
-[23/42] Compiling cmark-gfm houdini_html_u.c
-[24/42] Compiling cmark-gfm html.c
+[23/42] Compiling cmark-gfm html.c
+[24/42] Compiling cmark-gfm houdini_html_u.c
 [25/42] Compiling cmark-gfm houdini_html_e.c
 [26/42] Compiling cmark-gfm houdini_href_e.c
 [27/42] Compiling cmark-gfm footnotes.c
 [28/42] Compiling cmark-gfm cmark_ctype.c
-[29/42] Compiling cmark-gfm cmark.c
-[30/42] Compiling cmark-gfm commonmark.c
+[29/42] Compiling cmark-gfm commonmark.c
+[30/42] Compiling cmark-gfm cmark.c
 [31/42] Compiling cmark-gfm buffer.c
-[32/42] Compiling cmark-gfm arena.c
-[33/42] Write sources
+[32/42] Compiling cmark-gfm inlines.c
+[32/42] Write sources
 [34/42] Copying Resources
-[35/42] Write sources
-[37/42] Compiling CAtomic CAtomic.c
-[38/42] Compiling cmark-gfm inlines.c
+[34/42] Write sources
+[37/42] Compiling cmark-gfm arena.c
+[38/42] Compiling CAtomic CAtomic.c
 [39/42] Compiling cmark-gfm blocks.c
 [41/43] Compiling Markdown ChildIndexPath.swift
 [42/44] Compiling DownwriteCore Analysis.swift
@@ -60,7 +60,7 @@ Building for production...
 [#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
 [43/45] Write Objects.LinkFileList
 [44/45] Linking Downwrite
-Build of product 'Downwrite' complete! (81.11s)
+Build of product 'Downwrite' complete! (90.51s)
 ▶ assembling dist/Downwrite.app
 dist/Downwrite.app/Contents/Info.plist: OK
 ▶ compiling AppIcon.icon
