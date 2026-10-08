@@ -17,7 +17,7 @@ final class DrawingTests: XCTestCase {
     private func render(_ h: EditorHarness) -> NSBitmapImageRep {
         h.window.displayIfNeeded()
         h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
-        let tv = h.textView!
+        let tv: EditorTextView = h.textView
         let rep = tv.bitmapImageRepForCachingDisplay(in: tv.bounds)!
         tv.cacheDisplay(in: tv.bounds, to: rep)
         return rep
