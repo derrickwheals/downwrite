@@ -2,7 +2,7 @@
 # Packs dist/Downwrite.app into dist/Downwrite-<version>.dmg (macOS only). Run scripts/build-app.sh first.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-0.9.0}"
 DMG="dist/Downwrite-$VERSION.dmg"
 STAGE="$(mktemp -d)"
 cp -R dist/Downwrite.app "$STAGE/"

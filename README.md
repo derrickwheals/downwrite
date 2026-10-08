@@ -121,17 +121,17 @@ To share Downwrite outside your own Mac you need an Apple Developer ID certifica
 
 ```bash
 # 1. Build, sign with hardened runtime + secure timestamp
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" VERSION=1.0.0 BUILD=1 scripts/build-app.sh
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" VERSION=0.9.0 BUILD=1 scripts/build-app.sh
 
 # 2. Package
-VERSION=1.0.0 scripts/make-dmg.sh            # → dist/Downwrite-1.0.0.dmg
+VERSION=0.9.0 scripts/make-dmg.sh            # → dist/Downwrite-0.9.0.dmg
 
 # 3. Notarize and staple (one-time: xcrun notarytool store-credentials "downwrite-notary" …)
-xcrun notarytool submit dist/Downwrite-1.0.0.dmg --keychain-profile "downwrite-notary" --wait
-xcrun stapler staple dist/Downwrite-1.0.0.dmg
+xcrun notarytool submit dist/Downwrite-0.9.0.dmg --keychain-profile "downwrite-notary" --wait
+xcrun stapler staple dist/Downwrite-0.9.0.dmg
 
 # 4. Verify
-spctl --assess --type open --context context:primary-signature -v dist/Downwrite-1.0.0.dmg
+spctl --assess --type open --context context:primary-signature -v dist/Downwrite-0.9.0.dmg
 ```
 
 The app is **not sandboxed** (it reads sibling files for relative links and opens documents anywhere you point it).
@@ -140,7 +140,7 @@ The app is **not sandboxed** (it reads sibling files for relative links and open
 
 ### Releases from GitHub
 
-Pushing a tag like `v1.0.0` runs `.github/workflows/release.yml`, which builds on a `macos-26` runner, packages `Downwrite-<version>.dmg` and attaches it to a GitHub Release. If the repository has the secrets `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `DEVELOPER_ID_NAME`, `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID` and `NOTARY_PASSWORD` (an app-specific password), the release is Developer-ID signed and notarized; otherwise it is ad-hoc signed.
+Pushing a tag like `v0.9.0` runs `.github/workflows/release.yml`, which builds on a `macos-26` runner, packages `Downwrite-<version>.dmg` and attaches it to a GitHub Release. If the repository has the secrets `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `DEVELOPER_ID_NAME`, `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID` and `NOTARY_PASSWORD` (an app-specific password), the release is Developer-ID signed and notarized; otherwise it is ad-hoc signed.
 
 ## Testing
 
