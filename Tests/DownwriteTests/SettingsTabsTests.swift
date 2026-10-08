@@ -99,7 +99,7 @@ final class SettingsTabsTests: XCTestCase {
         // Three rows stacked as the pane does: as tall as three short ones, whatever the names are.
         func stack(_ names: [String]) -> some View {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(names, id: \.self) { ImportedThemeRow(theme: definition($0), remove: {}) }
+                ForEach(names, id: \.self) { ImportedThemeRow(theme: self.definition($0), remove: {}) }
             }
             .frame(width: 440, alignment: .leading)
         }
