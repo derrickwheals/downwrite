@@ -1,3 +1,1 @@
-    |                                                                      `- error: implicit use of 'self' in closure; use 'self.' to make capture semantics explicit
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/SettingsTabsTests.swift:102:70: error: implicit use of 'self' in closure; use 'self.' to make capture semantics explicit
-error: fatalError
+	 Executed 454 tests, with 0 failures (0 unexpected) in 50.152 (50.277) seconds
