@@ -35,6 +35,8 @@ struct EditorScene: View {
     @AppStorage(Prefs.lineHeight) private var lineHeight = 1.45
     @AppStorage(Prefs.width) private var width = 720.0
     @AppStorage(Prefs.spellCheck) private var spellCheck = false
+    @AppStorage(Prefs.lightTheme) private var lightTheme = ThemeCatalog.defaultLightID
+    @AppStorage(Prefs.darkTheme) private var darkTheme = ThemeCatalog.defaultDarkID
     @AppStorage(Prefs.showTOC) private var showTOC = false
     @StateObject private var toc = TOCModel()
     /// The source view is per window and starts off.
@@ -44,7 +46,7 @@ struct EditorScene: View {
 
     private var settings: EditorSettings {
         EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
-                       spellCheck: spellCheck)
+                       spellCheck: spellCheck, lightTheme: lightTheme, darkTheme: darkTheme)
     }
 
     var body: some View {
@@ -297,6 +299,8 @@ struct SettingsView: View {
     @AppStorage(Prefs.lineHeight) private var lineHeight = 1.45
     @AppStorage(Prefs.width) private var width = 720.0
     @AppStorage(Prefs.spellCheck) private var spellCheck = false
+    @AppStorage(Prefs.lightTheme) private var lightTheme = ThemeCatalog.defaultLightID
+    @AppStorage(Prefs.darkTheme) private var darkTheme = ThemeCatalog.defaultDarkID
     @State private var message: String?
 
     var body: some View {
@@ -306,6 +310,17 @@ struct SettingsView: View {
                     ForEach(ThemeChoice.allCases) { Text($0.label).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
+                Picker("Light theme", selection: $lightTheme) {
+                    ForEach(ThemeCatalog.themes(for: .light)) { Text($0.name).tag($0.id) }
+                }
+                Picker("Dark theme", selection: $darkTheme) {
+                    ForEach(ThemeCatalog.themes(for: .dark)) { Text($0.name).tag($0.id) }
+                }
+                HStack(spacing: 12) {
+                    ThemePreview(palette: ThemeCatalog.palette(id: lightTheme, for: .light), label: "Light")
+                    ThemePreview(palette: ThemeCatalog.palette(id: darkTheme, for: .dark), label: "Dark")
+                }
+                .accessibilityIdentifier("theme-previews")
             }
             Section("Typography") {
                 Picker("Font", selection: $font) {

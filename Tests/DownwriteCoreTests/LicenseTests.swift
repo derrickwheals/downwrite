@@ -23,10 +23,11 @@ final class LicenseTests: XCTestCase {
 
     func testThirdPartyNoticesCoverEveryBundledComponent() throws {
         let notices = try read("THIRD-PARTY-NOTICES.md")
-        for name in ["swift-markdown", "cmark-gfm", "Mermaid", "Apache-2.0", "MIT"] {
+        for name in ["swift-markdown", "cmark-gfm", "Mermaid", "Catppuccin", "Radix Colors", "Apache-2.0", "MIT"] {
             XCTAssertTrue(notices.contains(name), "missing \(name)")
         }
-        for file in ["swift-markdown-LICENSE.txt", "swift-markdown-NOTICE.txt", "cmark-gfm-COPYING.txt", "mermaid-LICENSE.txt"] {
+        for file in ["swift-markdown-LICENSE.txt", "swift-markdown-NOTICE.txt", "cmark-gfm-COPYING.txt", "mermaid-LICENSE.txt",
+                     "catppuccin-LICENSE.txt", "radix-colors-LICENSE.txt"] {
             let text = try read("ThirdParty/\(file)")
             XCTAssertFalse(text.isEmpty, file)
             XCTAssertTrue(notices.contains(file), "\(file) not referenced in THIRD-PARTY-NOTICES.md")

@@ -8,6 +8,9 @@ struct EditorSettings: Equatable {
     var lineHeight: Double
     var width: Double
     var spellCheck: Bool = false
+    /// Colour themes (`ThemeCatalog` ids) used while the editor is light / dark.
+    var lightTheme: String = ThemeCatalog.defaultLightID
+    var darkTheme: String = ThemeCatalog.defaultDarkID
 }
 
 /// SwiftUI wrapper around the AppKit editor.
@@ -97,7 +100,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tv.layoutManager?.delegate = self
         tv.layoutManager?.allowsNonContiguousLayout = true
         applySettings(s)
-        styler = MarkdownStyler(typography: typography, palette: AppearanceResolver.palette(for: tv.effectiveAppearance))
+        styler = MarkdownStyler(typography: typography, palette: currentPalette(for: tv.effectiveAppearance))
         overlay = DiagramOverlay(textView: tv, palette: styler.palette)
         overlay.onReservedHeightsChanged = { [weak self] in self?.reservedHeightsChanged() }
         tableOverlay = TableOverlay(coordinator: self, textView: tv)
@@ -125,6 +128,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         }
         if s != settings {
             applySettings(s)
+            _ = refreshPalette()                      // a different light/dark theme may have been chosen
             reanalyzeNeeded = true
         }
         if reanalyzeNeeded { reanalyze() }
@@ -218,7 +222,26 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
 
     // MARK: Pipeline
 
-    private var isDark: Bool { styler.palette == Palette.palette(for: .dark) }
+    private var isDark: Bool { styler.palette.isDark }
+
+    /// The palette for the appearance the editor is showing in, from the light/dark themes chosen in Settings.
+    private func currentPalette(for appearance: NSAppearance) -> Palette {
+        AppearanceResolver.palette(for: appearance, lightTheme: settings?.lightTheme ?? ThemeCatalog.defaultLightID,
+                                   darkTheme: settings?.darkTheme ?? ThemeCatalog.defaultDarkID)
+    }
+
+    /// Re-reads the palette (appearance or chosen theme changed) and applies it to the styler, overlays and window chrome.
+    /// Returns whether it changed; the caller re-analyses and restyles.
+    private func refreshPalette() -> Bool {
+        guard let tv = textView, styler != nil else { return false }
+        let palette = currentPalette(for: tv.effectiveAppearance)
+        guard palette != styler.palette else { return false }
+        styler.palette = palette
+        overlay.setPalette(palette)
+        tableOverlay.setPalette()
+        applyChrome()
+        return true
+    }
 
     func reanalyze() {
         guard let tv = textView else { return }
@@ -302,14 +325,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     }
 
     func appearanceDidChange() {
-        guard let tv = textView, styler != nil else { return }
-        let palette = AppearanceResolver.palette(for: tv.effectiveAppearance)
-        guard palette != styler.palette else { return }
-        styler.palette = palette
-        overlay.setPalette(palette)
-        tableOverlay.setPalette()
-        applyChrome()
-        reanalyze()
+        if refreshPalette() { reanalyze() }
     }
 
     private func reservedHeightsChanged() {

@@ -84,8 +84,15 @@ enum AppearanceResolver {
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
     }
 
+    /// The default (Downwrite) palette for an appearance.
     static func palette(for appearance: NSAppearance) -> Palette {
         Palette.palette(for: theme(for: appearance))
+    }
+
+    /// The palette of the chosen light or dark theme, whichever matches the appearance.
+    static func palette(for appearance: NSAppearance, lightTheme: String, darkTheme: String) -> Palette {
+        let theme = theme(for: appearance)
+        return ThemeCatalog.palette(id: theme == .dark ? darkTheme : lightTheme, for: theme)
     }
 }
 

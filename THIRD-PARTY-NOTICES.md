@@ -8,6 +8,8 @@ repository and in `Downwrite.app/Contents/Resources/Legal/` inside the app.
 | --- | --- | --- | --- | --- |
 | [swift-markdown](https://github.com/swiftlang/swift-markdown) | Markdown parsing (Swift package, linked into the app) | Apache-2.0 | © 2021 Apple Inc. and the Swift project authors | `ThirdParty/swift-markdown-LICENSE.txt`, `ThirdParty/swift-markdown-NOTICE.txt` |
 | [cmark-gfm](https://github.com/github/cmark-gfm) (via [swift-cmark](https://github.com/swiftlang/swift-cmark)) | CommonMark + GFM parser used by swift-markdown | BSD-2-Clause (with MIT components; see file) | © 2014 John MacFarlane, GitHub, Inc. and contributors | `ThirdParty/cmark-gfm-COPYING.txt` |
+| [Catppuccin](https://github.com/catppuccin/palette) (palette, Latte and Mocha) | Colour values for the *Catppuccin Latte* and *Catppuccin Mocha* editor themes (hex values only; no code) | MIT | © 2021 Catppuccin | `ThirdParty/catppuccin-LICENSE.txt` |
+| [Radix Colors](https://github.com/radix-ui/colors) (slate, indigo, yellow scales) | Colour values for the *Radix* editor themes (hex values only; no code) | MIT | © 2021–2022 Modulz | `ThirdParty/radix-colors-LICENSE.txt` |
 | [Mermaid](https://github.com/mermaid-js/mermaid) 11.17.2 | Diagram rendering (`mermaid.min.js`, bundled and run offline in a WebKit view) | MIT | © 2014 – 2022 Knut Sveidqvist | `ThirdParty/mermaid-LICENSE.txt` |
 
 ## Libraries inside the Mermaid bundle

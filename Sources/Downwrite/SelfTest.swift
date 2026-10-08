@@ -508,6 +508,41 @@ enum SelfTest {
             window.level = .normal                                   // whatever happened, later steps expect a normal window
         }
 
+        // 6g. Colour themes: every built-in theme is chosen through the preferences (as Settings does), shows in the real window,
+        // and is screenshotted; the Settings window with its pickers and previews is captured too.
+        do {
+            let defaults = UserDefaults.standard
+            for definition in ThemeCatalog.builtIn {
+                let dark = definition.appearance == .dark
+                defaults.set(dark ? ThemeChoice.dark.rawValue : ThemeChoice.light.rawValue, forKey: Prefs.theme)
+                defaults.set(definition.id, forKey: dark ? Prefs.darkTheme : Prefs.lightTheme)
+                ThemeChoice.applyCurrent()
+                let applied = await waitUntil(timeout: 5) { coordinator.styler.palette == definition.palette }
+                check(applied, "theme \(definition.id) reaches the editor")
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                check(tv.backgroundColor == definition.palette.background.nsColor, "theme \(definition.id) colours the page")
+                tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "comes back", plus: 3), length: 0))
+                tv.scrollToBeginningOfDocument(nil)
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-theme-\(definition.id).png"))
+            }
+            // Settings window with the pickers and previews (best effort: the window's title differs between macOS versions).
+            defaults.set(ThemeCatalog.defaultLightID, forKey: Prefs.lightTheme)
+            defaults.set(ThemeCatalog.defaultDarkID, forKey: Prefs.darkTheme)
+            defaults.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            press(",", keyCode: 43, .command)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if let settings = NSApp.windows.first(where: { $0 !== window && $0.isVisible && $0.title.localizedCaseInsensitiveContains("settings") }) {
+                _ = capture(window: settings, to: outDir.appendingPathComponent("window-settings.png"))
+                settings.close()
+            } else {
+                report.append("DIAG settings window not found (titles: \(NSApp.windows.map(\.title)))")
+            }
+            window.makeKeyAndOrderFront(nil)
+        }
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
