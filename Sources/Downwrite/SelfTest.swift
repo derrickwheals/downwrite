@@ -386,8 +386,9 @@ enum SelfTest {
             check(tv.string.utf16.count > fresh && tv.textStorage?.attribute(.dwCheckbox, at: fresh, effectiveRange: nil) != nil, "Return after a task starts a new checkbox item (\(theme.rawValue))")
             if let newBox = layout.checkboxRect(forCharacterAt: fresh), let oldBox = layout.checkboxRect(forCharacterAt: open.location) {
                 let frag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: fresh), effectiveRange: nil)
-                let oldFrag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: open.location), effectiveRange: nil)
-                check(abs(frag.height - oldFrag.height) < 1.5, "the empty item's line is as tall as a normal one (\(theme.rawValue))", detail: "\(frag.height) vs \(oldFrag.height)")
+                let used = layout.lineFragmentUsedRect(forGlyphAt: layout.glyphIndexForCharacter(at: fresh), effectiveRange: nil).height
+                let oldUsed = layout.lineFragmentUsedRect(forGlyphAt: layout.glyphIndexForCharacter(at: open.location), effectiveRange: nil).height
+                check(abs(used - oldUsed) < 1.5, "the empty item's line is as tall as a normal one (\(theme.rawValue))", detail: "\(used) vs \(oldUsed)")
                 check(newBox.minY >= frag.minY - 0.5 && newBox.maxY <= frag.maxY + 0.5, "its checkbox stays inside its own line (\(theme.rawValue))", detail: "box \(newBox) line \(frag)")
                 check(newBox.minY >= oldBox.maxY - 0.5, "…and does not overlap the checkbox above (\(theme.rawValue))", detail: "\(newBox) vs \(oldBox)")
             } else {

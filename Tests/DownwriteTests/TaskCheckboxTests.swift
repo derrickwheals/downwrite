@@ -28,7 +28,9 @@ final class TaskCheckboxTests: XCTestCase {
         let h = EditorHarness(text: "intro\n\n- [ ] todo\n- [x] done\n")
         h.select(0)
         let open = h.index(of: "- [ ] todo")
-        for i in 0..<6 { XCTAssertTrue(h.isHidden(at: open + i), "prefix character \(i) hidden") }
+        for i in 0..<6 { XCTAssertEqual(h.color(at: open + i), NSColor.clear, "prefix character \(i) is invisible") }
+        // (The bullet keeps the body font so an empty item still gets a normal line; the rest are ~zero-size.)
+        for i in 1..<6 { XCTAssertTrue(h.isHidden(at: open + i), "prefix character \(i) hidden") }
         XCTAssertFalse(h.isHidden(at: open + 6), "the item's text stays visible")
         let mark = try XCTUnwrap(h.attrs(at: open)[.dwCheckbox] as? CheckboxMark)
         XCTAssertFalse(mark.checked)
@@ -45,7 +47,8 @@ final class TaskCheckboxTests: XCTestCase {
         XCTAssertNotNil(h.attrs(at: p)[.dwCheckbox], "caret at the start of the item: still a checkbox")
         h.select(p + 6)
         XCTAssertNotNil(h.attrs(at: p)[.dwCheckbox], "caret where the text starts (where you type): still a checkbox")
-        XCTAssertTrue(h.isHidden(at: p))
+        XCTAssertEqual(h.color(at: p), NSColor.clear)
+        XCTAssertTrue(h.isHidden(at: p + 1))
         h.select(p + 3)
         XCTAssertNil(h.attrs(at: p)[.dwCheckbox], "caret inside the prefix shows the source")
         XCTAssertFalse(h.isHidden(at: p))
@@ -165,9 +168,15 @@ final class TaskCheckboxTests: XCTestCase {
         let layout = lm(h)
         let box = try XCTUnwrap(layout.checkboxRect(forCharacterAt: index), file: file, line: line)
         let refBox = try XCTUnwrap(layout.checkboxRect(forCharacterAt: reference), file: file, line: line)
-        let frag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: index), effectiveRange: nil)
-        let refFrag = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: reference), effectiveRange: nil)
-        XCTAssertEqual(frag.height, refFrag.height, accuracy: 1.0, "an empty item is as tall as one with text", file: file, line: line)
+        let glyph = layout.glyphIndexForCharacter(at: index), refGlyph = layout.glyphIndexForCharacter(at: reference)
+        let frag = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let refFrag = layout.lineFragmentRect(forGlyphAt: refGlyph, effectiveRange: nil)
+        // (The rect of a paragraph's last line also holds its paragraph spacing, so compare the *used* rects.)
+        XCTAssertEqual(layout.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).height,
+                       layout.lineFragmentUsedRect(forGlyphAt: refGlyph, effectiveRange: nil).height, accuracy: 1.0,
+                       "an empty item is as tall as one with text", file: file, line: line)
+        XCTAssertEqual(layout.location(forGlyphAt: glyph).y, layout.location(forGlyphAt: refGlyph).y, accuracy: 1.0,
+                       "the baseline sits where it does in a normal line", file: file, line: line)
         XCTAssertGreaterThanOrEqual(box.minY, frag.minY - 0.5, "the box does not rise above its own line", file: file, line: line)
         XCTAssertLessThanOrEqual(box.maxY, frag.maxY + 0.5, "…or sink below it", file: file, line: line)
         XCTAssertEqual(box.minY - frag.minY, refBox.minY - refFrag.minY, accuracy: 1.5, "same place in its line as the box above", file: file, line: line)

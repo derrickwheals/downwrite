@@ -16,8 +16,6 @@ final class MarkdownStyler {
     let typography: Typography
     var palette: Palette
     private let hiddenFont = NSFont.systemFont(ofSize: 0.1)
-    /// Only used to ask TextKit how tall a line of a given font is (`defaultLineHeight(for:)`).
-    private static let lineHeightProbe = NSLayoutManager()
 
     init(typography: Typography, palette: Palette) {
         self.typography = typography
@@ -158,8 +156,14 @@ final class MarkdownStyler {
             let font = typography.font(size: look.size, bold: look.bold, mono: look.mono)
             let mark = CheckboxMark(checked: task.checked, side: checkboxSide(look.size), centerAboveBaseline: (font.capHeight + font.xHeight) / 4,
                                     accent: palette.accent.nsColor, outline: palette.marker.nsColor, tick: palette.background.nsColor)
-            // The first (hidden, ~zero-width) character carries the box; its kern keeps the item's text clear of it.
-            storage.addAttributes([.dwCheckbox: mark, .kern: checkboxColumn(look.size)], range: NSRange(location: prefix.location, length: 1))
+            // The first character (the bullet) carries the box. It keeps the body font — clear, so invisible — because an item
+            // that is still empty (just after Return) has nothing else to give its line normal height and baseline: with only
+            // ~zero-size characters the line collapses and the box spills into the line above. Its own width is taken out of
+            // the kern, which keeps the item's text exactly one `checkboxColumn` clear of the box.
+            let bullet = (storage.string as NSString).substring(with: NSRange(location: prefix.location, length: 1))
+            let bulletWidth = (bullet as NSString).size(withAttributes: [.font: font]).width
+            storage.addAttributes([.dwCheckbox: mark, .font: font, .kern: max(0, checkboxColumn(look.size) - bulletWidth)],
+                                  range: NSRange(location: prefix.location, length: 1))
         }
     }
 
@@ -230,10 +234,6 @@ final class MarkdownStyler {
                 // The hidden `- [ ] ` takes no room itself: wrapped lines line up with the text after the drawn checkbox.
                 prefixRange.length = max(0, min(prefixRange.length, tp.location - line.range.location))
                 extra = checkboxColumn(look.size)
-                // An empty item (just after Return) is nothing but hidden ~zero-size characters, which would collapse the
-                // line and make the box spill into the line above (and leave a ghost behind). Keep it as tall as a normal line.
-                let font = typography.font(size: look.size, bold: look.bold, mono: look.mono)
-                p.minimumLineHeight = Self.lineHeightProbe.defaultLineHeight(for: font) * typography.lineHeight
             }
             let prefix = storage.attributedSubstring(from: prefixRange).string.replacingOccurrences(of: "\t", with: "    ")
             let width = (prefix as NSString).size(withAttributes: [.font: typography.font(size: look.size, bold: look.bold)]).width
