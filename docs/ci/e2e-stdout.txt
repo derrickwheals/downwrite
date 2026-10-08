@@ -1,16 +1,3 @@
-PASS  ⇧Tab jumps back — Optional(DownwriteCore.TableCellPosition(row: 1, column: 0))
-PASS  Tab in the last cell adds a row — 7 rows
-PASS  focus lands in the new row — Optional(DownwriteCore.TableCellPosition(row: 6, column: 0))
-PASS  typing in the new cell writes Markdown into the document
-PASS  model follows what was typed — Qz
-DIAG table menu: Insert Row Above | Insert Row Below | Insert Column Left | Insert Column Right | Move Row Up | Move Row Down | Move Column Left | Move Column Right | Duplicate Row | Duplicate Column | Clear Row | Clear Column | Delete Row | Delete Column | Column Alignment | Sort Column A → Z | Sort Column Z → A | Edit as Markdown | Delete Table | Cut | Copy | Paste
-PASS  right-click menu has the table actions
-PASS  menu: Insert Column Right adds a column — 3 columns
-PASS  undo walks the table back — 6×2
-PASS  table of contents sidebar starts hidden
-PASS  ⌃⌘O turns the sidebar on
-PASS  the editor column narrows to make room for the sidebar — 983.0 → 733.0
-PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
 PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1480.0
 PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1480.0, 983.0, 677.0)
@@ -26,15 +13,28 @@ PASS  theme dark applies to the app
 PASS  editor palette follows dark
 PASS  screenshot of real window (dark)
 PASS  screenshot with the table of contents open (dark)
+PASS  typing the third backtick adds the closing fence — ike this one.
+
+
+```
+
+```
+PASS  caret waits after the opening fence — {1701, 0}
+PASS  undo removes the auto-closed fence — .
+
+[^1]: Like this one.
+
+PASS  sample has a code block and inline code to select
+PASS  sample has a code block and inline code to select
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
 DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,2641 775×606", "104,6237 775×1507"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 734 pt, inset 30.0, grid frames ["2,2774 730×606", "2,6426 730×1617"]
+DIAG README sidebar open: text view 744 pt, inset 30.0, grid frames ["2,2741 740×606", "2,6392 740×1589"]
 PASS  README tables stay lined up with the sidebar open
 DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,2641 775×606", "104,6237 775×1507"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 733 pt, inset 30.0, grid frames ["2,2774 729×606", "2,6426 729×1617"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,2641 775×606", "104,6237 775×1507"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED

@@ -304,6 +304,43 @@ enum SelfTest {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
+        // 6b. Editing helpers: the third backtick at the start of a line closes the fence; undo takes it back in one step.
+        do {
+            let before = tv.string
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: tv.string.utf16.count, length: 0))
+            tv.insertText("\n\n", replacementRange: NSRange(location: NSNotFound, length: 0))
+            for _ in 0..<3 { tv.insertText("`", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+            check(tv.string.hasSuffix("```\n\n```"), "typing the third backtick adds the closing fence", detail: String(tv.string.suffix(24)))
+            let opening = NSRange(location: tv.string.utf16.count - 8, length: 0)
+            check(tv.selectedRange().location == opening.location + 3, "caret waits after the opening fence", detail: "\(tv.selectedRange())")
+            tv.undoManager?.undo()
+            check(!tv.string.hasSuffix("```\n\n```"), "undo removes the auto-closed fence", detail: String(tv.string.suffix(24)))
+            // Put the document back exactly as it was for the screenshots below.
+            while tv.string != before, tv.undoManager?.canUndo == true, tv.string.utf16.count > before.utf16.count { tv.undoManager?.undo() }
+        }
+
+        // 6c. Selection stays visible on top of code cards and inline code pills.
+        for theme in [ThemeChoice.light, .dark] {
+            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let code = (tv.string as NSString).range(of: "Hello")
+            let inline = (tv.string as NSString).range(of: "inline code")
+            check(code.location != NSNotFound && inline.location != NSNotFound, "sample has a code block and inline code to select")
+            guard code.location != NSNotFound, inline.location != NSNotFound else { continue }
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: code.location, length: code.length + 12))
+            tv.scrollRangeToVisible(code)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-code-selection.png"))
+            tv.setSelectedRange(inline)
+            tv.scrollRangeToVisible(inline)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-inline-selection.png"))
+        }
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()

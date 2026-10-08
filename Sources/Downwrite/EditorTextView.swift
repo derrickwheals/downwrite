@@ -257,10 +257,26 @@ final class EditorTextView: NSTextView {
     }
 
     override func insertNewline(_ sender: Any?) {
-        if !hasMarkedText(), let edit = ListEditing.returnKey(in: string, selection: selectedRange()) {
+        if !hasMarkedText(), let edit = FenceEditing.returnEdit(in: string, selection: selectedRange()) {
+            // Return on a freshly opened fence steps into its empty body; nothing is inserted.
+            setSelectedRange(edit.selection)
+            scrollRangeToVisible(edit.selection)
+        } else if !hasMarkedText(), let edit = ListEditing.returnKey(in: string, selection: selectedRange()) {
             apply(edit)
         } else {
             super.insertNewline(sender)
+        }
+    }
+
+    /// Typing the third backtick at the start of a line closes the code fence for you.
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        let typed = (string as? String) ?? (string as? NSAttributedString)?.string
+        let sel = selectedRange()
+        let atCaret = replacementRange.location == NSNotFound || (replacementRange.length == 0 && replacementRange.location == sel.location)
+        if !hasMarkedText(), atCaret, let typed, let edit = FenceEditing.autoCloseEdit(typing: typed, in: self.string, selection: sel) {
+            apply(edit)
+        } else {
+            super.insertText(string, replacementRange: replacementRange)
         }
     }
 
