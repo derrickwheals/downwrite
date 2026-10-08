@@ -50,6 +50,6 @@ flowchart LR
 
 ---
 
-Footnotes[^1] and `$math$` styling are understood too. Open **Settings** (⌘,) to choose a theme and a font.
+Footnotes[^1] and `$math$` styling are understood too. Open **Settings** (⌘,) to choose a theme (or add one from VS Code) and a font, and press ⌘/ to see the raw Markdown.
 
 [^1]: Like this one.

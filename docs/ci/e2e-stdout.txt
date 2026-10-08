@@ -1,16 +1,3 @@
-PASS  the source view is one plain monospaced style (dark) — 1 runs, mono true
-PASS  no table grids in the source view (dark)
-PASS  no diagram or image cards in the source view (dark)
-PASS  ⌘/ again returns to the formatted editor (dark)
-PASS  the table grid is back and the text is unchanged (dark)
-PASS  Window menu has Keep on Top
-PASS  the window starts at the normal level
-PASS  Keep on Top is enabled while an editor window is frontmost
-PASS  Keep on Top floats the window above others
-PASS  choosing it again puts the window back
-PASS  theme downwrite-light reaches the editor
-PASS  theme downwrite-light colours the page
-PASS  theme catppuccin-latte reaches the editor
 PASS  theme catppuccin-latte colours the page
 PASS  theme radix-light reaches the editor
 PASS  theme radix-light colours the page
@@ -20,21 +7,34 @@ PASS  theme catppuccin-mocha reaches the editor
 PASS  theme catppuccin-mocha colours the page
 PASS  theme radix-dark reaches the editor
 PASS  theme radix-dark colours the page
+PASS  ⌘, opens the Settings window — windows: ["work.md", "", "Appearance"]
+PASS  the Appearance settings tab fits a small screen — 539 pt tall, title “Appearance”
+PASS  the Editor settings tab fits a small screen — 395 pt tall, title “Editor”
+PASS  the General settings tab fits a small screen — 368 pt tall, title “General”
+PASS  six themes with long names are imported for the list screenshot — 6
+PASS  the Appearance tab with imported themes is captured
+PASS  …and still fits a small screen with imported themes — 633 pt tall
+PASS  the Remove links sit at the right edge of the imported list — 489 coloured pixels there
+PASS  …and nothing sits half way across it — 0 coloured pixels there
+PASS  the list-screenshot themes are removed again
 PASS  a VS Code theme file is converted — custom-midnight-orchid-dark []
 PASS  …and offered in the dark theme picker
 PASS  …and not in the light one
 PASS  the imported theme reaches the editor
 PASS  removing it puts the Downwrite theme back
 PASS  …and nothing is left in the library
+PASS  the text view starts below the toolbar — scroll top 625 vs content top 625
+PASS  …so there is no inset to scroll text under it — 0.0
+PASS  the toolbar strip is the same with the text scrolled up behind it — 0 pixels differ in the top 52 pt
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3752 729×633", "2,7430 729×1617"]
+DIAG README sidebar open: text view 753 pt, inset 30.0, grid frames ["2,4321 749×606", "2,7939 749×2662"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED

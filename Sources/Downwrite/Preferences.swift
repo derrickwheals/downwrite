@@ -13,6 +13,8 @@ enum Prefs {
     static let width = "contentWidth"
     static let spellCheck = "spellCheck"
     static let showTOC = "showTOC"
+    /// The tab the Settings window was last left on (`SettingsTab` raw value).
+    static let settingsTab = "settingsTab"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -25,6 +27,7 @@ enum Prefs {
             width: 720.0,
             spellCheck: false,
             showTOC: false,
+            settingsTab: SettingsTab.appearance.rawValue,
         ])
     }
 }

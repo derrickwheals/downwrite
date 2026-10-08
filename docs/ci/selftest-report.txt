@@ -1,5 +1,5 @@
 PASS  editor window appears
-PASS  document text loaded into editor — 1696 vs 1696 chars
+PASS  document text loaded into editor — 1760 vs 1760 chars
 PASS  Format menu is installed
 PASS  View menu has the Table of Contents toggle
 PASS  sample contains **disappears**
@@ -24,7 +24,7 @@ PASS  …and the document is not marked as edited
 PASS  another process replaces the file atomically
 PASS  an atomic replace (temporary file + rename) is picked up too
 PASS  another process puts the original text back
-PASS  …and the editor follows it back — 1739 vs 1739 characters
+PASS  …and the editor follows it back — 1783 vs 1783 characters
 PASS  …still not marked as edited
 PASS  mermaid diagram rendered into a card
 PASS  diagram card has a sensible frame — (132.0, 1645.8999999999983, 719.0, 156.9375)
@@ -51,8 +51,8 @@ PASS  ⌃⌘O turns the sidebar on
 PASS  the editor column narrows to make room for the sidebar — 983.0 → 733.0
 PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
-PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1484.0
-PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1484.0, 983.0, 677.0)
+PASS  clicking 'Diagrams' scrolls the editor — 28.0 → 1532.0
+PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1532.0, 983.0, 625.0)
 PASS  the caret moves to the heading
 PASS  the editor keeps the keyboard after a click in the sidebar
 PASS  the clicked heading is highlighted in the sidebar
@@ -70,7 +70,7 @@ PASS  typing the third backtick adds the closing fence — the self-test.
 ```
 
 ```
-PASS  caret waits after the opening fence — {1744, 0}
+PASS  caret waits after the opening fence — {1788, 0}
 PASS  undo removes the auto-closed fence — 
 Typed by the self-test.
 PASS  sample has a code block and inline code to select
@@ -81,18 +81,18 @@ PASS  clicking the checkbox ticks it (light)
 PASS  …without moving the caret (light) — {0, 0}
 PASS  a second click unticks it again (light)
 PASS  Return after a task starts a new checkbox item (light)
-PASS  the empty item's line is as tall as a normal one (light) — 33.349999999999994 vs 33.349999999999966
-PASS  its checkbox stays inside its own line (light) — box (0.0, 678.2120000000001, 14.0, 14.0) line (0.0, 662.8600000000001, 719.0, 35.39)
-PASS  …and does not overlap the checkbox above (light) — (0.0, 678.2120000000001, 14.0, 14.0) vs (0.0, 642.822, 14.0, 14.0)
+PASS  the empty item's line is as tall as a normal one (light) — 33.349999999999994 vs 33.35000000000002
+PASS  its checkbox stays inside its own line (light) — box (0.0, 678.212, 14.0, 14.0) line (0.0, 662.86, 719.0, 35.39)
+PASS  …and does not overlap the checkbox above (light) — (0.0, 678.212, 14.0, 14.0) vs (0.0, 642.822, 14.0, 14.0)
 PASS  sample has an unticked task (dark)
 PASS  task shows a checkbox while the caret is elsewhere (dark)
 PASS  clicking the checkbox ticks it (dark)
 PASS  …without moving the caret (dark) — {0, 0}
 PASS  a second click unticks it again (dark)
 PASS  Return after a task starts a new checkbox item (dark)
-PASS  the empty item's line is as tall as a normal one (dark) — 33.349999999999994 vs 33.349999999999966
-PASS  its checkbox stays inside its own line (dark) — box (0.0, 678.2120000000001, 14.0, 14.0) line (0.0, 662.8600000000001, 719.0, 35.39)
-PASS  …and does not overlap the checkbox above (dark) — (0.0, 678.2120000000001, 14.0, 14.0) vs (0.0, 642.822, 14.0, 14.0)
+PASS  the empty item's line is as tall as a normal one (dark) — 33.349999999999994 vs 33.35000000000002
+PASS  its checkbox stays inside its own line (dark) — box (0.0, 678.212, 14.0, 14.0) line (0.0, 662.86, 719.0, 35.39)
+PASS  …and does not overlap the checkbox above (dark) — (0.0, 678.212, 14.0, 14.0) vs (0.0, 642.822, 14.0, 14.0)
 PASS  View menu has the Markdown Source toggle
 PASS  the formatted editor is showing before the switch (light)
 PASS  ⌘/ switches to the source view (light)
@@ -127,21 +127,34 @@ PASS  theme catppuccin-mocha reaches the editor
 PASS  theme catppuccin-mocha colours the page
 PASS  theme radix-dark reaches the editor
 PASS  theme radix-dark colours the page
+PASS  ⌘, opens the Settings window — windows: ["work.md", "", "Appearance"]
+PASS  the Appearance settings tab fits a small screen — 539 pt tall, title “Appearance”
+PASS  the Editor settings tab fits a small screen — 395 pt tall, title “Editor”
+PASS  the General settings tab fits a small screen — 368 pt tall, title “General”
+PASS  six themes with long names are imported for the list screenshot — 6
+PASS  the Appearance tab with imported themes is captured
+PASS  …and still fits a small screen with imported themes — 633 pt tall
+PASS  the Remove links sit at the right edge of the imported list — 489 coloured pixels there
+PASS  …and nothing sits half way across it — 0 coloured pixels there
+PASS  the list-screenshot themes are removed again
 PASS  a VS Code theme file is converted — custom-midnight-orchid-dark []
 PASS  …and offered in the dark theme picker
 PASS  …and not in the light one
 PASS  the imported theme reaches the editor
 PASS  removing it puts the Downwrite theme back
 PASS  …and nothing is left in the library
+PASS  the text view starts below the toolbar — scroll top 625 vs content top 625
+PASS  …so there is no inset to scroll text under it — 0.0
+PASS  the toolbar strip is the same with the text scrolled up behind it — 0 pixels differ in the top 52 pt
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3752 729×633", "2,7430 729×1617"]
+DIAG README sidebar open: text view 753 pt, inset 30.0, grid frames ["2,4321 749×606", "2,7939 749×2662"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
