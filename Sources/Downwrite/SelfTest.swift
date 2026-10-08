@@ -144,6 +144,41 @@ enum SelfTest {
         let saved = await waitUntil(timeout: 8) { ((try? String(contentsOf: work, encoding: .utf8)) ?? "").contains(marker) }
         check(saved, "typed text is saved to disk by the document system")
 
+        // 4b. Another process changes the file on disk (a real second process, like an editor or `git checkout`): the open,
+        // unedited document reloads by itself, keeps the caret, and is not marked as edited.
+        do {
+            let document = NSDocumentController.shared.document(for: work)
+            let clean = await waitUntil(timeout: 10) { document?.isDocumentEdited == false }
+            check(clean, "the saved document is not marked as edited before the outside change")
+            let kept = tv.string
+            let caret = NSRange(location: 3, length: 0)
+            tv.setSelectedRange(caret)
+            @discardableResult func otherProcess(_ script: String) -> Bool {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/bin/sh")
+                p.arguments = ["-c", script]
+                do { try p.run(); p.waitUntilExit() } catch { return false }
+                return p.terminationStatus == 0
+            }
+            check(otherProcess("printf '\\n\\nAdded by another process.\\n' >> '\(work.path)'"), "another process appends to the file")
+            let seen = await waitUntil(timeout: 15) { tv.string.contains("Added by another process.") }
+            check(seen, "a change made by another process appears without any action")
+            check(tv.selectedRange() == caret, "…and the caret stays where it was", detail: "\(tv.selectedRange())")
+            check(document?.isDocumentEdited == false, "…and the document is not marked as edited")
+            // Editors that save atomically write a temporary file and rename it over the original.
+            check(otherProcess("printf '# Replaced\\n\\nBy an atomic save.\\n' > '\(work.path).tmp' && mv '\(work.path).tmp' '\(work.path)'"), "another process replaces the file atomically")
+            let replaced = await waitUntil(timeout: 15) { tv.string.hasPrefix("# Replaced") }
+            check(replaced, "an atomic replace (temporary file + rename) is picked up too")
+            // Put the sample back, through the file as well, for the steps below.
+            let restore = work.appendingPathExtension("restore")
+            try? kept.write(to: restore, atomically: true, encoding: .utf8)
+            check(otherProcess("mv '\(restore.path)' '\(work.path)'"), "another process puts the original text back")
+            let back = await waitUntil(timeout: 15) { tv.string == kept }
+            check(back, "…and the editor follows it back", detail: "\(tv.string.count) vs \(kept.count) characters")
+            check(document?.isDocumentEdited == false, "…still not marked as edited")
+            tv.setSelectedRange(NSRange(location: tv.string.utf16.count, length: 0))
+        }
+
         // 5. Mermaid renders as a card and the source collapses.
         let diagram = await waitUntil(timeout: 30) { tv.subviews.contains { ($0 as? DiagramView)?.naturalSize != nil } }
         check(diagram, "mermaid diagram rendered into a card")

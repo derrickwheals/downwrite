@@ -42,7 +42,9 @@ struct EditorView: NSViewRepresentable {
 @MainActor
 final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
     var text: Binding<String>
-    var fileURL: URL?
+    var fileURL: URL? {
+        didSet { if fileURL != oldValue { watchedDate = Self.modificationDate(of: fileURL) } }
+    }
     private(set) weak var textView: EditorTextView?
     private weak var scroll: NSScrollView?
     private(set) var analysis = MarkdownAnalyzer.analyze("")
@@ -74,6 +76,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     private var tocPublishScheduled = false
     private var tableOfContents = TableOfContents(headings: [])
     private var debounce: DispatchWorkItem?
+    /// Modification date of the file on disk as last seen by `checkForExternalChange`.
+    private var watchedDate: Date?
+    private var fileTimer: Timer?
+    private var activationObserver: NSObjectProtocol?
 
     init(text: Binding<String>) {
         self.text = text
@@ -99,6 +105,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tv.string = initialText
         applyChrome()
         reanalyze()
+        startWatchingFile()
     }
 
     private func applySettings(_ s: EditorSettings) {
@@ -113,10 +120,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         if let wanted, wanted != sourceMode { setSourceMode(wanted) }
         var reanalyzeNeeded = false
         if tv.string != newText {
-            let sel = tv.selectedRange()
-            tv.string = newText
-            let loc = min(sel.location, (newText as NSString).length)
-            tv.setSelectedRange(NSRange(location: loc, length: 0))
+            applyExternalText(newText)
             reanalyzeNeeded = true
         }
         if s != settings {
@@ -138,6 +142,78 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         reanalyze()
         tv.setSelectedRange(selection)
         tv.scrollRangeToVisible(selection)
+    }
+
+    // MARK: Changes from outside
+
+    /// The document's text changed underneath the editor (the file was reloaded after another app rewrote it). Applies the
+    /// smallest replacement instead of resetting the whole text, so the scroll position and the caret stay where they were.
+    /// The undo history is dropped: its entries refer to offsets in text that no longer exists.
+    private func applyExternalText(_ newText: String) {
+        guard let tv = textView, let storage = tv.textStorage else { return }
+        guard let edit = TextDiff.replacement(from: tv.string, to: newText) else { return }
+        let selection = tv.selectedRange()
+        isStyling = true
+        tv.undoManager?.disableUndoRegistration()
+        storage.replaceCharacters(in: edit.range, with: edit.replacement)
+        tv.undoManager?.enableUndoRegistration()
+        tv.undoManager?.removeAllActions()
+        tv.setSelectedRange(TextDiff.map(selection, through: edit))
+        isStyling = false
+    }
+
+    private static func modificationDate(of url: URL?) -> Date? {
+        guard let url else { return nil }
+        return (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// Looks for the file being changed by another process (an editor, a sync client, `git checkout`…) once a second and
+    /// whenever the app comes back to the front, and reloads it.
+    private func startWatchingFile() {
+        guard fileTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, self.textView != nil else { timer.invalidate(); return }
+                self.checkForExternalChange()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        fileTimer = timer
+        let token = ObserverToken()
+        token.observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.textView != nil else {                // the window is gone: stop listening
+                    if let o = token.observer { NotificationCenter.default.removeObserver(o) }
+                    return
+                }
+                self.checkForExternalChange()
+            }
+        }
+        activationObserver = token.observer
+    }
+
+    /// Lets a notification block remove its own observer.
+    private final class ObserverToken { var observer: NSObjectProtocol? }
+
+    /// If the file on disk was modified by someone else and the document has no unsaved edits, asks the document to revert to
+    /// the file (SwiftUI then hands the new text to `update(text:settings:)`). With unsaved edits nothing happens here: the
+    /// document system's own "changed by another application" alert handles that when it is next saved.
+    /// Returns whether a reload was started.
+    @discardableResult
+    func checkForExternalChange() -> Bool {
+        guard let url = fileURL, let tv = textView, !tv.hasMarkedText() else { return false }
+        guard let date = Self.modificationDate(of: url) else { return false }
+        guard date != watchedDate else { return false }
+        watchedDate = date
+        guard let document = NSDocumentController.shared.document(for: url), !document.isDocumentEdited,
+              let data = try? Data(contentsOf: url) else { return false }
+        guard TextCoding.decode(data).text != tv.string else { return false }      // our own save, or a touch: nothing to show
+        do {
+            try document.revert(toContentsOf: url, ofType: document.fileType ?? "")
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: Pipeline
