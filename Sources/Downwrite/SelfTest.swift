@@ -545,6 +545,32 @@ enum SelfTest {
                     check(settingsWindow.frame.height < 620, "the \(tab.title) settings tab fits a small screen", detail: "\(Int(settingsWindow.frame.height)) pt tall, title “\(settingsWindow.title)”")
                     _ = capture(window: settingsWindow, to: outDir.appendingPathComponent("window-settings-\(tab.rawValue).png"))
                 }
+                // With imported themes (long names included) the list spans the whole pane and "Remove" sits at its right edge.
+                let names = ["Catppuccin Frappé", "Tokyo Night Storm", "Solarized Dark Extended Contrast Edition (Experimental)", "Gruvbox Material Hard Light",
+                             "Ayu Mirage Bordered With A Very Long Name Indeed", "Rosé Pine Moon"]
+                var imported: [String] = []
+                for (i, name) in names.enumerated() {
+                    let file = outDir.appendingPathComponent("list-theme-\(i).json")
+                    let page = i % 2 == 0 ? "#fbf9f4" : "#141a22"
+                    try? "{\"name\": \"\(name)\", \"type\": \"\(i % 2 == 0 ? "light" : "dark")\", \"colors\": {\"editor.background\": \"\(page)\"}}".write(to: file, atomically: true, encoding: .utf8)
+                    if let result = try? ThemeStore.shared.importTheme(from: file) { imported.append(result.theme.id) }
+                }
+                check(imported.count == names.count, "six themes with long names are imported for the list screenshot", detail: "\(imported.count)")
+                defaults.set(SettingsTab.appearance.rawValue, forKey: Prefs.settingsTab)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                let listShot = outDir.appendingPathComponent("window-settings-appearance-themes.png")
+                check(capture(window: settingsWindow, to: listShot), "the Appearance tab with imported themes is captured")
+                check(settingsWindow.frame.height < 700, "…and still fits a small screen with imported themes", detail: "\(Int(settingsWindow.frame.height)) pt tall")
+                if let rep = pixels(of: listShot) {
+                    let right = saturatedPixels(rep, x: 0.78...0.97, y: 0.66...0.99)
+                    let middle = saturatedPixels(rep, x: 0.40...0.70, y: 0.66...0.99)
+                    check(right >= 20, "the Remove links sit at the right edge of the imported list", detail: "\(right) coloured pixels there")
+                    check(middle == 0, "…and nothing sits half way across it", detail: "\(middle) coloured pixels there")
+                } else {
+                    check(false, "the imported-themes screenshot can be read")
+                }
+                for id in imported { ThemeStore.shared.remove(id: id) }
+                check(ThemeStore.shared.library.imported.isEmpty, "the list-screenshot themes are removed again")
                 defaults.set(SettingsTab.appearance.rawValue, forKey: Prefs.settingsTab)
                 settingsWindow.close()
             }
@@ -596,6 +622,47 @@ enum SelfTest {
             defaults.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
             ThemeChoice.applyCurrent()
             try? await Task.sleep(nanoseconds: 600_000_000)
+        }
+
+        // 6i. Text scrolled "up" must stop at the toolbar, not show through it: the scroll view starts below the toolbar, and the
+        // toolbar strip looks the same whatever the text underneath is doing.
+        do {
+            let defaults = UserDefaults.standard
+            defaults.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            let scroll = tv.enclosingScrollView
+            let content = window.contentLayoutRect
+            if let scroll {
+                let top = scroll.convert(scroll.bounds, to: nil).maxY
+                check(top <= content.maxY + 0.5, "the text view starts below the toolbar", detail: "scroll top \(Int(top)) vs content top \(Int(content.maxY))")
+                check(scroll.contentView.contentInsets.top == 0, "…so there is no inset to scroll text under it", detail: "\(scroll.contentView.contentInsets.top)")
+            } else {
+                check(false, "the text view is in a scroll view")
+            }
+            // Plenty of text, so something is always behind the toolbar when scrolled.
+            let end = NSRange(location: tv.string.utf16.count, length: 0)
+            tv.setSelectedRange(end)
+            tv.insertText("\n\n" + (1...120).map { "Line \($0) of filler text that is long enough to put dark ink right where the toolbar is." }.joined(separator: "\n\n"), replacementRange: end)
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            let before = outDir.appendingPathComponent("window-toolbar-top.png")
+            let after = outDir.appendingPathComponent("window-toolbar-scrolled.png")
+            _ = capture(window: window, to: before)
+            if let scroll {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 1500))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            _ = capture(window: window, to: after)
+            let thickness = max(0, (window.contentView?.bounds.maxY ?? 0) - content.maxY)
+            if let a = pixels(of: before), let b = pixels(of: after), thickness > 10 {
+                let strip = max(4, thickness - 3) / window.frame.height
+                let different = differingPixels(a, b, x: 0.30...0.82, y: 0.0...Double(strip))   // between the title and the toolbar buttons
+                check(different < 25, "the toolbar strip is the same with the text scrolled up behind it", detail: "\(different) pixels differ in the top \(Int(thickness)) pt")
+            } else {
+                check(false, "the toolbar screenshots can be compared", detail: "toolbar \(Int(thickness)) pt")
+            }
+            tv.scrollToBeginningOfDocument(nil)
         }
 
         // 7. Back to system theme leaves the app following macOS.
@@ -692,6 +759,36 @@ enum SelfTest {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         return cond()
+    }
+
+    private static func pixels(of url: URL) -> NSBitmapImageRep? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return NSBitmapImageRep(data: data)
+    }
+
+    /// Pixels in a region (fractions of the image, y from the top) that are clearly coloured rather than black, white or grey.
+    private static func saturatedPixels(_ rep: NSBitmapImageRep, x: ClosedRange<Double>, y: ClosedRange<Double>) -> Int {
+        var count = 0
+        for py in Int(y.lowerBound * Double(rep.pixelsHigh))..<min(rep.pixelsHigh, Int(y.upperBound * Double(rep.pixelsHigh))) {
+            for px in Int(x.lowerBound * Double(rep.pixelsWide))..<min(rep.pixelsWide, Int(x.upperBound * Double(rep.pixelsWide))) {
+                guard let c = rep.colorAt(x: px, y: py)?.usingColorSpace(.deviceRGB) else { continue }
+                if max(c.redComponent, c.greenComponent, c.blueComponent) - min(c.redComponent, c.greenComponent, c.blueComponent) > 0.35 { count += 1 }
+            }
+        }
+        return count
+    }
+
+    /// How many pixels in a region differ visibly between two screenshots of the same window (same size assumed).
+    private static func differingPixels(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep, x: ClosedRange<Double>, y: ClosedRange<Double>) -> Int {
+        guard a.pixelsWide == b.pixelsWide, a.pixelsHigh == b.pixelsHigh else { return Int.max }
+        var count = 0
+        for py in Int(y.lowerBound * Double(a.pixelsHigh))..<min(a.pixelsHigh, Int(y.upperBound * Double(a.pixelsHigh))) {
+            for px in Int(x.lowerBound * Double(a.pixelsWide))..<min(a.pixelsWide, Int(x.upperBound * Double(a.pixelsWide))) {
+                guard let p = a.colorAt(x: px, y: py)?.usingColorSpace(.deviceRGB), let q = b.colorAt(x: px, y: py)?.usingColorSpace(.deviceRGB) else { continue }
+                if abs(p.redComponent - q.redComponent) + abs(p.greenComponent - q.greenComponent) + abs(p.blueComponent - q.blueComponent) > 0.25 { count += 1 }
+            }
+        }
+        return count
     }
 
     private static func capture(window: NSWindow, to url: URL) -> Bool {

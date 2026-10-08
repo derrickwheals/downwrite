@@ -53,7 +53,9 @@ struct EditorScene: View {
 
     var body: some View {
         EditorView(text: $document.text, settings: settings, fileURL: fileURL, toc: toc, sourceMode: sourceMode)
-            .ignoresSafeArea()
+            // The editor starts *below* the toolbar/tab bar. The title bar is transparent (so the page colour runs behind the
+            // toolbar), which means anything scrolled under it would show straight through.
+            .ignoresSafeArea(.container, edges: [.leading, .trailing, .bottom])
             .overlay(alignment: .bottomTrailing) {
                 StatusPill(text: document.text)
                     .padding(16)

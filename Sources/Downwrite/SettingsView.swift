@@ -101,18 +101,12 @@ struct AppearancePane: View {
     }
 
     private var importedRows: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(themes.library.imported) { theme in
-                LabeledContent {
-                    Button("Remove") { removeTheme(theme) }.buttonStyle(.link)
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(theme.name)
-                        Text(theme.appearance == .dark ? "Dark theme" : "Light theme").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                ImportedThemeRow(theme: theme) { removeTheme(theme) }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A theme file that was deleted behind our back must not leave a picker pointing at nothing.
@@ -134,22 +128,19 @@ struct AppearancePane: View {
     }
 
     private func importThemes(_ urls: [URL]) {
-        var lines: [String] = []
-        var failed = false
+        var outcomes: [ThemeImportOutcome] = []
         for url in urls {
             do {
                 let result = try themes.importTheme(from: url)
                 let dark = result.theme.appearance == .dark
                 if dark { darkTheme = result.theme.id } else { lightTheme = result.theme.id }
-                lines.append("\(result.replaced ? "Updated" : "Added") “\(result.theme.name)” as a \(dark ? "dark" : "light") theme and selected it."
-                             + (dark ? " It shows when the editor is dark." : " It shows when the editor is light.")
-                             + result.warnings.map { " " + $0 }.joined())
+                outcomes.append(.imported(name: result.theme.name, dark: dark, replaced: result.replaced, warnings: result.warnings))
             } catch {
-                failed = true
-                lines.append("\(url.lastPathComponent): \(error.localizedDescription)")
+                outcomes.append(.failed(file: url.lastPathComponent, reason: error.localizedDescription))
             }
         }
-        themeMessage = (lines.joined(separator: "\n"), failed)
+        let summary = ThemeImportOutcome.summary(outcomes)
+        themeMessage = (summary.text, summary.isError)
     }
 
     private func removeTheme(_ theme: ThemeDefinition) {
@@ -157,6 +148,62 @@ struct AppearancePane: View {
         if lightTheme == theme.id { lightTheme = ThemeCatalog.defaultLightID }
         if darkTheme == theme.id { darkTheme = ThemeCatalog.defaultDarkID }
         themeMessage = ("Removed “\(theme.name)”.", false)
+    }
+}
+
+/// One imported theme: the name (one line, truncated, full name in the tooltip) on the left, *Remove* pinned to the right edge.
+/// A plain `HStack` rather than `LabeledContent`, which gives the label column only half of a grouped form row.
+struct ImportedThemeRow: View {
+    let theme: ThemeDefinition
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(theme.name).lineLimit(1).truncationMode(.tail)
+                Text(theme.appearance == .dark ? "Dark theme" : "Light theme").font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Remove", action: remove)
+                .buttonStyle(.link)
+                .fixedSize()
+        }
+        .help(theme.name)
+    }
+}
+
+/// What importing one file did, and the short note that sums up a whole batch (a long note made the pane taller and wrapped).
+enum ThemeImportOutcome: Equatable {
+    case imported(name: String, dark: Bool, replaced: Bool, warnings: [String])
+    case failed(file: String, reason: String)
+
+    /// Longest note shown, in lines; the rest is summarised as "… and N more".
+    static let maximumLines = 4
+
+    static func summary(_ outcomes: [ThemeImportOutcome]) -> (text: String, isError: Bool) {
+        var lines: [String] = []
+        var added: [(name: String, dark: Bool, replaced: Bool)] = []
+        var notes: [String] = []
+        for outcome in outcomes {
+            switch outcome {
+            case let .imported(name, dark, replaced, warnings):
+                added.append((name, dark, replaced))
+                notes += warnings.map { outcomes.count > 1 ? "“\(name)”: \($0)" : $0 }
+            case let .failed(file, reason):
+                lines.append("\(file): \(reason)")
+            }
+        }
+        if added.count == 1, let one = added.first {
+            lines.insert("\(one.replaced ? "Updated" : "Added") “\(one.name)” as a \(one.dark ? "dark" : "light") theme and selected it.", at: 0)
+        } else if added.count > 1 {
+            lines.insert("Added \(added.count) themes.", at: 0)
+        }
+        lines += notes
+        if lines.count > maximumLines {
+            let hidden = lines.count - (maximumLines - 1)
+            lines = Array(lines.prefix(maximumLines - 1)) + ["… and \(hidden) more."]
+        }
+        return (lines.joined(separator: "\n"), outcomes.contains { if case .failed = $0 { return true } else { return false } })
     }
 }
 

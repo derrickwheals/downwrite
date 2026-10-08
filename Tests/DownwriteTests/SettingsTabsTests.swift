@@ -58,6 +58,86 @@ final class SettingsTabsTests: XCTestCase {
         XCTAssertLessThan(full, tallestPane, "ten imported themes still fit (\(Int(empty)) → \(Int(full)) pt)")
     }
 
+    // MARK: - Imported theme list
+
+    private func definition(_ name: String, dark: Bool = false) -> ThemeDefinition {
+        ThemeDefinition(id: "custom-\(name)", name: name, appearance: dark ? .dark : .light, palette: Palette.palette(for: dark ? .dark : .light))
+    }
+
+    /// Renders a view on white at 1x and returns its pixels, so the layout can be measured rather than guessed.
+    private func render<V: View>(_ view: V) throws -> NSBitmapImageRep {
+        let renderer = ImageRenderer(content: view.background(Color.white))
+        renderer.scale = 1
+        return NSBitmapImageRep(cgImage: try XCTUnwrap(renderer.cgImage))
+    }
+
+    /// Left and right edge (px) of everything that is not white.
+    private func inkSpan(_ rep: NSBitmapImageRep) -> (min: Int, max: Int)? {
+        var lo = Int.max, hi = -1
+        for x in 0..<rep.pixelsWide {
+            for y in 0..<rep.pixelsHigh {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                if min(c.redComponent, c.greenComponent, c.blueComponent) < 0.85 { lo = min(lo, x); hi = max(hi, x); break }
+            }
+        }
+        return hi >= 0 ? (lo, hi) : nil
+    }
+
+    func testAnImportedThemeRowUsesTheWholeWidthWithRemoveAtTheRightEdge() throws {
+        let width: CGFloat = 440
+        let short = try render(ImportedThemeRow(theme: definition("Nord"), remove: {}).frame(width: width))
+        let long = try render(ImportedThemeRow(theme: definition("A Theme Whose Name Is Far Too Long To Fit On A Single Line Of The Settings Pane, Really"), remove: {}).frame(width: width))
+        for (label, rep) in [("short", short), ("long", long)] {
+            let span = try XCTUnwrap(inkSpan(rep), "\(label) row draws something")
+            XCTAssertLessThan(span.min, 12, "\(label): the name starts at the left edge")
+            XCTAssertGreaterThan(span.max, Int(width) - 12, "\(label): Remove sits at the right edge, not half way across (ink ends at \(span.max) of \(Int(width)))")
+        }
+        XCTAssertEqual(long.pixelsHigh, short.pixelsHigh, "a long name is truncated, it does not wrap to a second line")
+    }
+
+    func testStackedImportedRowsStayOneLineEach() throws {
+        // Three rows stacked as the pane does: as tall as three short ones, whatever the names are.
+        func stack(_ names: [String]) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(names, id: \.self) { ImportedThemeRow(theme: definition($0), remove: {}) }
+            }
+            .frame(width: 440, alignment: .leading)
+        }
+        let plain = try render(stack(["A", "B", "C"]))
+        let longNames = try render(stack(["Catppuccin Frappé Extra Long Variant Name With Many Words In It To Wrap", "Another Remarkably Wordy Theme Name That Goes On And On Forever And Ever", "Short"]))
+        XCTAssertEqual(longNames.pixelsHigh, plain.pixelsHigh)
+    }
+
+    func testTheImportNoteIsShortAndSaysWhatHappened() {
+        let one = ThemeImportOutcome.summary([.imported(name: "Nord", dark: true, replaced: false, warnings: [])])
+        XCTAssertEqual(one.text, "Added “Nord” as a dark theme and selected it.")
+        XCTAssertFalse(one.isError)
+        XCTAssertEqual(ThemeImportOutcome.summary([.imported(name: "Nord", dark: false, replaced: true, warnings: [])]).text,
+                       "Updated “Nord” as a light theme and selected it.")
+        let many = ThemeImportOutcome.summary((1...6).map { .imported(name: "Theme \($0)", dark: $0 % 2 == 0, replaced: false, warnings: []) })
+        XCTAssertEqual(many.text, "Added 6 themes.", "a batch is one line, not one sentence per file")
+        let broken = ThemeImportOutcome.summary([.imported(name: "Nord", dark: true, replaced: false, warnings: []),
+                                                 .failed(file: "bad.json", reason: "The file is not valid JSON.")])
+        XCTAssertTrue(broken.isError)
+        XCTAssertTrue(broken.text.contains("bad.json: The file is not valid JSON."))
+        XCTAssertTrue(broken.text.contains("Added “Nord”"))
+    }
+
+    func testTheImportNoteNeverGrowsPastItsLimit() {
+        let warnings = (1...6).map { "Warning number \($0)." }
+        let noisy = ThemeImportOutcome.summary([.imported(name: "Nord", dark: true, replaced: false, warnings: warnings)])
+        let lines = noisy.text.split(separator: "\n")
+        XCTAssertEqual(lines.count, ThemeImportOutcome.maximumLines)
+        XCTAssertEqual(lines.last, "… and 4 more.")
+        XCTAssertEqual(lines.first, "Added “Nord” as a dark theme and selected it.")
+        let fits = ThemeImportOutcome.summary([.imported(name: "Nord", dark: true, replaced: false, warnings: Array(warnings.prefix(3)))])
+        XCTAssertEqual(fits.text.split(separator: "\n").count, 4, "exactly the limit is shown in full")
+        XCTAssertFalse(fits.text.contains("more"))
+        let batch = ThemeImportOutcome.summary([.imported(name: "A", dark: true, replaced: false, warnings: ["w"]),
+                                                .imported(name: "B", dark: true, replaced: false, warnings: [])])
+        XCTAssertTrue(batch.text.contains("“A”: w"), "with several files a warning names its theme")
+    }
+
     func testTheLastTabIsRemembered() {
         let defaults = UserDefaults.standard
         let before = defaults.string(forKey: Prefs.settingsTab)
