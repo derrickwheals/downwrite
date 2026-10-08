@@ -48,7 +48,7 @@ PASS  menu: Insert Column Right adds a column — 3 columns
 PASS  undo walks the table back — 6×2
 PASS  table of contents sidebar starts hidden
 PASS  ⌃⌘O turns the sidebar on
-PASS  the editor column narrows to make room for the sidebar — 983.0 → 772.0
+PASS  the editor column narrows to make room for the sidebar — 983.0 → 778.0
 PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
 PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1484.0
