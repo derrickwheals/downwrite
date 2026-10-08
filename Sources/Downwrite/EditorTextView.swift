@@ -93,6 +93,7 @@ final class EditorTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         coordinator?.appearanceDidChange()
+        coordinator?.applyChrome()                 // (the window may only exist now)
     }
 
     // MARK: Scrolling

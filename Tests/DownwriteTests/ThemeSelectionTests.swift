@@ -89,6 +89,14 @@ final class ThemeSelectionTests: XCTestCase {
         XCTAssertEqual(h.textView.insertionPointColor, palette.accent.nsColor)
     }
 
+    func testTheWindowBehindTheToolbarTakesThePageColour() {
+        let h = EditorHarness(text: sample)
+        choose(h, light: "catppuccin-latte")
+        XCTAssertEqual(h.window.backgroundColor, RGBA(hex: 0xEFF1F5).nsColor, "no differently coloured band above the page")
+        choose(h)
+        XCTAssertEqual(h.window.backgroundColor, RGBA(hex: 0xFFFFFF).nsColor)
+    }
+
     func testTheSourceViewUsesTheThemeToo() {
         let h = EditorHarness(text: sample)
         choose(h, light: "radix-light")

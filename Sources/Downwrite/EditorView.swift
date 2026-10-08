@@ -322,6 +322,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tv.linkTextAttributes = [:]
         scroll?.backgroundColor = p.background.nsColor
         scroll?.drawsBackground = true
+        // The strip behind the toolbar shows the window's own colour: keep it the page colour so there is no band at the top.
+        tv.window?.backgroundColor = p.background.nsColor
     }
 
     func appearanceDidChange() {
