@@ -270,6 +270,57 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertNotNil(a.taskBox(at: a.taskBoxes[0].range.location + 1))
     }
 
+    // MARK: Task checkboxes
+
+    private func hiddenTexts(_ s: String, _ a: MarkdownAnalysis, caret: Int, length: Int = 0) -> [String] {
+        a.hiddenMarkerIndices(selection: NSRange(location: caret, length: length)).sorted().map { ns(s, a.markers[$0].range) }
+    }
+
+    func testBulletTaskPrefixIsOneMarker() {
+        let s = "- [ ] todo\n  - [x] nested done\n1. [ ] numbered\nplain\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.taskBoxes.count, 3)
+        XCTAssertEqual(a.taskBoxes[0].prefix.map { ns(s, $0) }, "- [ ] ")
+        XCTAssertEqual(a.taskBoxes[1].prefix.map { ns(s, $0) }, "- [x] ")
+        XCTAssertEqual(a.taskBoxes[1].prefix?.location, (s as NSString).range(of: "- [x]").location)
+        XCTAssertNil(a.taskBoxes[2].prefix, "numbered tasks keep their number and the raw box")
+        let prefixes = a.markers.filter { $0.flags.contains(.taskPrefix) }.map { ns(s, $0.range) }
+        XCTAssertEqual(prefixes, ["- [ ] ", "- [x] "])
+    }
+
+    func testTaskPrefixShowsOnlyWhileTheCaretIsInsideIt() {
+        let s = "intro\n- [ ] todo\nafter\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        let start = (s as NSString).range(of: "- [ ] ").location
+        let textStart = start + 6
+        XCTAssertEqual(hiddenTexts(s, a, caret: 0), ["- [ ] "], "hidden while the caret is elsewhere")
+        XCTAssertEqual(hiddenTexts(s, a, caret: start), ["- [ ] "], "hidden with the caret at the very start of the item")
+        XCTAssertEqual(hiddenTexts(s, a, caret: textStart), ["- [ ] "], "hidden with the caret where the item's text starts, i.e. where you type")
+        XCTAssertEqual(hiddenTexts(s, a, caret: textStart + 2), ["- [ ] "])
+        for inside in (start + 1)...(textStart - 1) {
+            XCTAssertEqual(hiddenTexts(s, a, caret: inside), [], "revealed with the caret at \(inside - start) inside the prefix")
+        }
+        XCTAssertEqual(hiddenTexts(s, a, caret: start - 2, length: 5), [], "a selection reaching into the prefix reveals it")
+        XCTAssertEqual(hiddenTexts(s, a, caret: 0, length: s.utf16.count), [], "select-all reveals it")
+    }
+
+    func testTaskPrefixWithoutTrailingText() {
+        let s = "- [ ] \n- [x]\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.taskBoxes.compactMap { $0.prefix.map { ns(s, $0) } }.first, "- [ ] ")
+        XCTAssertFalse(a.markers.isEmpty)
+    }
+
+    func testTaskBoxOnLine() {
+        let s = "intro\n\n- [ ] one\n- plain\n- [x] two\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertNil(a.taskBox(onLine: 0))
+        XCTAssertEqual(a.taskBox(onLine: 2)?.checked, false)
+        XCTAssertNil(a.taskBox(onLine: 3))
+        XCTAssertEqual(a.taskBox(onLine: 4)?.checked, true)
+        XCTAssertNil(a.taskBox(onLine: 99))
+    }
+
     func testTableLinesAndPipes() {
         let s = "| A | B |\n| --- | :-: |\n| 1 | **2** |\n\nafter\n"
         let a = MarkdownAnalyzer.analyze(s)

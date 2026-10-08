@@ -378,11 +378,19 @@ private struct Builder {
             if li.checkbox != nil, q + 2 < end, src.units[q] == 91, src.units[q + 2] == 93 {
                 let checked = li.checkbox == .checked
                 let box = NSRange(location: q, length: 3)
-                taskBoxes.append(TaskBox(range: box, checked: checked))
                 addSpan(box, .task)
                 var after = q + 3
                 while after < end && src.isSpaceOrTab(after) { after += 1 }
                 prefix = after - start
+                // A bulleted task is drawn as a checkbox: its whole `- [ ] ` prefix hides as one marker, and shows its source
+                // only while the caret is *inside* it (so a caret at the start of the item's text, where you type, never reveals it).
+                var taskPrefix: NSRange?
+                if isBullet {
+                    let whole = NSRange(location: tokenStart, length: after - tokenStart)
+                    taskPrefix = whole
+                    addMarker(whole, reveal: NSRange(location: whole.location + 1, length: max(0, whole.length - 2)), flags: .taskPrefix)
+                }
+                taskBoxes.append(TaskBox(range: box, checked: checked, prefix: taskPrefix))
                 if checked { addSpan(NSRange(location: after, length: end - after), .taskDone) }
             }
             for l in ls {

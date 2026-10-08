@@ -341,6 +341,40 @@ enum SelfTest {
         }
         tv.setSelectedRange(NSRange(location: 0, length: 0))
 
+        // 6d. Task checkboxes: a drawn rounded square instead of `- [ ] `; a real mouse click ticks it and leaves the caret alone.
+        for theme in [ThemeChoice.light, .dark] {
+            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let open = (tv.string as NSString).range(of: "- [ ] Try ticking this one")
+            check(open.location != NSNotFound, "sample has an unticked task (\(theme.rawValue))")
+            guard open.location != NSNotFound, let layout = tv.layoutManager as? DWLayoutManager else { continue }
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            tv.scrollRangeToVisible(open)
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            check(tv.textStorage?.attribute(.dwCheckbox, at: open.location, effectiveRange: nil) != nil, "task shows a checkbox while the caret is elsewhere (\(theme.rawValue))")
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-tasks.png"))
+            guard var box = layout.checkboxRect(forCharacterAt: open.location) else { check(false, "checkbox has a rect"); continue }
+            box.origin.x += tv.textContainerOrigin.x; box.origin.y += tv.textContainerOrigin.y
+            func click() {
+                let p = tv.convert(NSPoint(x: box.midX, y: box.midY), to: nil)
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(e) }
+                }
+            }
+            click()
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            check(tv.string.contains("- [x] Try ticking this one"), "clicking the checkbox ticks it (\(theme.rawValue))")
+            check(tv.selectedRange() == NSRange(location: 0, length: 0), "…without moving the caret (\(theme.rawValue))", detail: "\(tv.selectedRange())")
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-tasks-ticked.png"))
+            click()
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            check(tv.string.contains("- [ ] Try ticking this one"), "a second click unticks it again (\(theme.rawValue))")
+        }
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()

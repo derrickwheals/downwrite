@@ -154,4 +154,27 @@ final class DrawingTests: XCTestCase {
         let range = NSRange(location: start, length: 40 * 5)
         XCTAssertGreaterThan(lm(h).pillRects(forCharacterRange: range).count, 1)
     }
+
+    // MARK: Task checkboxes
+
+    func testCheckboxIsFilledWhenCheckedAndOutlinedWhenNot() throws {
+        let h = EditorHarness(text: "- [ ] open\n- [x] done\n")
+        makeKey(h)
+        h.select(h.textView.string.utf16.count)
+        let palette = AppearanceResolver.palette(for: h.textView.effectiveAppearance)
+        func box(_ at: Int) throws -> NSRect {
+            var r = try XCTUnwrap(lm(h).checkboxRect(forCharacterAt: at))
+            r.origin.x += h.textView.textContainerOrigin.x; r.origin.y += h.textView.textContainerOrigin.y
+            return r
+        }
+        let open = try box(0), done = try box(h.index(of: "- [x]"))
+        let rep = render(h)
+        func at(_ r: NSRect, _ fx: CGFloat, _ fy: CGFloat) -> NSColor {
+            color(rep, atViewPoint: NSPoint(x: r.minX + r.width * fx, y: r.minY + r.height * fy), in: h)
+        }
+        XCTAssertLessThan(distance(at(done, 0.12, 0.5), palette.accent.nsColor), 0.09, "a ticked box is filled with the accent colour")
+        XCTAssertLessThan(distance(at(open, 0.5, 0.5), palette.background.nsColor), 0.09, "an open box is empty inside")
+        XCTAssertLessThan(at(open, 0.03, 0.5).brightnessComponent, 0.85, "…with an outline")
+        XCTAssertGreaterThan(at(open, -0.2, 0.5).brightnessComponent, 0.95, "nothing is drawn outside the box")
+    }
 }

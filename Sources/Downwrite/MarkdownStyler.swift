@@ -114,7 +114,9 @@ final class MarkdownStyler {
                            storage: NSTextStorage, preview: PreviewState, selection: NSRange) {
         let line = analysis.lines[index]
         let r = line.range
-        var look = lineLook(line, index: index, analysis: analysis, storage: storage, preview: preview)
+        // A bulleted task whose `- [ ] ` source is hidden is drawn as a checkbox instead.
+        let task = hiddenTask(onLine: index, analysis: analysis, runs: runs)
+        var look = lineLook(line, index: index, analysis: analysis, storage: storage, preview: preview, hiddenTask: task)
 
         // Whole-line collapsing: hidden fences, collapsed Mermaid sources and grid tables (their cards/grids are overlays).
         let hiddenFence = line.kind == .fence && runs.contains { $0.flags.contains(.hidden) }
@@ -149,9 +151,31 @@ final class MarkdownStyler {
             let attrs = runAttributes(run.flags, line: line, look: look)
             if !attrs.isEmpty { storage.addAttributes(attrs, range: rr) }
         }
+
+        if let task, let prefix = task.prefix, prefix.length > 0, NSMaxRange(prefix) <= storage.length {
+            let font = typography.font(size: look.size, bold: look.bold, mono: look.mono)
+            let mark = CheckboxMark(checked: task.checked, side: checkboxSide(look.size), centerAboveBaseline: (font.capHeight + font.xHeight) / 4,
+                                    accent: palette.accent.nsColor, outline: palette.marker.nsColor, tick: palette.background.nsColor)
+            // The first (hidden, ~zero-width) character carries the box; its kern keeps the item's text clear of it.
+            storage.addAttributes([.dwCheckbox: mark, .kern: checkboxColumn(look.size)], range: NSRange(location: prefix.location, length: 1))
+        }
     }
 
-    private func lineLook(_ line: LineStyle, index: Int, analysis: MarkdownAnalysis, storage: NSTextStorage, preview: PreviewState) -> LineLook {
+    /// Edge length of a task checkbox for body text of `size`.
+    private func checkboxSide(_ size: CGFloat) -> CGFloat { (size * 0.82).rounded() }
+
+    /// Horizontal room a drawn checkbox takes: the box plus the gap before the item's text.
+    func checkboxColumn(_ size: CGFloat) -> CGFloat { checkboxSide(size) + (size * 0.5).rounded() }
+
+    /// The task on line `index` if its `- [ ] ` prefix is currently hidden (so a checkbox is drawn for it).
+    private func hiddenTask(onLine index: Int, analysis: MarkdownAnalysis, runs: ArraySlice<StyleRun>) -> TaskBox? {
+        guard let box = analysis.taskBox(onLine: index), let prefix = box.prefix else { return nil }
+        let hidden = runs.contains { $0.flags.contains(.taskPrefix) && $0.flags.contains(.hidden) && NSLocationInRange(prefix.location, $0.range) }
+        return hidden ? box : nil
+    }
+
+    private func lineLook(_ line: LineStyle, index: Int, analysis: MarkdownAnalysis, storage: NSTextStorage, preview: PreviewState,
+                          hiddenTask: TaskBox? = nil) -> LineLook {
         var look = LineLook(size: typography.size, color: palette.text.nsColor)
         let p = look.paragraph
         p.lineHeightMultiple = typography.lineHeight
@@ -198,10 +222,16 @@ final class MarkdownStyler {
             if case .body = line.kind { look.color = palette.text.nsColor.withAlphaComponent(0.82) }
         }
         if line.listPrefixLength > 0, case .body = line.kind {
-            let prefixRange = NSRange(location: line.range.location, length: min(line.listPrefixLength, line.contentEnd - line.range.location))
+            var prefixRange = NSRange(location: line.range.location, length: min(line.listPrefixLength, line.contentEnd - line.range.location))
+            var extra: CGFloat = 0
+            if let task = hiddenTask, let tp = task.prefix {
+                // The hidden `- [ ] ` takes no room itself: wrapped lines line up with the text after the drawn checkbox.
+                prefixRange.length = max(0, min(prefixRange.length, tp.location - line.range.location))
+                extra = checkboxColumn(look.size)
+            }
             let prefix = storage.attributedSubstring(from: prefixRange).string.replacingOccurrences(of: "\t", with: "    ")
             let width = (prefix as NSString).size(withAttributes: [.font: typography.font(size: look.size, bold: look.bold)]).width
-            p.headIndent += width
+            p.headIndent += width + extra
             p.paragraphSpacing = typography.size * 0.12
         }
         return look

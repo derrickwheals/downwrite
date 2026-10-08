@@ -36,6 +36,42 @@ final class DWLayoutManager: NSLayoutManager {
         return out
     }
 
+    /// Where the checkbox attached to the character at `index` (the first character of a hidden `- [ ] ` prefix) is
+    /// drawn, in text container coordinates; `nil` if that character carries none.
+    func checkboxRect(forCharacterAt index: Int) -> NSRect? {
+        guard let storage = textStorage, index >= 0, index < storage.length, let container = textContainers.first,
+              let mark = storage.attribute(.dwCheckbox, at: index, effectiveRange: nil) as? CheckboxMark else { return nil }
+        let glyph = glyphIndexForCharacter(at: index)
+        guard glyph < numberOfGlyphs else { return nil }
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let x = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).minX
+        let baseline = line.minY + location(forGlyphAt: glyph).y
+        return NSRect(x: x, y: baseline - mark.centerAboveBaseline - mark.side / 2, width: mark.side, height: mark.side)
+    }
+
+    private func drawCheckbox(_ mark: CheckboxMark, in box: NSRect) {
+        let radius = box.width * 0.3
+        if mark.checked {
+            mark.accent.setFill()
+            NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius).fill()
+            let tick = NSBezierPath()
+            tick.move(to: NSPoint(x: box.minX + box.width * 0.26, y: box.minY + box.height * 0.53))
+            tick.line(to: NSPoint(x: box.minX + box.width * 0.43, y: box.minY + box.height * 0.70))
+            tick.line(to: NSPoint(x: box.minX + box.width * 0.75, y: box.minY + box.height * 0.32))
+            tick.lineWidth = max(1.6, box.width * 0.13)
+            tick.lineCapStyle = .round
+            tick.lineJoinStyle = .round
+            mark.tick.setStroke()
+            tick.stroke()
+        } else {
+            let line = max(1.4, box.width * 0.1)
+            let path = NSBezierPath(roundedRect: box.insetBy(dx: line / 2, dy: line / 2), xRadius: radius, yRadius: radius)
+            path.lineWidth = line
+            mark.outline.setStroke()
+            path.stroke()
+        }
+    }
+
     private func drawCustomBackgrounds(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         guard let storage = textStorage, textContainers.first != nil, storage.length > 0 else { return }
         let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
@@ -67,6 +103,12 @@ final class DWLayoutManager: NSLayoutManager {
                 color.setFill()
                 NSBezierPath(roundedRect: r, xRadius: min(4.5, r.height / 2), yRadius: min(4.5, r.height / 2)).fill()
             }
+        }
+
+        // Task checkboxes (they stand in for hidden `- [ ] ` prefixes).
+        storage.enumerateAttribute(.dwCheckbox, in: charRange, options: []) { value, range, _ in
+            guard let mark = value as? CheckboxMark, let box = self.checkboxRect(forCharacterAt: range.location) else { return }
+            self.drawCheckbox(mark, in: box.offsetBy(dx: origin.x, dy: origin.y))
         }
 
         // Block-quote bars: one bar per nesting level, spanning contiguous quoted lines.

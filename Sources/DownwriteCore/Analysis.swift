@@ -40,6 +40,8 @@ public struct StyleFlags: OptionSet, Hashable, Sendable {
     public static let headingMarker = StyleFlags(rawValue: 1 << 24)
     /// A `-`, `*` or `+` list marker that the editor draws as a bullet glyph.
     public static let bullet = StyleFlags(rawValue: 1 << 25)
+    /// The `- [ ] ` prefix of a bulleted task item. While its source is not revealed the editor draws a checkbox in its place.
+    public static let taskPrefix = StyleFlags(rawValue: 1 << 26)
 }
 
 public struct FormatSpan: Equatable, Sendable {
@@ -70,6 +72,9 @@ public struct TaskBox: Equatable, Sendable {
     /// The three characters `[ ]` / `[x]`.
     public var range: NSRange
     public var checked: Bool
+    /// The whole `- [ ] ` prefix (bullet, box and the whitespace around them) of a bulleted task. Shown as a checkbox
+    /// until the caret enters it. `nil` for numbered tasks (`1. [ ]`), which keep their number and the raw box.
+    public var prefix: NSRange? = nil
 }
 
 public struct MermaidBlock: Equatable, Sendable {
@@ -266,6 +271,19 @@ public struct MarkdownAnalysis: Sendable {
     /// The task checkbox whose `[ ]` range contains `offset`.
     public func taskBox(at offset: Int) -> TaskBox? {
         taskBoxes.first { offset >= $0.range.location && offset <= NSMaxRange($0.range) }
+    }
+
+    /// The task whose box sits on source line `line` (task boxes are in document order, so this is a binary search).
+    public func taskBox(onLine line: Int) -> TaskBox? {
+        guard lines.indices.contains(line) else { return nil }
+        let r = lines[line].range
+        var lo = 0, hi = taskBoxes.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if taskBoxes[mid].range.location < r.location { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo < taskBoxes.count, taskBoxes[lo].range.location < NSMaxRange(r) else { return nil }
+        return taskBoxes[lo]
     }
 
     public func link(at offset: Int) -> LinkSpan? {
