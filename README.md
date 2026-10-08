@@ -154,7 +154,7 @@ Sources/Downwrite/       macOS app: SwiftUI shell, TextKit 1 editor, styler, Mer
 Tests/DownwriteCoreTests Linux + macOS unit tests
 Tests/DownwriteTests     macOS integration tests
 Packaging/               Info.plist, entitlements, icon artwork
-scripts/                 build-app.sh, make-dmg.sh, linux-test.sh, generate-icons.py
+scripts/                 build-app.sh, make-dmg.sh, linux-test.sh, ci-local.sh, generate-icons.py
 ThirdParty/              Third-party licence texts (swift-markdown, cmark-gfm, Mermaid)
 LICENSE                  GNU GPL v3.0
 ```

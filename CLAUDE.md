@@ -11,7 +11,7 @@ Native macOS Markdown editor (SwiftUI + AppKit/TextKit 1). Goal: Bear-like editi
 | `Tests/DownwriteCoreTests` | Core unit tests — run on Linux and macOS. |
 | `Tests/DownwriteTests` | macOS integration tests (real `NSTextView`, WKWebView). |
 | `Packaging/` | `Info.plist` (template: `__VERSION__`/`__BUILD__`), entitlements, icon artwork + `AppIcon.icon`. |
-| `scripts/` | `build-app.sh`, `make-dmg.sh`, `linux-test.sh`, `generate-icons.py`. |
+| `scripts/` | `build-app.sh`, `make-dmg.sh`, `linux-test.sh`, `ci-local.sh`, `generate-icons.py`. |
 | `.github/workflows/` | `ci.yml` (Linux core + macOS build/test/e2e), `release.yml` (tag → DMG). |
 
 ## Commands
@@ -21,6 +21,7 @@ scripts/linux-test.sh                  # core tests in the Swift Docker image (w
 swift test                             # macOS: everything
 swift build && swift run Downwrite     # macOS: debug run
 scripts/build-app.sh                   # macOS: dist/Downwrite.app
+scripts/ci-local.sh [--shots] [--no-e2e]   # macOS: the whole macOS CI job locally (build, tests, package, real-app e2e) -> artifacts/summary.txt
 dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out=<dir> --selftest-input=<file.md>   # e2e, writes selftest-report.txt
 python3 scripts/generate-icons.py      # regenerate icon artwork (needs Pillow)
 ```
@@ -28,6 +29,7 @@ python3 scripts/generate-icons.py      # regenerate icon artwork (needs Pillow)
 In the cloud (Linux) container there is **no Xcode/macOS**. The app target cannot be compiled there. Workflow that works:
 1. Develop and test everything in `DownwriteCore` locally with `scripts/linux-test.sh` (Docker daemon may need `dockerd &`; pull `mirror.gcr.io/library/swift:6.1-noble` if Docker Hub rate-limits).
 2. Push the working branch; CI builds/tests the app on `macos-26` (Xcode 26.x, Swift 6.3). Read failures via the Actions logs (`get_job_logs` with a small `tail_lines`; the workflow already prints only error lines).
+   No Actions minutes? Run `scripts/ci-local.sh` on a Mac instead (same steps as the macOS job; `--shots` copies screenshots/reports into `docs/` for committing).
 3. Put `[shots]` in a commit message to make CI commit fresh screenshots to `docs/screenshots/` (normal push to the same branch — **never** force-push or push other branches from CI or by hand). `git pull --rebase` before your next push.
 
 ## Architecture rules
