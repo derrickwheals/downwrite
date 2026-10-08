@@ -24,7 +24,7 @@ PASS  …and the document is not marked as edited
 PASS  another process replaces the file atomically
 PASS  an atomic replace (temporary file + rename) is picked up too
 PASS  another process puts the original text back
-PASS  …and the editor follows it back — 1783 vs 1783 characters
+PASS  …and the editor follows it back — 1803 vs 1803 characters
 PASS  …still not marked as edited
 PASS  mermaid diagram rendered into a card
 PASS  diagram card has a sensible frame — (132.0, 1645.8999999999983, 719.0, 156.9375)
@@ -48,11 +48,11 @@ PASS  menu: Insert Column Right adds a column — 3 columns
 PASS  undo walks the table back — 6×2
 PASS  table of contents sidebar starts hidden
 PASS  ⌃⌘O turns the sidebar on
-PASS  the editor column narrows to make room for the sidebar — 983.0 → 756.0
+PASS  the editor column narrows to make room for the sidebar — 983.0 → 734.0
 PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
-PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1480.0
-PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1480.0, 983.0, 677.0)
+PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1484.0
+PASS  the clicked heading is in view — y 1563.6699999999992 in (0.0, 1484.0, 983.0, 677.0)
 PASS  the caret moves to the heading
 PASS  the editor keeps the keyboard after a click in the sidebar
 PASS  the clicked heading is highlighted in the sidebar
@@ -70,7 +70,7 @@ PASS  typing the third backtick adds the closing fence — the self-test.
 ```
 
 ```
-PASS  caret waits after the opening fence — {1788, 0}
+PASS  caret waits after the opening fence — {1808, 0}
 PASS  undo removes the auto-closed fence — 
 Typed by the self-test.
 PASS  sample has a code block and inline code to select
@@ -127,6 +127,10 @@ PASS  theme catppuccin-mocha reaches the editor
 PASS  theme catppuccin-mocha colours the page
 PASS  theme radix-dark reaches the editor
 PASS  theme radix-dark colours the page
+PASS  ⌘, opens the Settings window — windows: ["work.md", "", "Appearance"]
+PASS  the Appearance settings tab fits a small screen — 539 pt tall, title “Appearance”
+PASS  the Editor settings tab fits a small screen — 395 pt tall, title “Editor”
+PASS  the General settings tab fits a small screen — 368 pt tall, title “General”
 PASS  a VS Code theme file is converted — custom-midnight-orchid-dark []
 PASS  …and offered in the dark theme picker
 PASS  …and not in the light one
@@ -135,13 +139,13 @@ PASS  removing it puts the Downwrite theme back
 PASS  …and nothing is left in the library
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,4011 775×606", "104,7607 775×2552"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 749 pt, inset 30.0, grid frames ["2,4136 745×606", "2,7754 745×2689"]
+DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,4454 729×633", "2,8132 729×2827"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,4011 775×606", "104,7607 775×2552"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,4011 775×606", "104,7607 775×2552"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,4221 775×606", "104,7816 775×2552"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
