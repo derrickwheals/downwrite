@@ -1,8 +1,8 @@
 ▶ swift build (release)
 Building for production...
 [0/42] Write swift-version-7974D3F7F03D5E95.txt
-[1/42] Compiling cmark-gfm-extensions tasklist.c
-[2/42] Compiling cmark-gfm-extensions tagfilter.c
+[1/42] Compiling cmark-gfm-extensions tagfilter.c
+[2/42] Compiling cmark-gfm-extensions tasklist.c
 [3/42] Compiling cmark-gfm-extensions strikethrough.c
 [4/42] Compiling cmark-gfm-extensions ext_scanners.c
 [5/42] Compiling cmark-gfm-extensions core-extensions.c
@@ -17,9 +17,9 @@ Building for production...
 [14/42] Compiling cmark-gfm plaintext.c
 [15/42] Compiling cmark-gfm scanners.c
 [16/42] Compiling cmark-gfm map.c
-[17/42] Compiling cmark-gfm node.c
-[18/42] Compiling cmark-gfm utf8.c
-[19/42] Compiling cmark-gfm linked_list.c
+[17/42] Compiling cmark-gfm utf8.c
+[18/42] Compiling cmark-gfm linked_list.c
+[19/42] Compiling cmark-gfm node.c
 [20/42] Compiling cmark-gfm man.c
 [21/42] Compiling cmark-gfm latex.c
 [22/42] Compiling cmark-gfm iterator.c
@@ -29,22 +29,38 @@ Building for production...
 [26/42] Compiling cmark-gfm houdini_href_e.c
 [27/42] Compiling cmark-gfm footnotes.c
 [28/42] Compiling cmark-gfm cmark_ctype.c
-[29/42] Compiling cmark-gfm cmark.c
-[30/42] Compiling cmark-gfm commonmark.c
+[29/42] Compiling cmark-gfm commonmark.c
+[30/42] Compiling cmark-gfm cmark.c
 [31/42] Compiling cmark-gfm buffer.c
-[32/42] Compiling cmark-gfm arena.c
-[32/42] Write sources
+[32/42] Compiling cmark-gfm inlines.c
+[33/42] Write sources
 [34/42] Copying Resources
 [35/42] Write sources
-[37/42] Compiling CAtomic CAtomic.c
-[38/42] Compiling cmark-gfm inlines.c
+[37/42] Compiling cmark-gfm arena.c
+[38/42] Compiling CAtomic CAtomic.c
 [39/42] Compiling cmark-gfm blocks.c
 [41/43] Compiling Markdown ChildIndexPath.swift
 [42/44] Compiling DownwriteCore Analysis.swift
 [43/45] Compiling Downwrite AppDelegate.swift
+/Users/runner/work/downwrite/downwrite/Sources/Downwrite/EditorView.swift:186:32: warning: capture of 'token' with non-Sendable type 'EditorCoordinator.ObserverToken' in a '@Sendable' closure [#SendableClosureCaptures]
+184 |             MainActor.assumeIsolated {
+185 |                 guard let self, self.textView != nil else {                // the window is gone: stop listening
+186 |                     if let o = token.observer { NotificationCenter.default.removeObserver(o) }
+    |                                `- warning: capture of 'token' with non-Sendable type 'EditorCoordinator.ObserverToken' in a '@Sendable' closure [#SendableClosureCaptures]
+187 |                     return
+188 |                 }
+    :
+194 | 
+195 |     /// Lets a notification block remove its own observer.
+196 |     private final class ObserverToken { var observer: NSObjectProtocol? }
+    |                         `- note: class 'ObserverToken' does not conform to the 'Sendable' protocol
+197 | 
+198 |     /// If the file on disk was modified by someone else and the document has no unsaved edits, asks the document to revert to
+
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
 [43/45] Write Objects.LinkFileList
 [44/45] Linking Downwrite
-Build of product 'Downwrite' complete! (83.32s)
+Build of product 'Downwrite' complete! (101.05s)
 ▶ assembling dist/Downwrite.app
 dist/Downwrite.app/Contents/Info.plist: OK
 ▶ compiling AppIcon.icon

@@ -1,3 +1,1 @@
-	 Executed 382 tests, with 2 failures (0 unexpected) in 42.070 (42.150) seconds
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/ExternalChangeTests.swift:46: error: -[DownwriteTests.ExternalChangeTests testTheScrollPositionIsKept] : XCTAssertEqualWithAccuracy failed: ("7170.0") is not equal to ("3000.0") +/- ("1.0")
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/ExternalChangeTests.swift:48: error: -[DownwriteTests.ExternalChangeTests testTheScrollPositionIsKept] : XCTAssertEqualWithAccuracy failed: ("7065.0") is not equal to ("7170.0") +/- ("2.0") - the view stays where it was
+	 Executed 382 tests, with 0 failures (0 unexpected) in 59.069 (59.268) seconds
