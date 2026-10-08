@@ -1,8 +1,9 @@
 import Foundation
 
 public extension Palette {
-    /// Whether this is a dark palette (a dark page), whatever theme it came from.
-    var isDark: Bool { background.luminance < 0.4 }
+    /// Whether this is a dark palette: the page is dark enough that light text reads better on it than dark text (the two
+    /// are equally good at a luminance of about 0.18), whatever theme it came from.
+    var isDark: Bool { background.luminance < 0.18 }
 }
 
 /// One selectable colour theme: a name, which macOS appearance it is for, and its palette.
@@ -113,5 +114,82 @@ public enum ThemeCatalog {
 
     public static func palette(id: String?, for appearance: Theme) -> Palette {
         theme(id: id, for: appearance).palette
+    }
+}
+
+// MARK: - Imported themes
+
+/// The built-in themes plus the ones the person imported (from VS Code theme files), as one list per appearance.
+public struct ThemeLibrary: Equatable, Sendable {
+    public var imported: [ThemeDefinition]
+
+    public init(imported: [ThemeDefinition] = []) {
+        self.imported = imported
+    }
+
+    /// Built-in themes first (Downwrite on top), then imported ones by name.
+    public func themes(for appearance: Theme) -> [ThemeDefinition] {
+        ThemeCatalog.themes(for: appearance)
+            + imported.filter { $0.appearance == appearance }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    public func theme(id: String?, for appearance: Theme) -> ThemeDefinition {
+        let all = themes(for: appearance)
+        return all.first { $0.id == id } ?? ThemeCatalog.theme(id: nil, for: appearance)
+    }
+
+    public func palette(id: String?, for appearance: Theme) -> Palette {
+        theme(id: id, for: appearance).palette
+    }
+}
+
+/// An imported theme as it is kept on disk (`Themes/<id>.json` in Application Support): already converted, so loading it
+/// needs no VS Code knowledge and a later change to the converter cannot alter a theme the person has been using.
+public struct StoredTheme: Codable, Equatable, Sendable {
+    public var version = 1
+    public var id: String
+    public var name: String
+    /// `light` or `dark`.
+    public var appearance: String
+    /// The file it was imported from (for display).
+    public var source: String
+    /// Palette entries as `#RRGGBB` / `#RRGGBBAA`, keyed by `Palette` property name.
+    public var colors: [String: String]
+
+    public init(id: String, name: String, appearance: Theme, source: String, palette: Palette) {
+        self.id = id
+        self.name = name
+        self.appearance = appearance.rawValue
+        self.source = source
+        self.colors = [
+            "background": palette.background.hexString, "text": palette.text.hexString, "secondaryText": palette.secondaryText.hexString,
+            "marker": palette.marker.hexString, "accent": palette.accent.hexString, "link": palette.link.hexString,
+            "codeText": palette.codeText.hexString, "codeBackground": palette.codeBackground.hexString,
+            "inlineCodeBackground": palette.inlineCodeBackground.hexString, "quoteBar": palette.quoteBar.hexString,
+            "highlightBackground": palette.highlightBackground.hexString, "rule": palette.rule.hexString, "selection": palette.selection.hexString,
+        ]
+    }
+
+    /// The identifier an imported theme gets: stable for the same name and appearance, so importing a theme again replaces it.
+    public static func identifier(name: String, appearance: Theme) -> String {
+        let slug = name.lowercased().unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) && $0.isASCII ? Character($0) : "-" }
+            .reduce(into: "") { acc, ch in if !(ch == "-" && (acc.last == "-" || acc.isEmpty)) { acc.append(ch) } }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return "custom-\(slug.isEmpty ? "theme" : slug)-\(appearance.rawValue)"
+    }
+
+    /// The theme this describes, or nil if the record is damaged (unknown appearance, a missing or unreadable colour).
+    public func definition() -> ThemeDefinition? {
+        guard let appearance = Theme(rawValue: appearance), !id.isEmpty, id.hasPrefix("custom-") else { return nil }
+        func color(_ key: String) -> RGBA? { colors[key].flatMap { RGBA(cssHex: $0) } }
+        guard let background = color("background"), let text = color("text"), let secondary = color("secondaryText"),
+              let marker = color("marker"), let accent = color("accent"), let link = color("link"), let codeText = color("codeText"),
+              let codeBackground = color("codeBackground"), let inline = color("inlineCodeBackground"), let quote = color("quoteBar"),
+              let highlight = color("highlightBackground"), let rule = color("rule"), let selection = color("selection") else { return nil }
+        let palette = Palette(background: background, text: text, secondaryText: secondary, marker: marker, accent: accent, link: link,
+                              codeText: codeText, codeBackground: codeBackground, inlineCodeBackground: inline, quoteBar: quote,
+                              highlightBackground: highlight, rule: rule, selection: selection)
+        return ThemeDefinition(id: id, name: name, appearance: appearance, palette: palette)
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import DownwriteCore
 
 @main
@@ -39,6 +40,7 @@ struct EditorScene: View {
     @AppStorage(Prefs.darkTheme) private var darkTheme = ThemeCatalog.defaultDarkID
     @AppStorage(Prefs.showTOC) private var showTOC = false
     @StateObject private var toc = TOCModel()
+    @ObservedObject private var themeStore = ThemeStore.shared
     /// The source view is per window and starts off.
     @State private var sourceMode = false
     /// "Keep on Top" (Window menu) is per window and starts off.
@@ -46,7 +48,7 @@ struct EditorScene: View {
 
     private var settings: EditorSettings {
         EditorSettings(font: FontChoice(rawValue: fontRaw) ?? .avenirNext, size: fontSize, lineHeight: lineHeight, width: width,
-                       spellCheck: spellCheck, lightTheme: lightTheme, darkTheme: darkTheme)
+                       spellCheck: spellCheck, lightTheme: lightTheme, darkTheme: darkTheme, themeRevision: themeStore.revision)
     }
 
     var body: some View {
@@ -301,6 +303,8 @@ struct SettingsView: View {
     @AppStorage(Prefs.spellCheck) private var spellCheck = false
     @AppStorage(Prefs.lightTheme) private var lightTheme = ThemeCatalog.defaultLightID
     @AppStorage(Prefs.darkTheme) private var darkTheme = ThemeCatalog.defaultDarkID
+    @ObservedObject private var themes = ThemeStore.shared
+    @State private var themeMessage: (text: String, isError: Bool)?
     @State private var message: String?
 
     var body: some View {
@@ -311,16 +315,34 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 Picker("Light theme", selection: $lightTheme) {
-                    ForEach(ThemeCatalog.themes(for: .light)) { Text($0.name).tag($0.id) }
+                    ForEach(themes.library.themes(for: .light)) { Text($0.name).tag($0.id) }
                 }
                 Picker("Dark theme", selection: $darkTheme) {
-                    ForEach(ThemeCatalog.themes(for: .dark)) { Text($0.name).tag($0.id) }
+                    ForEach(themes.library.themes(for: .dark)) { Text($0.name).tag($0.id) }
                 }
                 HStack(spacing: 12) {
-                    ThemePreview(palette: ThemeCatalog.palette(id: lightTheme, for: .light), label: "Light")
-                    ThemePreview(palette: ThemeCatalog.palette(id: darkTheme, for: .dark), label: "Dark")
+                    ThemePreview(palette: themes.library.palette(id: lightTheme, for: .light), label: "Light")
+                    ThemePreview(palette: themes.library.palette(id: darkTheme, for: .dark), label: "Dark")
                 }
                 .accessibilityIdentifier("theme-previews")
+                LabeledContent("More themes") {
+                    Button("Add VS Code Theme…") { addThemes() }
+                        .accessibilityIdentifier("add-theme")
+                }
+                if let themeMessage {
+                    Text(themeMessage.text).font(.footnote).foregroundStyle(themeMessage.isError ? Color.red : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(themes.library.imported) { theme in
+                    LabeledContent {
+                        Button("Remove") { removeTheme(theme) }.buttonStyle(.link)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(theme.name)
+                            Text(theme.appearance == .dark ? "Dark theme" : "Light theme").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             Section("Typography") {
                 Picker("Font", selection: $font) {
@@ -358,5 +380,50 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear { keepChosenThemesValid() }
+    }
+
+    /// A theme file that was deleted behind our back must not leave a picker pointing at nothing.
+    private func keepChosenThemesValid() {
+        if !themes.library.themes(for: .light).contains(where: { $0.id == lightTheme }) { lightTheme = ThemeCatalog.defaultLightID }
+        if !themes.library.themes(for: .dark).contains(where: { $0.id == darkTheme }) { darkTheme = ThemeCatalog.defaultDarkID }
+    }
+
+    private func addThemes() {
+        let panel = NSOpenPanel()
+        panel.title = "Add a VS Code Theme"
+        panel.message = "Choose one or more VS Code colour theme files (.json). They are the files in a theme extension's “themes” folder."
+        panel.prompt = "Add"
+        panel.allowedContentTypes = [UTType.json, UTType(filenameExtension: "jsonc")].compactMap { $0 }
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK else { return }
+        importThemes(panel.urls)
+    }
+
+    private func importThemes(_ urls: [URL]) {
+        var lines: [String] = []
+        var failed = false
+        for url in urls {
+            do {
+                let result = try themes.importTheme(from: url)
+                let dark = result.theme.appearance == .dark
+                if dark { darkTheme = result.theme.id } else { lightTheme = result.theme.id }
+                lines.append("\(result.replaced ? "Updated" : "Added") “\(result.theme.name)” as a \(dark ? "dark" : "light") theme and selected it."
+                             + (dark ? " It shows when the editor is dark." : " It shows when the editor is light.")
+                             + result.warnings.map { " " + $0 }.joined())
+            } catch {
+                failed = true
+                lines.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        themeMessage = (lines.joined(separator: "\n"), failed)
+    }
+
+    private func removeTheme(_ theme: ThemeDefinition) {
+        themes.remove(id: theme.id)
+        if lightTheme == theme.id { lightTheme = ThemeCatalog.defaultLightID }
+        if darkTheme == theme.id { darkTheme = ThemeCatalog.defaultDarkID }
+        themeMessage = ("Removed “\(theme.name)”.", false)
     }
 }

@@ -543,6 +543,53 @@ enum SelfTest {
             window.makeKeyAndOrderFront(nil)
         }
 
+        // 6h. A VS Code theme file (JSON with comments) is imported, offered for its appearance, used by the real window, and removed.
+        do {
+            let defaults = UserDefaults.standard
+            let file = outDir.appendingPathComponent("Midnight Orchid.json")
+            let json = """
+            {
+              // A made-up VS Code theme with comments and trailing commas, as theme authors write them
+              "name": "Midnight Orchid",
+              "type": "dark",
+              "colors": {
+                "editor.background": "#14101f", "editor.foreground": "#e6e0f5", "textLink.foreground": "#9db4ff",
+                "editor.selectionBackground": "#5b3f9a80", "textCodeBlock.background": "#1b1630", "textBlockQuote.border": "#6a4fb0",
+                "editor.findMatchHighlightBackground": "#d29bff40", "editorGroup.border": "#2a2342",
+              },
+              "tokenColors": [ { "scope": ["markup.heading"], "settings": { "foreground": "#d29bff", "fontStyle": "bold" } }, ],
+            }
+            """
+            try? json.write(to: file, atomically: true, encoding: .utf8)
+            do {
+                let imported = try ThemeStore.shared.importTheme(from: file)
+                check(imported.theme.appearance == .dark && imported.theme.name == "Midnight Orchid", "a VS Code theme file is converted", detail: "\(imported.theme.id) \(imported.warnings)")
+                check(ThemeStore.shared.library.themes(for: .dark).contains { $0.id == imported.theme.id }, "…and offered in the dark theme picker")
+                check(!ThemeStore.shared.library.themes(for: .light).contains { $0.id == imported.theme.id }, "…and not in the light one")
+                defaults.set(ThemeChoice.dark.rawValue, forKey: Prefs.theme)
+                defaults.set(imported.theme.id, forKey: Prefs.darkTheme)
+                ThemeChoice.applyCurrent()
+                let applied = await waitUntil(timeout: 5) { coordinator.styler.palette == imported.theme.palette }
+                check(applied, "the imported theme reaches the editor")
+                tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "comes back", plus: 3), length: 0))
+                tv.scrollToBeginningOfDocument(nil)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                _ = capture(window: window, to: outDir.appendingPathComponent("window-theme-imported.png"))
+                ThemeStore.shared.remove(id: imported.theme.id)
+                defaults.set(ThemeCatalog.defaultDarkID, forKey: Prefs.darkTheme)
+                let back = await waitUntil(timeout: 5) { coordinator.styler.palette == Palette.palette(for: .dark) }
+                check(back, "removing it puts the Downwrite theme back")
+                check(ThemeStore.shared.library.imported.isEmpty, "…and nothing is left in the library")
+            } catch {
+                check(false, "importing a VS Code theme file", detail: "\(error)")
+            }
+            defaults.set(ThemeCatalog.defaultLightID, forKey: Prefs.lightTheme)
+            defaults.set(ThemeCatalog.defaultDarkID, forKey: Prefs.darkTheme)
+            defaults.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 600_000_000)
+        }
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()

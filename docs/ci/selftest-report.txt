@@ -48,7 +48,7 @@ PASS  menu: Insert Column Right adds a column — 3 columns
 PASS  undo walks the table back — 6×2
 PASS  table of contents sidebar starts hidden
 PASS  ⌃⌘O turns the sidebar on
-PASS  the editor column narrows to make room for the sidebar — 983.0 → 778.0
+PASS  the editor column narrows to make room for the sidebar — 983.0 → 733.0
 PASS  sidebar lists every heading — Welcome to Downwrite | Write the way you think | Lists that keep up | Code and tables | Diagrams
 PASS  headings are nested by level — 01211
 PASS  clicking 'Diagrams' scrolls the editor — -24.0 → 1484.0
@@ -127,15 +127,21 @@ PASS  theme catppuccin-mocha reaches the editor
 PASS  theme catppuccin-mocha colours the page
 PASS  theme radix-dark reaches the editor
 PASS  theme radix-dark colours the page
+PASS  a VS Code theme file is converted — custom-midnight-orchid-dark []
+PASS  …and offered in the dark theme picker
+PASS  …and not in the light one
+PASS  the imported theme reaches the editor
+PASS  removing it puts the Downwrite theme back
+PASS  …and nothing is left in the library
 PASS  system theme clears the appearance override
 PASS  README tables become grids — 2 grids
-DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,3249 775×606", "104,6845 775×1507"]
+DIAG README start: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
 PASS  README tables are lined up with the text at the start
-DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3449 729×633", "2,7128 729×1617"]
+DIAG README sidebar open: text view 733 pt, inset 30.0, grid frames ["2,3752 729×633", "2,7430 729×1617"]
 PASS  README tables stay lined up with the sidebar open
-DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,3249 775×606", "104,6845 775×1507"]
+DIAG README sidebar closed again: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
 PASS  README tables are lined up again after the sidebar closes
-DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,3249 775×606", "104,6845 775×1507"]
+DIAG README after rapid toggling: text view 983 pt, inset 132.0, grid frames ["104,3518 775×606", "104,7114 775×1507"]
 PASS  README tables are lined up after rapid sidebar toggling
 
 ALL CHECKS PASSED
