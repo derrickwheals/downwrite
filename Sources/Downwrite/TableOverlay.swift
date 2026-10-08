@@ -25,7 +25,8 @@ final class TableOverlay {
     private var analysis: MarkdownAnalysis { coordinator.analysis }
 
     /// The document's tables that are shown as grids, in order.
-    var gridBlocks: [TableBlock] { analysis.tables.filter(\.isGrid) }
+    /// (None in the source view, which shows every table as plain Markdown.)
+    var gridBlocks: [TableBlock] { coordinator.sourceMode ? [] : analysis.tables.filter(\.isGrid) }
 
     private var availableWidth: CGFloat {
         guard let tv = textView else { return 600 }

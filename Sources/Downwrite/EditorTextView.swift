@@ -312,7 +312,7 @@ final class EditorTextView: NSTextView {
     /// The task whose checkbox is under `point` (text view coordinates): the drawn square while the `- [ ] ` source is
     /// hidden, otherwise the raw `[ ]` characters.
     func taskBox(at point: NSPoint) -> TaskBox? {
-        guard let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer else { return nil }
+        guard coordinator?.sourceMode != true, let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer else { return nil }
         return taskBox(atPoint: point, index: characterIndexForInsertion(at: point), analysis: analysis, layout: lm, container: tc)
     }
 

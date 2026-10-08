@@ -17,13 +17,15 @@ struct EditorView: NSViewRepresentable {
     var fileURL: URL?
     /// Feeds the table-of-contents sidebar.
     var toc: TOCModel?
+    /// Shows the raw Markdown like a plain text editor (nothing hidden, no tables, diagrams or checkboxes drawn).
+    var sourceMode = false
 
     func makeCoordinator() -> EditorCoordinator { EditorCoordinator(text: $text) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let (scroll, textView) = EditorTextView.make()
         context.coordinator.toc = toc
-        context.coordinator.attach(scroll: scroll, textView: textView, settings: settings, initialText: text)
+        context.coordinator.attach(scroll: scroll, textView: textView, settings: settings, initialText: text, sourceMode: sourceMode)
         context.coordinator.fileURL = fileURL
         return scroll
     }
@@ -32,7 +34,7 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.text = $text
         context.coordinator.fileURL = fileURL
         context.coordinator.toc = toc
-        context.coordinator.update(text: text, settings: settings)
+        context.coordinator.update(text: text, settings: settings, sourceMode: sourceMode)
     }
 }
 
@@ -61,6 +63,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         }
     }
 
+    /// The source view: raw Markdown in a plain monospaced style, nothing hidden and no overlays (see `setSourceMode`).
+    private(set) var sourceMode = false
+
     private var settings: EditorSettings?
     private var preview = PreviewState()
     private var lastHidden = Set<Int>()
@@ -77,7 +82,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
 
     // MARK: Setup
 
-    func attach(scroll: NSScrollView, textView tv: EditorTextView, settings s: EditorSettings, initialText: String) {
+    func attach(scroll: NSScrollView, textView tv: EditorTextView, settings s: EditorSettings, initialText: String, sourceMode: Bool = false) {
+        self.sourceMode = sourceMode
         self.scroll = scroll
         textView = tv
         tv.coordinator = self
@@ -102,8 +108,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         textView?.isContinuousSpellCheckingEnabled = s.spellCheck
     }
 
-    func update(text newText: String, settings s: EditorSettings) {
+    func update(text newText: String, settings s: EditorSettings, sourceMode wanted: Bool? = nil) {
         guard let tv = textView else { return }
+        if let wanted, wanted != sourceMode { setSourceMode(wanted) }
         var reanalyzeNeeded = false
         if tv.string != newText {
             let sel = tv.selectedRange()
@@ -119,6 +126,20 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         if reanalyzeNeeded { reanalyze() }
     }
 
+    /// Switches between the formatted editor and the source view. The text, the caret and undo are untouched; only what
+    /// is drawn changes: the source view restyles everything plain and removes the table grids and diagram/image cards.
+    func setSourceMode(_ on: Bool) {
+        guard on != sourceMode, let tv = textView else { return }
+        sourceMode = on
+        let selection = tv.selectedRange()
+        // A grid cell that has the keyboard goes away with the grids (its text is already in the document).
+        if tableOverlay.hasFocus { tv.window?.makeFirstResponder(tv) }
+        sourceTableFirstLine = nil
+        reanalyze()
+        tv.setSelectedRange(selection)
+        tv.scrollRangeToVisible(selection)
+    }
+
     // MARK: Pipeline
 
     private var isDark: Bool { styler.palette == Palette.palette(for: .dark) }
@@ -132,10 +153,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
             sourceTableFirstLine = nil
         }
         overlay.baseURL = fileURL?.deletingLastPathComponent()
-        overlay.sync(blocks: analysis.previewBlocks, dark: isDark)
-        tableOverlay.sync()
-        preview.heights = combinedHeights()
-        preview.collapsed = collapsedBlocks(selection: tv.selectedRange())
+        overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark)
+        tableOverlay.sync()                       // (no grids in the source view: `gridBlocks` is empty then)
+        preview.heights = sourceMode ? [:] : combinedHeights()
+        preview.collapsed = sourceMode ? [] : collapsedBlocks(selection: tv.selectedRange())
         restyleAll()
     }
 
@@ -180,6 +201,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         isStyling = true
         defer { isStyling = false }
         let sel = tv.selectedRange()
+        if sourceMode {
+            styler.styleSource(storage: storage)
+            lastHidden = []
+            tv.typingAttributes = styler.sourceAttributes()
+            scheduleReposition()
+            return
+        }
         styler.styleAll(storage: storage, analysis: analysis, selection: sel, preview: preview)
         lastHidden = analysis.hiddenMarkerIndices(selection: sel)
         tv.typingAttributes = styler.baseAttributes()
@@ -209,7 +237,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     }
 
     private func reservedHeightsChanged() {
-        guard let tv = textView, let storage = tv.textStorage, analysis.length == storage.length else { return }
+        guard !sourceMode, let tv = textView, let storage = tv.textStorage, analysis.length == storage.length else { return }
         preview.heights = combinedHeights()
         let lines = Set(analysis.previewBlocks.map(\.lastLine)).union(analysis.tables.filter(\.isGrid).map(\.lastLine))
         isStyling = true
@@ -278,6 +306,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
               analysis.length == storage.length, !tv.hasMarkedText() else { return }
         let sel = tv.selectedRange()
         scheduleTOCPublish()
+        if sourceMode { return }                  // plain text: moving the caret changes nothing that is drawn
         // Markdown source of a table is only shown while the caret is in it.
         if let first = sourceTableFirstLine,
            let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),

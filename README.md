@@ -30,6 +30,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **Editable tables.** Tables are shown as a real grid you type into, not as pipes and dashes. **Tab** jumps to the next cell (and adds a row from the last cell), **Return** moves down, arrows step across cell edges, ⇧Return adds a line break. Drag the grips left of each row / above each column to reorder them, click a grip (or right-click any cell) for insert / delete / move / duplicate / align / sort, and use the **+** strips to append a row or column. Cell text keeps its Markdown (bold, links, code hide their syntax like everywhere else), pasting spreadsheet data fills several cells, and *Edit as Markdown* shows the source. The document text stays plain GFM, aligned and tidy.
 - **Mermaid diagrams.** Fenced ```` ```mermaid ```` blocks render as live diagrams (flowcharts, sequence, class, state, ER, Gantt, pie, journey, git graph, mind maps…). Mermaid is bundled, so it works offline. Click a diagram to edit its source; it re-renders as you type.
 - **Table of contents.** Toggle a sidebar on the right (⌃⌘O, the toolbar button, or View ▸ Show Table of Contents) that lists the document's headings, nested by level, with the section holding the caret highlighted. Click a heading and the editor scrolls it to the top and puts the caret there, ready to type. Headings show as they read in the editor (no `#`, `**` or link syntax), update as you type, and the sidebar remembers whether you left it open.
+- **Source view.** Prefer to see the raw Markdown? The **‹/›** button in the toolbar (left of Format), or View ▸ Show Markdown Source (⌘/), switches the window to a plain monospaced editor: every character shown, no hidden syntax, no table grids, diagram cards or checkboxes. Your text, caret and undo history carry across, formatting shortcuts still work on the raw text, and the table-of-contents sidebar keeps following your headings. It is per window and starts off.
 - **Beautiful type.** Avenir Next (default), New York, SF Pro, Charter or SF Mono, with adjustable size, line spacing and column width. A centred readable column, rounded code cards, quote bars and soft rules.
 - **Light, dark or follow macOS.** Settings → Theme (or View ▸ Appearance). The app icon is an Icon Composer asset (light, dark and tinted variants chosen by macOS) and the Dock icon also swaps between the light and dark artwork while the app runs.
 - **Liquid Glass.** Built for macOS 26 "Tahoe" and ready for macOS 27 "Golden Gate": system toolbar and window chrome adopt Liquid Glass automatically, and the floating word-count pill uses `glassEffect`.
@@ -51,7 +52,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 | Heading 1–6 | ⌘1 … ⌘6 | Insert / format table | ⌥⌘T / ⇧⌥⌘T |
 | Body text | ⌘0 | Indent / outdent | ⌘] / ⌘[ (or Tab / ⇧Tab in lists) |
 | Find | ⌘F | Bigger / smaller text | ⌘= / ⌘- |
-| Table of contents | ⌃⌘O | | |
+| Table of contents | ⌃⌘O | Markdown source view | ⌘/ |
 | Next / previous table cell | Tab / ⇧Tab | New table row (in the last cell) | Tab or Return |
 
 Pressing a formatting shortcut again removes the formatting. With nothing selected it wraps the word under the caret (or inserts an empty pair). Standard shortcuts (⌘Z, ⇧⌘Z, ⌘C/V/X, ⌘A, ⌘S, ⌘W, ⌘T …) work as in any Mac app. ⌘-click a link to open it.

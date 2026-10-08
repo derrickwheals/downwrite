@@ -409,6 +409,46 @@ enum SelfTest {
         }
         tv.setSelectedRange(NSRange(location: 0, length: 0))
 
+        // 6e. Source view: ⌘/ (through the real menu bar) shows the raw Markdown — one plain monospaced style, nothing hidden, no
+        // table grids, diagram cards or checkboxes — and ⌘/ again brings the formatted editor back.
+        check(viewMenu?.items.contains { $0.title.hasSuffix("Markdown Source") } == true, "View menu has the Markdown Source toggle")
+        for theme in [ThemeChoice.light, .dark] {
+            UserDefaults.standard.set(theme.rawValue, forKey: Prefs.theme)
+            ThemeChoice.applyCurrent()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            let text = tv.string
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+            tv.scrollToBeginningOfDocument(nil)
+            check(!coordinator.sourceMode, "the formatted editor is showing before the switch (\(theme.rawValue))")
+            press("/", keyCode: 44, .command)
+            let switched = await waitUntil(timeout: 3) { coordinator.sourceMode }
+            check(switched, "⌘/ switches to the source view (\(theme.rawValue))")
+            if !switched { coordinator.setSourceMode(true) }          // carry on checking the rest either way
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            check(tv.string == text, "the text is unchanged in the source view (\(theme.rawValue))")
+            var runs = 0
+            var mono = true
+            tv.textStorage?.enumerateAttributes(in: NSRange(location: 0, length: tv.string.utf16.count), options: []) { attrs, _, _ in
+                runs += 1
+                mono = mono && ((attrs[.font] as? NSFont)?.isFixedPitch ?? false)
+            }
+            check(runs == 1 && mono, "the source view is one plain monospaced style (\(theme.rawValue))", detail: "\(runs) runs, mono \(mono)")
+            check(coordinator.tableOverlay.grids.isEmpty && !tv.subviews.contains { $0 is TableGridView }, "no table grids in the source view (\(theme.rawValue))")
+            check(!tv.subviews.contains { $0 is DiagramView }, "no diagram or image cards in the source view (\(theme.rawValue))")
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-source.png"))
+            tv.scrollRangeToVisible((tv.string as NSString).range(of: "| Shortcut"))
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-\(theme.rawValue)-source-table.png"))
+            press("/", keyCode: 44, .command)
+            let back = await waitUntil(timeout: 3) { !coordinator.sourceMode }
+            check(back, "⌘/ again returns to the formatted editor (\(theme.rawValue))")
+            if !back { coordinator.setSourceMode(false) }
+            let regrid = await waitUntil(timeout: 10) { !coordinator.tableOverlay.grids.isEmpty }
+            check(regrid && tv.string == text, "the table grid is back and the text is unchanged (\(theme.rawValue))")
+        }
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
