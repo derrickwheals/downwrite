@@ -1,3 +1,1 @@
-    |                            `- error: cannot force unwrap value of non-optional type 'EditorTextView'
-/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/DrawingTests.swift:20:28: error: cannot force unwrap value of non-optional type 'EditorTextView'
-error: fatalError
+	 Executed 322 tests, with 0 failures (0 unexpected) in 33.235 (33.289) seconds
