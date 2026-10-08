@@ -10,6 +10,7 @@ final class KeepOnTopTests: XCTestCase {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false          // ARC owns it; the default (true) would release it a second time on close()
         let host = NSHostingView(rootView: WindowLevelSetter(floating: floating))
         window.contentView = host
         window.orderFront(nil)
