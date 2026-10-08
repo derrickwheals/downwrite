@@ -449,6 +449,30 @@ enum SelfTest {
         }
         tv.setSelectedRange(NSRange(location: 0, length: 0))
 
+        // 6f. Window ▸ Keep on Top floats the window above others (a real menu action); choosing it again puts it back.
+        do {
+            func keepOnTopItem() -> (NSMenu, NSMenuItem)? {
+                guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == "Window" })?.submenu,
+                      let item = menu.items.first(where: { $0.title == "Keep on Top" }) else { return nil }
+                return (menu, item)
+            }
+            check(keepOnTopItem() != nil, "Window menu has Keep on Top")
+            tv.window?.makeKeyAndOrderFront(nil)
+            tv.window?.makeFirstResponder(tv)
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            check(window.level == .normal, "the window starts at the normal level")
+            if let (menu, item) = keepOnTopItem() {
+                check(item.isEnabled, "Keep on Top is enabled while an editor window is frontmost")
+                menu.performActionForItem(at: menu.index(of: item))
+            }
+            let up = await waitUntil(timeout: 3) { window.level == .floating }
+            check(up, "Keep on Top floats the window above others")
+            if let (menu, item) = keepOnTopItem() { menu.performActionForItem(at: menu.index(of: item)) }
+            let down = await waitUntil(timeout: 3) { window.level == .normal }
+            check(down, "choosing it again puts the window back")
+            window.level = .normal                                   // whatever happened, later steps expect a normal window
+        }
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
