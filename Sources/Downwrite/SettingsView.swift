@@ -88,7 +88,7 @@ struct AppearancePane: View {
                     Text("Add the colour theme files (.json) from a VS Code theme extension and they appear in the pickers above.")
                         .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else if themes.library.imported.count > 4 {
-                    ScrollView { importedRows }.frame(height: 190)           // a long list scrolls instead of growing the window
+                    ScrollView { importedRows }.frame(height: 120)           // a long list scrolls instead of growing the window
                 } else {
                     importedRows
                 }
