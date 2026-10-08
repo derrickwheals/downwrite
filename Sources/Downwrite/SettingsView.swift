@@ -256,7 +256,7 @@ struct EditorPane: View {
 struct GeneralPane: View {
     @State private var message: String?
 
-    /// "1.0.0 (3)" from the app bundle, or a note when running unpackaged (`swift run`).
+    /// "0.9.0 (3)" from the app bundle, or a note when running unpackaged (`swift run`).
     static var versionText: String {
         let info = Bundle.main.infoDictionary
         guard let version = info?["CFBundleShortVersionString"] as? String, !version.hasPrefix("__") else { return "development build" }

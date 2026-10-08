@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-0.9.0}"
 BUILD="${BUILD:-1}"
 CONFIG="${CONFIG:-release}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"          # "-" = ad-hoc
