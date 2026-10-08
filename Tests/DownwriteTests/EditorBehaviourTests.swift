@@ -141,4 +141,57 @@ final class EditorBehaviourTests: XCTestCase {
         XCTAssertTrue(h.textView.responds(to: #selector(NSResponder.performTextFinderAction(_:))))
         h.textView.performTextFinderAction(item)
     }
+
+    // MARK: Fenced code blocks
+
+    private func typeBacktick(_ h: EditorHarness) {
+        h.textView.insertText("`", replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    func testThirdBacktickClosesTheFence() {
+        let h = EditorHarness(text: "intro\n\n")
+        h.select(7)
+        typeBacktick(h); typeBacktick(h)
+        XCTAssertEqual(h.textView.string, "intro\n\n``", "two backticks are just backticks")
+        typeBacktick(h)
+        XCTAssertEqual(h.textView.string, "intro\n\n```\n\n```")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: 10, length: 0), "caret stays after the opening fence")
+        XCTAssertEqual(h.box.value, "intro\n\n```\n\n```", "the document binding sees it")
+        XCTAssertEqual(h.coordinator.analysis.lines[2].kind, .fence)
+    }
+
+    func testReturnOnTheFreshFenceStepsIntoTheBody() {
+        let h = EditorHarness(text: "")
+        typeBacktick(h); typeBacktick(h); typeBacktick(h)
+        h.textView.insertText("swift", replacementRange: NSRange(location: NSNotFound, length: 0))
+        h.textView.insertNewline(nil)
+        XCTAssertEqual(h.textView.string, "```swift\n\n```", "Return must not add another line")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: 9, length: 0))
+        h.textView.insertText("let x = 1", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(h.textView.string, "```swift\nlet x = 1\n```")
+    }
+
+    func testTypingBackticksInsideACodeBlockDoesNotNest() {
+        let h = EditorHarness(text: "```\ncode\n")
+        h.select(h.textView.string.utf16.count)
+        typeBacktick(h); typeBacktick(h); typeBacktick(h)
+        XCTAssertEqual(h.textView.string, "```\ncode\n```", "typing ``` inside a block closes it")
+    }
+
+    func testBackticksMidSentenceAreUntouched() {
+        let h = EditorHarness(text: "use ")
+        h.select(4)
+        typeBacktick(h); typeBacktick(h); typeBacktick(h)
+        XCTAssertEqual(h.textView.string, "use ```")
+    }
+
+    func testFenceAutoCloseIsUndoable() {
+        let h = EditorHarness(text: "x\n\n")
+        h.window.makeFirstResponder(h.textView)
+        h.select(3)
+        typeBacktick(h); typeBacktick(h); typeBacktick(h)
+        XCTAssertEqual(h.textView.string, "x\n\n```\n\n```")
+        h.textView.undoManager?.undo()
+        XCTAssertEqual(h.textView.string, "x\n\n", "one undo takes the whole block back out")
+    }
 }
