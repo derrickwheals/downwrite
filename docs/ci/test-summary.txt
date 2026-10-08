@@ -1,1 +1,2 @@
-	 Executed 322 tests, with 0 failures (0 unexpected) in 33.235 (33.289) seconds
+	 Executed 39 tests, with 0 failures (0 unexpected) in 0.033 (0.043) seconds
+/Users/runner/work/downwrite/downwrite/Tests/DownwriteTests/DrawingTests.swift:175: error: -[DownwriteTests.DrawingTests testCheckboxIsFilledWhenCheckedAndOutlinedWhenNot] : XCTAssertLessThan failed: ("0.38839984419299106") is not less than ("0.09") - a ticked box is filled with the accent colour
