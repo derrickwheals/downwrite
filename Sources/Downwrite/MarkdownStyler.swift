@@ -152,19 +152,35 @@ final class MarkdownStyler {
             if !attrs.isEmpty { storage.addAttributes(attrs, range: rr) }
         }
 
+        let font = (base[.font] as? NSFont) ?? typography.font()
         if let task, let prefix = task.prefix, prefix.length > 0, NSMaxRange(prefix) <= storage.length {
-            let font = typography.font(size: look.size, bold: look.bold, mono: look.mono)
             let mark = CheckboxMark(checked: task.checked, side: checkboxSide(look.size), centerAboveBaseline: (font.capHeight + font.xHeight) / 4,
                                     accent: palette.accent.nsColor, outline: palette.marker.nsColor, tick: palette.background.nsColor)
-            // The first character (the bullet) carries the box. It keeps the body font — clear, so invisible — because an item
-            // that is still empty (just after Return) has nothing else to give its line normal height and baseline: with only
-            // ~zero-size characters the line collapses and the box spills into the line above. Its own width is taken out of
-            // the kern, which keeps the item's text exactly one `checkboxColumn` clear of the box.
-            let bullet = (storage.string as NSString).substring(with: NSRange(location: prefix.location, length: 1))
-            let bulletWidth = (bullet as NSString).size(withAttributes: [.font: font]).width
-            storage.addAttributes([.dwCheckbox: mark, .font: font, .kern: max(0, checkboxColumn(look.size) - bulletWidth)],
-                                  range: NSRange(location: prefix.location, length: 1))
+            // The first character (the bullet) carries the box and keeps the line's font (see `keepLineMetrics`). Its own width
+            // is taken out of the kern, which keeps the item's text exactly one `checkboxColumn` clear of the box.
+            storage.addAttribute(.dwCheckbox, value: mark, range: NSRange(location: prefix.location, length: 1))
+            keepLineMetrics(storage, at: prefix.location, font: font, advance: checkboxColumn(look.size))
+        } else if line.contentEnd > r.location, NSMaxRange(line.contentRange) <= storage.length {
+            // A line whose every character is hidden — an empty heading (`# `), a bare quote marker (`>`) — would otherwise shrink
+            // to a sliver as well.
+            switch line.kind {
+            case .heading, .body:
+                let hidden = runs.reduce(0) { $0 + ($1.flags.contains(.hidden) ? NSIntersectionRange($1.range, line.contentRange).length : 0) }
+                if hidden == line.contentRange.length { keepLineMetrics(storage, at: line.contentRange.location, font: font, advance: 0) }
+            default: break
+            }
         }
+    }
+
+    /// Hidden characters are ~zero-size, so a line that holds nothing else (an empty task item, an empty heading, a bare `>`)
+    /// would collapse to a sliver with no baseline of its own, and anything drawn relative to it (a task's checkbox) would spill
+    /// into the line above. Giving one hidden character the line's real font (it stays clear, so invisible) gives the line
+    /// exactly the height and baseline of a line with text; a kern then makes the character advance by `advance` points.
+    private func keepLineMetrics(_ storage: NSTextStorage, at index: Int, font: NSFont, advance: CGFloat) {
+        guard index >= 0, index < storage.length else { return }
+        let range = NSRange(location: index, length: 1)
+        let width = (storage.attributedSubstring(from: range).string as NSString).size(withAttributes: [.font: font]).width
+        storage.addAttributes([.font: font, .kern: advance - width], range: range)
     }
 
     /// Edge length of a task checkbox for body text of `size`.
