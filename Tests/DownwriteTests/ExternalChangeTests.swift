@@ -40,12 +40,18 @@ final class ExternalChangeTests: XCTestCase {
         let text = lines.joined(separator: "\n\n") + "\n"
         let h = EditorHarness(text: text)
         h.select(0)
-        h.scroll.contentView.scroll(to: NSPoint(x: 0, y: 3000))
+        // Lay the whole document out first so the scroll range is final, then scroll to the middle of it.
+        h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
+        h.window.displayIfNeeded()
+        let target = (h.textView.frame.height * 0.4).rounded()
+        h.scroll.contentView.scroll(to: NSPoint(x: 0, y: target))
         h.scroll.reflectScrolledClipView(h.scroll.contentView)
         let before = h.scroll.contentView.bounds.origin.y
-        XCTAssertEqual(before, 3000, accuracy: 1)
+        XCTAssertEqual(before, target, accuracy: 1, "the view is scrolled to the middle of the document")
         h.coordinator.update(text: text.replacingOccurrences(of: "Line 395 of", with: "Line 395, rewritten, of"), settings: settings)
+        h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
         XCTAssertEqual(h.scroll.contentView.bounds.origin.y, before, accuracy: 2, "the view stays where it was")
+        XCTAssertTrue(h.textView.string.contains("Line 395, rewritten, of"))
     }
 
     func testTheNewTextIsStyledAndAnalysed() {
