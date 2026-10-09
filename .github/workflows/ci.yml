@@ -44,8 +44,9 @@ jobs:
       - name: Unit and integration tests
         timeout-minutes: 10   # a test stuck in an event-tracking loop must not hold the job for 40 minutes
         run: |
-          swift test > test.log 2>&1
-          STATUS=$?
+          # Capture the exit status explicitly: the default `bash -e` would abort before the failures are printed.
+          STATUS=0
+          swift test > test.log 2>&1 || STATUS=$?
           grep -E "Executed [0-9]+ tests" test.log | tail -1
           if [ $STATUS -ne 0 ]; then
             echo "=== TEST FAILURES ==="
