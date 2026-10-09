@@ -673,6 +673,15 @@ enum SelfTest {
         // 8. Regression (runs last because it replaces the document): with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
         // and keep the right reserved height while the sidebar opens and closes, however fast.
         if let extra = extraFile, let readme = try? String(contentsOf: extra, encoding: .utf8), let tables = coordinator.tableOverlay {
+            // The README's pictures are found relative to the document's folder: put the folders it refers to next to the working copy.
+            let readmeFolder = extra.deletingLastPathComponent()
+            var links: [URL] = []
+            for name in ["docs", "Packaging"] {
+                let link = outDir.appendingPathComponent(name)
+                try? FileManager.default.removeItem(at: link)
+                if (try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: readmeFolder.appendingPathComponent(name))) != nil { links.append(link) }
+            }
+            defer { links.forEach { try? FileManager.default.removeItem(at: $0) } }
             let whole = NSRange(location: 0, length: tv.string.utf16.count)
             tv.setSelectedRange(whole)
             tv.insertText(readme, replacementRange: whole)
@@ -693,6 +702,21 @@ enum SelfTest {
             var problems = await settled()
             geometry("start")
             check(problems.isEmpty, "README tables are lined up with the text at the start", detail: problems.joined(separator: "; "))
+            // The centred `<p align="center"><img …></p>` rows are HTML cards with their pictures, directly under their (collapsed) source.
+            let htmlBlocks = coordinator.analysis.previewBlocks.filter { if case .html = $0.kind { return true } else { return false } }
+            check(htmlBlocks.count >= 3, "README HTML blocks become cards", detail: "\(htmlBlocks.count) blocks")
+            let htmlReady = await waitUntil(timeout: 40) { htmlBlocks.allSatisfy { (coordinator.overlay.reservedHeights[$0.firstLine] ?? 0) > 100 } }
+            check(htmlReady, "README HTML cards render their pictures", detail: "\(htmlBlocks.map { Int(coordinator.overlay.reservedHeights[$0.firstLine] ?? 0) })")
+            check(tv.subviews.compactMap { $0 as? DiagramView }.filter(\.isHTML).count == htmlBlocks.count, "one HTML card per README HTML block")
+            var htmlProblems: [String] = []
+            _ = await waitUntil(timeout: 8) { htmlProblems = coordinator.overlay.layoutProblems(analysis: coordinator.analysis); return htmlProblems.isEmpty }
+            check(htmlProblems.isEmpty, "README HTML cards sit directly under their text", detail: htmlProblems.joined(separator: "; "))
+            tv.setSelectedRange(NSRange(location: caretOffset(in: tv, after: "A quiet, native Markdown editor", plus: 3), length: 0))   // (clear of the first block, whose source shows while the caret is in it)
+            tv.scrollToBeginningOfDocument(nil)
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            _ = capture(window: window, to: outDir.appendingPathComponent("window-readme-html.png"))
+            tv.setSelectedRange(NSRange(location: 0, length: 0))
+
             if let grid = tables.grids.first { tv.scrollToVisible(grid.frame.insetBy(dx: 0, dy: -60)) }
 
             press("o", keyCode: 31, [.command, .control])
