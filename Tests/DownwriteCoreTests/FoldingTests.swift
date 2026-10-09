@@ -629,6 +629,30 @@ final class FoldingTests: XCTestCase {
         XCTAssertGreaterThan(keptFolds, 200)
     }
 
+    /// R23: carrying the folds through an edit costs time linear in the number of folds (a binary search per fold at worst).
+    func testMappingScalesWithTheNumberOfFolds() {
+        func cost(_ sections: Int) -> TimeInterval {
+            var doc = ""
+            for i in 0..<sections { doc += "## S\(i)\ntext\n" }
+            let old = MarkdownAnalyzer.analyze(doc)
+            let state = FoldState().foldingAll(in: old)
+            XCTAssertEqual(state.anchors.count, sections)
+            let e = edit(0, "\n")
+            let new = MarkdownAnalyzer.analyze(e.apply(to: doc))
+            var best = TimeInterval.infinity
+            for _ in 0..<3 {
+                let start = Date()
+                let mapped = state.mapped(through: e, from: old, to: new)
+                best = min(best, Date().timeIntervalSince(start))
+                XCTAssertEqual(mapped.anchors.count, sections, "every fold moved down a line with its header")
+            }
+            return best
+        }
+        let small = cost(500), large = cost(5000)
+        XCTAssertLessThan(large, 0.5, "5,000 folds map in \(large) s")
+        XCTAssertLessThan(large, max(small, 0.0005) * 40, "10 times the folds cost \(large / max(small, 1e-9)) times as much, not 100")
+    }
+
     // MARK: Caret helpers (R13, R14, R16)
 
     func testHeaderEndIsTheEndOfTheHeadersLastLineContent() throws {

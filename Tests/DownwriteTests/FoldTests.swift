@@ -965,6 +965,94 @@ final class FoldTests: XCTestCase {
         XCTAssertTrue(foldedHeaders(h).contains { $0.contains("Pqlan") || $0.contains("Plan") })
     }
 
+    // MARK: Speed (R23) and Replace All
+
+    /// 500 sections of 20 lines each (10,000 lines), the body lines carrying inline formatting.
+    private static func bigDocument() -> String {
+        var doc = ""
+        for i in 1...500 {
+            doc += "## Section \(i)\n"
+            for j in 1..<20 { doc += "Line \(j) of section \(i) with **bold** and `code` text.\n" }
+        }
+        return doc
+    }
+
+    private func timed(_ work: () -> Void) -> TimeInterval {
+        let start = Date()
+        work()
+        return Date().timeIntervalSince(start)
+    }
+
+    func testTenThousandLinesAndFiveHundredRegionsStayFast() throws {
+        let h = EditorHarness(text: Self.bigDocument(), size: NSSize(width: 900, height: 700))
+        h.window.makeKeyAndOrderFront(nil)
+        h.select(0)
+        let c = h.coordinator
+        XCTAssertEqual(c.analysis.foldRegions.count, 500)
+        XCTAssertEqual(c.analysis.lines.count, 10_001)
+        let lm = h.textView.layoutManager!, tc = h.textView.textContainer!
+        func settle() { lm.ensureLayout(forBoundingRect: h.textView.visibleRect, in: tc) }
+
+        let one = c.analysis.foldRegions[250]
+        let foldOne = timed { c.setFoldState(FoldState().toggled(one)); settle() }
+        XCTAssertLessThan(foldOne, 0.5, "folding one region took \(foldOne) s")
+        let unfoldOne = timed { c.setFoldState(FoldState()); settle() }
+        XCTAssertLessThan(unfoldOne, 0.5, "unfolding one region took \(unfoldOne) s")
+
+        let foldAll = timed { c.foldAll(); settle() }
+        XCTAssertLessThan(foldAll, 2, "Fold All took \(foldAll) s")
+        XCTAssertEqual(c.foldState.anchors.count, 500)
+        let unfoldAll = timed { c.unfoldAll(); settle() }
+        XCTAssertLessThan(unfoldAll, 2, "Unfold All took \(unfoldAll) s")
+        print("FOLD-TIMING one \(foldOne) / \(unfoldOne), all \(foldAll) / \(unfoldAll)")
+    }
+
+    func testRestylingTouchesOnlyTheLinesWhoseVisibilityChanged() throws {
+        let h = EditorHarness(text: Self.bigDocument(), size: NSSize(width: 900, height: 700))
+        h.select(0)
+        // A mark far from the fold survives; marks on the header and in the hidden lines are replaced.
+        let key = NSAttributedString.Key("test.mark")
+        let a = h.coordinator.analysis
+        let region = a.foldRegions[100]
+        let outside = a.lines[a.foldRegions[300].headerLines.lowerBound + 3].range, inside = a.lines[region.hiddenLines.lowerBound + 2].range
+        h.storage.addAttribute(key, value: 1, range: NSRange(location: outside.location, length: 3))
+        h.storage.addAttribute(key, value: 1, range: NSRange(location: inside.location, length: 3))
+        h.coordinator.setFoldState(FoldState().toggled(region))
+        XCTAssertNotNil(h.attrs(at: outside.location)[key], "a line elsewhere was not restyled")
+        XCTAssertNil(h.attrs(at: inside.location)[key], "a hidden line was")
+    }
+
+    func testReplaceAllArrivesAsOneChangeAndDropsOnlyTheFoldsInsideItsSpan() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20, 35))
+        let text = h.textView.string as NSString
+        // What NSTextFinder does for Replace All: ask once for all the ranges, replace them one by one, then tell the client.
+        var ranges: [NSRange] = []
+        var search = NSRange(location: 0, length: text.length)
+        while true {
+            let r = text.range(of: "paragraph", options: [], range: search)
+            if r.location == NSNotFound { break }
+            ranges.append(r)
+            search = NSRange(location: NSMaxRange(r), length: text.length - NSMaxRange(r))
+        }
+        XCTAssertEqual(ranges.count, 2, "Intro paragraph. and Extra paragraph under Eggs.")
+        var changes = 0
+        let center = NotificationCenter.default
+        let token = center.addObserver(forName: NSText.didChangeNotification, object: h.textView, queue: nil) { _ in changes += 1 }
+        defer { center.removeObserver(token) }
+        // NSTextView does not expose NSTextFinderClient to Swift, so the finder's own replace-all path cannot be driven from a test.
+        // What a client does for several ranges is the text view's multi-range API: ask once, replace each, tell it once.
+        let replacements = ranges.map { _ in "PARAGRAPH" }
+        XCTAssertTrue(h.textView.shouldChangeText(inRanges: ranges.map { NSValue(range: $0) }, replacementStrings: replacements))
+        for r in ranges.reversed() { h.textView.textStorage?.replaceCharacters(in: r, with: "PARAGRAPH") }
+        h.textView.didChangeText()
+        XCTAssertEqual(changes, 1, "Replace All is a single change of the text")
+        XCTAssertTrue(h.textView.string.contains("Intro PARAGRAPH.") && h.textView.string.contains("Extra PARAGRAPH under"))
+        // The change is one span, from the first match to the last: the folds whose headers lie inside it are dropped (R18),
+        // those before it and after it stay.
+        XCTAssertEqual(foldedHeaders(h), ["## Last"], "Plan and Notes lie between the first and last match; Last is after it")
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)
