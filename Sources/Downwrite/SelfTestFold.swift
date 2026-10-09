@@ -12,7 +12,7 @@ extension SelfTest {
     /// `--selftest-fold-only`: run only this step (for development; `--selftest-input` is still required but unused).
     static var foldOnly: Bool { CommandLine.arguments.contains("--selftest-fold-only") }
 
-    static func foldWalkthrough(outDir: URL, fixture: URL, restoring original: NSWindow?) async {
+    static func foldWalkthrough(outDir: URL, fixture: URL) async {
         func fail(_ what: String, _ detail: String = "") { check(false, "fold: " + what, detail: detail) }
         let work = outDir.appendingPathComponent("fold-demo.md")
         try? FileManager.default.removeItem(at: work)
@@ -21,10 +21,14 @@ extension SelfTest {
         do { _ = try await NSDocumentController.shared.openDocument(withContentsOf: work, display: true) } catch { return fail("the fixture opens", "\(error)") }
         guard let tv = await waitForEditor(file: "fold-demo.md"), let coordinator = tv.coordinator, let window = tv.window,
               let document = NSDocumentController.shared.document(for: work) else { return fail("the fixture's editor appears") }
-        if original == nil {                                   // (alone: documents restored from an earlier session would hold SwiftUI's focus)
-            for other in NSApp.windows where other !== window && other.representedURL != nil { other.close() }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+        // Alone: SwiftUI resolves ⌘/ and the other focused-value menu items against one window, and with an earlier document window still open the
+        // shortcut can flip that window's source view instead of this one's (documents restored from an earlier session do the same).
+        for other in NSApp.windows where other !== window && other.representedURL != nil {
+            (other.windowController?.document as? NSDocument)?.updateChangeCount(.changeCleared)       // (no "save changes?" sheet)
+            other.close()
         }
+        _ = await waitUntil(timeout: 5) { !NSApp.windows.contains { $0 !== window && $0.representedURL != nil && $0.isVisible } }
+        try? await Task.sleep(nanoseconds: 500_000_000)
         NSApp.activate(ignoringOtherApps: true)
         window.setContentSize(NSSize(width: 1000, height: 800))
         window.makeKeyAndOrderFront(nil)
@@ -255,6 +259,5 @@ extension SelfTest {
         } else {
             fail("the file reopens")
         }
-        original?.makeKeyAndOrderFront(nil)
     }
 }
