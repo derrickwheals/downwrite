@@ -268,24 +268,29 @@ final class EditorTextView: NSTextView {
 
     // MARK: Smart keys
 
-    /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source.
+    /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source, and next
+    /// to a fold they open it instead of joining a visible line to hidden text.
     override func deleteBackward(_ sender: Any?) {
-        if guardTableDelete(backwards: true) { return }
+        if guardDelete(backwards: true) { return }
         super.deleteBackward(sender)
     }
 
     override func deleteForward(_ sender: Any?) {
-        if guardTableDelete(backwards: false) { return }
+        if guardDelete(backwards: false) { return }
         super.deleteForward(sender)
     }
 
-    // Word and line deletes would eat the hidden newline next to a table just the same.
-    override func deleteWordBackward(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteWordBackward(sender) } }
-    override func deleteToBeginningOfLine(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
-    override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
-    override func deleteWordForward(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteWordForward(sender) } }
-    override func deleteToEndOfLine(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
-    override func deleteToEndOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
+    // Word and line deletes would eat the hidden newline next to a table (or a fold) just the same.
+    override func deleteWordBackward(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteWordBackward(sender) } }
+    override func deleteToBeginningOfLine(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
+    override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
+    override func deleteWordForward(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteWordForward(sender) } }
+    override func deleteToEndOfLine(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
+    override func deleteToEndOfParagraph(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
+
+    private func guardDelete(backwards: Bool) -> Bool {
+        coordinator?.openFoldInsteadOfDeleting(backwards: backwards) == true || guardTableDelete(backwards: backwards)
+    }
 
     private func guardTableDelete(backwards: Bool) -> Bool {
         guard !hasMarkedText(), selectedRange().length == 0 else { return false }
@@ -293,6 +298,7 @@ final class EditorTextView: NSTextView {
     }
 
     override func insertNewline(_ sender: Any?) {
+        coordinator?.openFoldBeforeReturn()
         if !hasMarkedText(), let edit = FenceEditing.returnEdit(in: string, selection: selectedRange()) {
             // Return on a freshly opened fence steps into its empty body; nothing is inserted.
             setSelectedRange(edit.selection)

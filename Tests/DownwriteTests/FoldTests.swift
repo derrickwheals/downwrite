@@ -839,6 +839,132 @@ final class FoldTests: XCTestCase {
         XCTAssertEqual(caretLine(h), 9)
     }
 
+    // MARK: Edits at a fold's edge, and selections across folds (R16, R17, R19)
+
+    /// The text after pressing Return at `caret` in a document where `headers` are folded (none: a plain editor).
+    private func afterReturn(at caret: (EditorHarness) -> Int, folding headers: [Int]) async throws -> (h: EditorHarness, text: String) {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(headers.reduce(FoldState()) { s, n in s.toggled(h.coordinator.analysis.foldRegions.first { $0.headerLines.lowerBound == n - 1 }!) })
+        h.select(caret(h))
+        h.textView.insertNewline(nil)
+        return (h, h.textView.string)
+    }
+
+    func testReturnAtTheEndOrInsideAFoldedHeaderOpensItAndInsertsExactlyWhatItAlwaysDoes() async throws {
+        for (name, caret) in [("end", { (h: EditorHarness) in self.lineEnd(h, 5) }), ("inside", { (h: EditorHarness) in self.lineStart(h, 5) + 5 })] as [(String, (EditorHarness) -> Int)] {
+            let folded = try await afterReturn(at: caret, folding: [5, 20])
+            let plain = try await afterReturn(at: caret, folding: [])
+            XCTAssertEqual(folded.text, plain.text, "\(name): the text is the same with and without the fold")
+            XCTAssertEqual(foldedHeaders(folded.h), ["## Notes"], "\(name): this fold opened, the other did not")
+            XCTAssertEqual(folded.h.textView.selectedRange(), plain.h.textView.selectedRange(), "\(name): same caret")
+            XCTAssertGreaterThan(folded.h.font(at: folded.h.index(of: "Plan text.")).pointSize, 10)
+        }
+        // A list item behaves like a list item: Return after a folded bullet starts a new bullet, and the item opens.
+        let item = try await afterReturn(at: { self.lineEnd($0, 26) }, folding: [26])
+        let plainItem = try await afterReturn(at: { self.lineEnd($0, 26) }, folding: [])
+        XCTAssertEqual(item.text, plainItem.text)
+        XCTAssertEqual(foldedHeaders(item.h), [])
+    }
+
+    func testReturnAtTheStartOfAFoldedHeaderLeavesItFolded() async throws {
+        let r = try await afterReturn(at: { self.lineStart($0, 5) }, folding: [5])
+        XCTAssertEqual(foldedHeaders(r.h), ["## Plan"], "it is pushed down a line, still folded")
+        XCTAssertLessThan(r.h.font(at: r.h.index(of: "Plan text.")).pointSize, 1)
+    }
+
+    func testReturnThenUndoIsASingleStepAndKeepsTheFoldOpen() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineEnd(h, 5))
+        h.textView.insertNewline(nil)
+        XCTAssertEqual(foldedHeaders(h), [])
+        h.textView.undoManager?.undo()
+        XCTAssertEqual(h.textView.string, try Self.fixtureF(), "one undo takes the Return back")
+        XCTAssertEqual(foldedHeaders(h), [])
+    }
+
+    func testBackspaceAtTheStartOfTheLineAfterAFoldOpensItAndDeletesNothing() async throws {
+        let text = try Self.fixtureF()
+        let variants: [(String, Selector)] = [("⌫", #selector(NSResponder.deleteBackward(_:))), ("⌥⌫", #selector(NSResponder.deleteWordBackward(_:))),
+                                              ("⌘⌫", #selector(NSResponder.deleteToBeginningOfLine(_:))), ("paragraph", #selector(NSResponder.deleteToBeginningOfParagraph(_:)))]
+        for (name, selector) in variants {
+            let h = try await fixtureHarness()
+            h.coordinator.setFoldState(folded(h, 5, 9, 20))             // Plan and Tasks (inside it) both end where ## Notes begins
+            h.select(lineStart(h, 20))
+            h.textView.perform(selector, with: nil)
+            XCTAssertEqual(h.textView.string, text, "\(name): nothing was deleted")
+            XCTAssertEqual(foldedHeaders(h), ["## Notes"], "\(name): the folds that hid the join opened; Notes (below the caret) did not")
+            XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineStart(h, 20), length: 0), "\(name): the caret stayed")
+        }
+    }
+
+    func testForwardDeleteAtTheEndOfAFoldedHeaderOpensItAndDeletesNothing() async throws {
+        let text = try Self.fixtureF()
+        let variants: [(String, Selector)] = [("⌦", #selector(NSResponder.deleteForward(_:))), ("⌥⌦", #selector(NSResponder.deleteWordForward(_:))),
+                                              ("⌘⌦", #selector(NSResponder.deleteToEndOfLine(_:))), ("paragraph", #selector(NSResponder.deleteToEndOfParagraph(_:)))]
+        for (name, selector) in variants {
+            let h = try await fixtureHarness()
+            h.coordinator.setFoldState(folded(h, 5, 20))
+            h.select(lineEnd(h, 5))
+            h.textView.perform(selector, with: nil)
+            XCTAssertEqual(h.textView.string, text, "\(name): nothing was deleted")
+            XCTAssertEqual(foldedHeaders(h), ["## Notes"], "\(name)")
+        }
+    }
+
+    func testDeletingElsewhereIsOrdinaryAndKeepsFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineEnd(h, 3))                                         // end of "Intro paragraph."
+        h.textView.deleteBackward(nil)
+        XCTAssertTrue(h.textView.string.contains("Intro paragraph\n"), "an ordinary Backspace")
+        h.select(lineEnd(h, 5) - 1)                                     // inside the folded header, before its last letter
+        h.textView.deleteForward(nil)
+        XCTAssertTrue(h.textView.string.contains("## Pla\n"), "forward delete inside the header deletes a character")
+        XCTAssertEqual(foldedHeaders(h).count, 1, "and the fold stays")
+        h.select(lineEnd(h, 5))                                         // at the end of the header: Backspace is ordinary (the letter before the caret shows)
+        h.textView.deleteBackward(nil)
+        XCTAssertTrue(h.textView.string.contains("## Pl\n"))
+        XCTAssertEqual(foldedHeaders(h).count, 1)
+    }
+
+    func testSelectionsAcrossFoldsActOnTheHiddenTextToo() async throws {
+        let h = try await fixtureHarness()
+        let text = try Self.fixtureF()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineStart(h, 3), lineStart(h, 20) - lineStart(h, 3))      // from the intro through the whole folded section
+        // (What Copy and Cut take is the selected text, with nothing left out: no pasteboard is touched here.)
+        let copied = h.textView.attributedSubstring(forProposedRange: h.textView.selectedRange(), actualRange: nil)?.string ?? ""
+        XCTAssertTrue(copied.contains("Plan text.") && copied.contains("| 1 | 2 |"), "copy includes the hidden lines")
+        h.textView.delete(nil)
+        XCTAssertFalse(h.textView.string.contains("Plan text."), "delete removes them too")
+        XCTAssertEqual(foldedHeaders(h), [], "the folded header went with the selection")
+        h.textView.undoManager?.undo()
+        XCTAssertEqual(h.textView.string, text, "and undo brings the text back")
+    }
+
+    func testTypingOverASelectionThatStartsBeforeTheHeaderDropsTheFold() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.select(lineEnd(h, 3) - 4, lineStart(h, 5) + 5 - (lineEnd(h, 3) - 4))
+        h.textView.insertText("X", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"], "Plan's header was overwritten, so its fold is gone; Notes is unaffected")
+    }
+
+    func testTypingElsewhereNeverOpensOrClosesAFold() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 26))
+        let before = foldedHeaders(h)
+        for needle in ["Intro", "## Empty", "Final line"] {
+            h.select(h.index(of: needle) + 2)
+            h.textView.insertText("z", replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        h.select(h.index(of: "Plan") + 1)                                  // on the folded header's own text
+        h.textView.insertText("q", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(foldedHeaders(h).count, before.count)
+        XCTAssertTrue(foldedHeaders(h).contains { $0.contains("Pqlan") || $0.contains("Plan") })
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)

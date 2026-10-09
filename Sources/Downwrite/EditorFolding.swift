@@ -251,4 +251,33 @@ extension EditorCoordinator {
         let index = lm.characterIndex(for: NSPoint(x: x, y: rect.midY), in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
         return min(max(index, line.range.location), line.contentEnd)
     }
+
+    // MARK: Edits at a fold's edge (R16)
+
+    /// Return inside or at the end of a folded header opens that fold first, and the editor then does exactly what Return does
+    /// without a fold. Return at the very start of the header does not: it pushes the header and its fold down a line (R18).
+    func openFoldBeforeReturn() {
+        guard !sourceMode, !foldState.isEmpty, let tv = textView, !tv.hasMarkedText(), analysis.length == tv.textStorage?.length else { return }
+        let location = tv.selectedRange().location
+        guard let region = foldState.headerFold(containing: location, in: analysis), location != region.anchor else { return }
+        setFoldState(foldState.toggled(region))
+    }
+
+    /// Backspace at the start of the first visible line after a fold, and forward Delete at the end of a folded header (with
+    /// their word, line and paragraph variants and an empty selection), would join a visible line to hidden text. The fold opens
+    /// instead and nothing is deleted. Returns whether it did.
+    func openFoldInsteadOfDeleting(backwards: Bool) -> Bool {
+        guard !sourceMode, !foldState.isEmpty, let tv = textView, !tv.hasMarkedText(), tv.selectedRange().length == 0,
+              analysis.length == tv.textStorage?.length else { return false }
+        let caret = tv.selectedRange().location
+        if backwards {
+            // The character before the caret is the last hidden line's terminator: every fold hiding it opens.
+            guard caret > 0, foldState.foldHiding(offset: caret - 1, in: analysis) != nil else { return false }
+            setFoldState(foldState.revealing(NSRange(location: caret - 1, length: 0), in: analysis))
+        } else {
+            guard let region = foldState.headerFold(containing: caret, in: analysis), caret == foldState.headerEnd(of: region, in: analysis) else { return false }
+            setFoldState(foldState.toggled(region))
+        }
+        return true
+    }
 }
