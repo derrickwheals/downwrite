@@ -6,6 +6,8 @@ A quiet place to write Markdown. The syntax **disappears** while you read and *c
 
 Everything you already know works: **bold**, *italic*, ~~strikethrough~~, ==highlights==, `inline code` and [links](https://commonmark.org/help/). Press ⌘K to turn selected text into a link, or paste a URL over a selection.
 
+Plain HTML works too: <kbd>⌘K</kbd>, <mark>marked</mark>, <u>underlined</u>, x<sup>2</sup>, H<sub>2</sub>O and <a href="https://commonmark.org/">a link</a> are styled as you read, and their tags come back when your cursor touches them.
+
 > Good writing is rewriting. The best editor is the one that gets out of your way.
 
 ### Lists that keep up
@@ -47,6 +49,10 @@ flowchart LR
     Review -- yes --> Share([Share])
     Review -- no --> Draft
 ```
+
+Whole blocks of HTML are drawn too, under their source:
+
+<p align="center"><b>Centred</b>, <i>styled</i> and <u>laid out</u> by the web engine.</p>
 
 ---
 

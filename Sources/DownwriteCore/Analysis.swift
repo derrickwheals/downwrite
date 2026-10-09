@@ -42,6 +42,11 @@ public struct StyleFlags: OptionSet, Hashable, Sendable {
     public static let bullet = StyleFlags(rawValue: 1 << 25)
     /// The `- [ ] ` prefix of a bulleted task item. While its source is not revealed the editor draws a checkbox in its place.
     public static let taskPrefix = StyleFlags(rawValue: 1 << 26)
+    /// Underlined text (`<u>`, `<ins>`).
+    public static let underline = StyleFlags(rawValue: 1 << 27)
+    /// Subscript (`<sub>`) and superscript (`<sup>`) text.
+    public static let sub = StyleFlags(rawValue: 1 << 28)
+    public static let sup = StyleFlags(rawValue: 1 << 29)
 }
 
 public struct FormatSpan: Equatable, Sendable {

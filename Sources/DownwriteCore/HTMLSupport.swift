@@ -104,6 +104,49 @@ public enum HTMLSupport {
         return true
     }
 
+    // MARK: Tags
+
+    /// One HTML tag (`<a href="x">`, `</b>`, `<br/>`) taken apart.
+    public struct Tag: Equatable, Sendable {
+        /// Lower-cased element name.
+        public var name: String
+        public var isClosing: Bool
+        public var isSelfClosing: Bool
+        /// Attribute values by lower-cased name, with the common character references (`&amp;` …) resolved.
+        public var attributes: [String: String]
+    }
+
+    private static let tagFormRE = regex("^<(/?)([A-Za-z][A-Za-z0-9-]*)((?:\\s[^>]*?)?)\\s*(/?)>$", [.dotMatchesLineSeparators])
+    private static let attributeRE = regex("([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+)))?")
+
+    /// Parses `raw` as a single start, end or self-closing tag; `nil` for anything else (text, comments, declarations).
+    public static func parseTag(_ raw: String) -> Tag? {
+        let ns = NSString(string: raw)
+        let whole = NSRange(location: 0, length: ns.length)
+        guard let m = tagFormRE.firstMatch(in: raw, range: whole) else { return nil }
+        let isClosing = m.range(at: 1).length > 0
+        var attributes: [String: String] = [:]
+        if !isClosing {
+            let attrText = ns.substring(with: m.range(at: 3))
+            let attrNS = NSString(string: attrText)
+            for a in attributeRE.matches(in: attrText, range: NSRange(location: 0, length: attrNS.length)) {
+                let name = attrNS.substring(with: a.range(at: 1)).lowercased()
+                var value = ""
+                for g in 2...4 where a.range(at: g).location != NSNotFound { value = attrNS.substring(with: a.range(at: g)); break }
+                if attributes[name] == nil { attributes[name] = decodeCharacterReferences(value) }
+            }
+        }
+        return Tag(name: ns.substring(with: m.range(at: 2)).lowercased(), isClosing: isClosing,
+                   isSelfClosing: m.range(at: 4).length > 0, attributes: attributes)
+    }
+
+    private static func decodeCharacterReferences(_ s: String) -> String {
+        guard s.contains("&") else { return s }
+        return s.replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&#x27;", with: "'").replacingOccurrences(of: "&amp;", with: "&")
+    }
+
     // MARK: Page
 
     /// What the page may load: inline CSS and `data:`/`https:` images, nothing else — no scripts, frames, plug-ins, fonts, forms

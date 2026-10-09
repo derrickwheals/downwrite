@@ -48,6 +48,57 @@ final class StylerTests: XCTestCase {
         XCTAssertFalse(h.isHidden(at: h.index(of: "](")))
     }
 
+    func testInlineHTMLTagsHideLikeMarkdownSyntax() {
+        let h = EditorHarness(text: "press <kbd>⌘K</kbd> for <b>bold</b>, <u>under</u>, <mark>marked</mark>, x<sup>2</sup> and H<sub>2</sub>O end")
+        h.select(h.textView.string.utf16.count)
+        let kbd = h.index(of: "<kbd>"), bold = h.index(of: "<b>")
+        XCTAssertTrue(h.isHidden(at: kbd), "tags hide while the caret is elsewhere")
+        XCTAssertTrue(h.isHidden(at: h.index(of: "</kbd>")))
+        XCTAssertTrue(h.isHidden(at: bold))
+        XCTAssertNotNil(h.attrs(at: h.index(of: "⌘K"))[.dwPill], "kbd is drawn like inline code")
+        XCTAssertTrue(h.font(at: h.index(of: "⌘K")).isFixedPitch)
+        XCTAssertTrue(h.font(at: h.index(of: "bold<")).isBold)
+        XCTAssertNotNil(h.attrs(at: h.index(of: "under"))[.underlineStyle])
+        XCTAssertNotNil(h.attrs(at: h.index(of: "marked"))[.dwPill], "mark gets the highlight pill")
+        h.select(kbd + 7)                                            // inside the pair
+        XCTAssertFalse(h.isHidden(at: kbd), "the tags come back around the caret")
+        XCTAssertFalse(h.isHidden(at: h.index(of: "</kbd>")))
+        XCTAssertTrue(h.isHidden(at: bold), "…and only around it")
+        XCTAssertGreaterThan(h.font(at: kbd).pointSize, 10)
+    }
+
+    func testSuperAndSubscriptAreSmallerAndShifted() {
+        let h = EditorHarness(text: "x<sup>2</sup> and H<sub>2</sub>O\n")
+        h.select(h.textView.string.utf16.count)
+        let body = h.font(at: h.index(of: "x<")).pointSize
+        let sup = h.index(of: "2</sup>"), sub = h.index(of: "2</sub>")
+        XCTAssertLessThan(h.font(at: sup).pointSize, body)
+        XCTAssertLessThan(h.font(at: sub).pointSize, body)
+        XCTAssertGreaterThan((h.attrs(at: sup)[.baselineOffset] as? NSNumber)?.doubleValue ?? 0, 0, "raised")
+        XCTAssertLessThan((h.attrs(at: sub)[.baselineOffset] as? NSNumber)?.doubleValue ?? 0, 0, "lowered")
+        XCTAssertNil(h.attrs(at: h.index(of: " and"))[.baselineOffset])
+    }
+
+    func testHTMLAnchorIsALinkAndTheTagIsHidden() {
+        let h = EditorHarness(text: "go <a href=\"https://example.com\">there</a> now")
+        h.select(h.textView.string.utf16.count)
+        XCTAssertNotNil(h.attrs(at: h.index(of: "there"))[.underlineStyle])
+        XCTAssertEqual(h.color(at: h.index(of: "there")), h.coordinator.styler.palette.link.nsColor)
+        XCTAssertTrue(h.isHidden(at: h.index(of: "<a href")))
+        XCTAssertTrue(h.isHidden(at: h.index(of: "https://example.com")))
+        XCTAssertEqual(h.coordinator.analysis.link(at: h.index(of: "there") + 1)?.destination, "https://example.com")
+    }
+
+    func testUnsupportedInlineHTMLStaysDimMonospaceSource() {
+        let h = EditorHarness(text: "a <span style=\"color:red\">b</span> c <br> d\n")
+        h.select(h.textView.string.utf16.count)
+        let tag = h.index(of: "<span")
+        XCTAssertFalse(h.isHidden(at: tag))
+        XCTAssertTrue(h.font(at: tag).isFixedPitch)
+        XCTAssertEqual(h.color(at: tag), h.coordinator.styler.palette.secondaryText.nsColor)
+        XCTAssertFalse(h.isHidden(at: h.index(of: "<br>")))
+    }
+
     func testCodeBlockCardAndHiddenFences() {
         let h = EditorHarness(text: "intro\n\n```swift\nlet x = 1\n```\n\nafter\n")
         h.select(0)

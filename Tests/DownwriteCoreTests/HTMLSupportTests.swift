@@ -70,6 +70,27 @@ final class HTMLSupportTests: XCTestCase {
         }
     }
 
+    // MARK: Tags
+
+    func testParseTag() {
+        XCTAssertEqual(HTMLSupport.parseTag("<b>"), .init(name: "b", isClosing: false, isSelfClosing: false, attributes: [:]))
+        XCTAssertEqual(HTMLSupport.parseTag("</B>"), .init(name: "b", isClosing: true, isSelfClosing: false, attributes: [:]))
+        XCTAssertEqual(HTMLSupport.parseTag("<br/>"), .init(name: "br", isClosing: false, isSelfClosing: true, attributes: [:]))
+        XCTAssertEqual(HTMLSupport.parseTag("<br />"), .init(name: "br", isClosing: false, isSelfClosing: true, attributes: [:]))
+        XCTAssertEqual(HTMLSupport.parseTag("<A HREF=\"https://x.example/?a=1&amp;b=2\" Title='t' data-x=y hidden>")?.attributes,
+                       ["href": "https://x.example/?a=1&b=2", "title": "t", "data-x": "y", "hidden": ""])
+        XCTAssertEqual(HTMLSupport.parseTag("<a\n  href=\"x\"\n>")?.attributes, ["href": "x"])
+        XCTAssertEqual(HTMLSupport.parseTag("<img src=\"a/b.png\"/>")?.isSelfClosing, true)
+        XCTAssertEqual(HTMLSupport.parseTag("<img src=\"a/b.png\"/>")?.attributes, ["src": "a/b.png"])
+        XCTAssertEqual(HTMLSupport.parseTag("<a href=\"1\" href=\"2\">")?.attributes, ["href": "1"], "the first duplicate wins, as in browsers")
+    }
+
+    func testParseTagRejectsEverythingElse() {
+        for raw in ["", "text", "<>", "< b>", "<!-- c -->", "<?php?>", "<!DOCTYPE html>", "<b", "b>", "<b>x</b>", "<1a>", "</>"] {
+            XCTAssertNil(HTMLSupport.parseTag(raw), raw)
+        }
+    }
+
     // MARK: Page
 
     func testPageStartsWithTheSecurityPolicy() {
