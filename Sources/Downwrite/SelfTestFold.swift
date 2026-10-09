@@ -171,17 +171,27 @@ extension SelfTest {
         if menusLive {
             // MARK: the source view (verification 13, R21)
             coordinator.setFoldState(FoldState().toggled(a.foldRegions[1]))
+            // The theme was just flipped back, and SwiftUI re-resolves the focused window after that: wait until the menu is live again
+            // instead of pressing at once (the standard ⌘/ step sleeps for the same reason).
+            func markdownSourceItem() -> NSMenuItem? { viewMenu()?.items.first { $0.title.hasSuffix("Markdown Source") } }
+            func menuReady() async -> Bool { await waitUntil(timeout: 8) { NSApp.mainMenu?.update(); return markdownSourceItem()?.isEnabled == true } }
+            window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(tv)
+            let readyIn = await menuReady()
             shortcut("/", 44, .command)
-            let source = await waitUntil(timeout: 4) { coordinator.sourceMode }
-            check(source, "fold: ⌘/ shows the Markdown source")
+            var source = await waitUntil(timeout: 8) { coordinator.sourceMode }
+            check(source, "fold: ⌘/ shows the Markdown source",
+                  detail: "menu ready=\(readyIn) item=\(markdownSourceItem()?.title ?? "nil") enabled=\(String(describing: markdownSourceItem()?.isEnabled)) key=\(NSApp.keyWindow?.title ?? "nil") isKey=\(window.isKeyWindow)")
+            if !source { coordinator.setSourceMode(true); source = true }          // carry on checking the rest either way
             NSApp.mainMenu?.update()
             check(item("Fold")?.isEnabled == false && item("Fold All")?.isEnabled == false && item("Fold to Level")?.isEnabled == false,
                   "fold: the fold commands are disabled in the source view")
             check(tv.textStorage.map { ($0.attribute(.font, at: offset("Plan text."), effectiveRange: nil) as? NSFont)?.pointSize ?? 0 > 10 } == true,
                   "fold: the source view shows the folded lines")
+            _ = await menuReady()
             shortcut("/", 44, .command)
-            let back = await waitUntil(timeout: 4) { !coordinator.sourceMode }
+            var back = await waitUntil(timeout: 8) { !coordinator.sourceMode }
+            if !back { coordinator.setSourceMode(false); back = true; check(false, "fold: ⌘/ again leaves the source view") }
             check(back && headers() == ["## Plan"], "fold: leaving the source view brings the fold back", detail: "\(headers())")
             coordinator.setFoldState(FoldState())
         }
