@@ -219,6 +219,185 @@ final class FoldingTests: XCTestCase {
         assertInvariants(s)
     }
 
+    // MARK: FoldState (R6, R11, R12, R15)
+
+    private struct F {
+        let text: String
+        let a: MarkdownAnalysis
+        init() throws { text = try FoldingTests.fixtureF(); a = MarkdownAnalyzer.analyze(text) }
+
+        /// The region whose header starts on 1-based line `n`.
+        func region(_ n: Int) -> FoldRegion { a.foldRegions.first { $0.headerLines.lowerBound == n - 1 }! }
+        /// Offset of the start / content end of 1-based line `n`.
+        func start(_ n: Int) -> Int { a.lines[n - 1].range.location }
+        func end(_ n: Int) -> Int { a.lines[n - 1].contentEnd }
+        func offset(of s: String) -> Int { NSString(string: text).range(of: s).location }
+        /// 1-based header lines of the folded regions.
+        func folded(_ s: FoldState) -> [Int] { a.foldRegions.filter(s.isFolded).map { $0.headerLines.lowerBound + 1 } }
+        func state(_ headers: Int...) -> FoldState { headers.reduce(FoldState()) { $0.toggled(region($1)) } }
+    }
+
+    func testToggleFoldsAndUnfoldsOneRegion() throws {
+        let f = try F()
+        let s = FoldState().toggled(f.region(5))
+        XCTAssertTrue(s.isFolded(f.region(5)))
+        XCTAssertEqual(f.folded(s), [5])
+        XCTAssertEqual(s.toggled(f.region(5)), FoldState())
+        XCTAssertTrue(FoldState().isEmpty)
+    }
+
+    func testHiddenLineRangesAreMergedAndNestedFoldsAddNothing() throws {
+        let f = try F()
+        XCTAssertEqual(FoldState().hiddenLineRanges(in: f.a), [])
+        XCTAssertEqual(f.state(5).hiddenLineRanges(in: f.a), [5...18])
+        XCTAssertEqual(f.state(11).hiddenLineRanges(in: f.a), [11...12])
+        XCTAssertEqual(f.state(5, 20).hiddenLineRanges(in: f.a), [5...18, 20...31])
+        XCTAssertEqual(f.state(5, 9).hiddenLineRanges(in: f.a), [5...18], "Tasks is inside Plan")
+        XCTAssertEqual(f.state(5, 11).hiddenLineRanges(in: f.a), [5...18], "an item inside a folded heading")
+        XCTAssertEqual(f.state(20, 26, 28).hiddenLineRanges(in: f.a), [20...31], "Groceries and Eggs are inside Notes")
+        XCTAssertEqual(f.state(26, 28).hiddenLineRanges(in: f.a), [26...29], "Eggs is inside Groceries")
+        XCTAssertEqual(f.state(1, 5, 20, 35).hiddenLineRanges(in: f.a), [1...35])
+    }
+
+    func testFoldHidingFindsTheOutermostFoldedRegionAndTreatsBoundariesExactly() throws {
+        let f = try F()
+        let plan = f.state(5)
+        let hidden = f.region(5).hiddenRange
+        XCTAssertEqual(plan.foldHiding(offset: f.offset(of: "Plan text."), in: f.a), f.region(5))
+        XCTAssertNil(plan.foldHiding(offset: f.end(5), in: f.a), "the end of the header line is visible, where the chip sits")
+        XCTAssertEqual(plan.foldHiding(offset: hidden.location, in: f.a), f.region(5), "the start of the first hidden line is hidden")
+        XCTAssertEqual(plan.foldHiding(offset: NSMaxRange(hidden) - 1, in: f.a), f.region(5))
+        XCTAssertNil(plan.foldHiding(offset: NSMaxRange(hidden), in: f.a), "the start of ## Notes is visible")
+        XCTAssertEqual(NSMaxRange(hidden), f.start(20))
+        XCTAssertNil(plan.foldHiding(offset: f.offset(of: "Intro paragraph."), in: f.a))
+        XCTAssertNil(plan.foldHiding(offset: 0, in: f.a))
+        XCTAssertEqual(f.state(1, 5).foldHiding(offset: f.offset(of: "Plan text."), in: f.a), f.region(1), "outermost wins")
+        XCTAssertEqual(f.state(5, 9).foldHiding(offset: f.offset(of: "Write spec"), in: f.a), f.region(5))
+        XCTAssertEqual(f.state(9).foldHiding(offset: f.offset(of: "Write spec"), in: f.a), f.region(9), "only the folded one counts")
+        XCTAssertNil(FoldState().foldHiding(offset: f.offset(of: "Plan text."), in: f.a))
+    }
+
+    func testTheEndOfTheDocumentIsHiddenWhenTheLastSectionIsFolded() throws {
+        let f = try F()
+        let last = f.state(35)
+        XCTAssertEqual(last.foldHiding(offset: f.text.utf16.count, in: f.a), f.region(35), "the caret at the very end sits on the hidden last line")
+        XCTAssertNil(FoldState().foldHiding(offset: f.text.utf16.count, in: f.a))
+        XCTAssertNil(last.foldHiding(offset: f.end(35), in: f.a))
+
+        // A trailing newline adds an empty last line that hides with its section.
+        let s = "# A\ntext\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        let folded = FoldState().toggled(a.foldRegions[0])
+        XCTAssertNil(folded.foldHiding(offset: 3, in: a), "the end of the header")
+        XCTAssertNotNil(folded.foldHiding(offset: 4, in: a))
+        XCTAssertNotNil(folded.foldHiding(offset: s.utf16.count, in: a), "the empty final line")
+    }
+
+    func testFoldAtTheCaretWorkedExampleOnFixtureF() throws {
+        let f = try F()
+        // Caret on line 13 (`- [x] Review`). Each fold moves the caret to the end of that fold's header (R13), as the editor does.
+        var caret = f.offset(of: "- [x] Review") + 4
+        var state = FoldState()
+        var steps: [Int] = []
+        while let next = state.folding(atCaret: caret, in: f.a) {
+            let newly = f.a.foldRegions.first { next.isFolded($0) && !state.isFolded($0) }!
+            steps.append(newly.headerLines.lowerBound + 1)
+            state = next
+            caret = f.a.lines[newly.headerLines.upperBound].contentEnd
+        }
+        XCTAssertEqual(steps, [11, 9, 5, 1], "Write spec, then Tasks, Plan and Project: repeated Fold folds outwards")
+        XCTAssertEqual(f.folded(state), [1, 5, 9, 11])
+        XCTAssertEqual(state.hiddenLineRanges(in: f.a), [1...35])
+        XCTAssertNil(state.folding(atCaret: f.end(1), in: f.a), "nothing is left to fold")
+    }
+
+    func testFoldAtTheCaretChoosesTheInnermostRegionHoldingTheCaretLine() throws {
+        let f = try F()
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.end(5), in: f.a)!), [5], "caret on a heading folds that heading")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.start(5), in: f.a)!), [5])
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "Intro paragraph."), in: f.a)!), [1])
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "Plan text."), in: f.a)!), [5])
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "| 1 | 2 |"), in: f.a)!), [9], "a table row in Tasks")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "graph TD"), in: f.a)!), [20], "inside the Mermaid block in Notes")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "## Empty"), in: f.a)!), [1], "## Empty is not a region; its section is Project's")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "Extra paragraph"), in: f.a)!), [28], "a paragraph hidden by the Eggs item")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "Milk"), in: f.a)!), [26], "Milk has no region of its own; Groceries holds it")
+        XCTAssertEqual(f.folded(FoldState().folding(atCaret: f.offset(of: "Eggs"), in: f.a)!), [28], "an item header folds the item")
+        XCTAssertEqual(f.folded(f.state(5).folding(atCaret: f.end(5), in: f.a)!), [1, 5], "Plan is folded, so the next enclosing region folds")
+        XCTAssertEqual(f.folded(f.state(11).folding(atCaret: f.end(11), in: f.a)!), [9, 11])
+    }
+
+    func testFoldAtTheCaretWithNothingToDo() throws {
+        XCTAssertNil(FoldState().folding(atCaret: 0, in: MarkdownAnalyzer.analyze("just text\n\nmore")))
+        XCTAssertNil(FoldState().folding(atCaret: 3, in: MarkdownAnalyzer.analyze("")))
+        let f = try F()
+        XCTAssertNil(f.state(1).folding(atCaret: f.end(1), in: f.a), "the only region around the caret is already folded")
+        XCTAssertNil(FoldState().folding(atCaret: f.text.utf16.count, in: MarkdownAnalyzer.analyze("# Empty\n")), "a heading with nothing under it")
+    }
+
+    func testUnfoldAtTheCaretOpensTheFoldedRegionWhoseHeaderHoldsTheCaret() throws {
+        let f = try F()
+        let s = f.state(1, 5, 9)
+        XCTAssertEqual(f.folded(s.unfolding(atCaret: f.end(1), in: f.a)!), [5, 9], "Project opens, Plan stays folded inside it (R6)")
+        XCTAssertEqual(f.folded(f.state(5).unfolding(atCaret: f.start(5), in: f.a)!), [])
+        XCTAssertEqual(f.folded(f.state(5).unfolding(atCaret: f.end(5), in: f.a)!), [])
+        XCTAssertNil(f.state(5).unfolding(atCaret: f.end(20), in: f.a), "caret on another header")
+        XCTAssertNil(FoldState().unfolding(atCaret: f.end(5), in: f.a), "nothing is folded")
+        XCTAssertNil(f.state(9).unfolding(atCaret: f.end(5), in: f.a), "an unfolded header with a folded region inside")
+    }
+
+    func testFoldAllAndUnfoldAll() throws {
+        let f = try F()
+        let all = FoldState().foldingAll(in: f.a)
+        XCTAssertEqual(f.folded(all), [1, 5, 9, 11, 20, 26, 28, 35], "headings and items")
+        XCTAssertEqual(all.hiddenLineRanges(in: f.a), [1...35])
+        XCTAssertEqual(all.foldingAll(in: f.a), all)
+        XCTAssertEqual(all.unfoldingAll(), FoldState())
+        XCTAssertEqual(FoldState().unfoldingAll(), FoldState())
+        XCTAssertEqual(FoldState().foldingAll(in: MarkdownAnalyzer.analyze("plain text")), FoldState())
+    }
+
+    func testFoldToLevelTouchesHeadingsOnly() throws {
+        let f = try F()
+        // Heading regions: Project (1), Plan (2), Tasks (3), Notes (2), Last (2). Items: 11, 26, 28.
+        XCTAssertEqual(f.folded(FoldState().folding(toLevel: 2, in: f.a)), [5, 9, 20, 35], "H2 and deeper fold, H1 stays open, items are left alone")
+        XCTAssertEqual(f.folded(FoldState().folding(toLevel: 1, in: f.a)), [1, 5, 9, 20, 35])
+        XCTAssertEqual(f.folded(FoldState().folding(toLevel: 3, in: f.a)), [9])
+        XCTAssertEqual(f.folded(FoldState().folding(toLevel: 6, in: f.a)), [])
+        // From everything folded: shallower headings open, list items keep their state.
+        let all = FoldState().foldingAll(in: f.a)
+        XCTAssertEqual(f.folded(all.folding(toLevel: 2, in: f.a)), [5, 9, 11, 20, 26, 28, 35])
+        XCTAssertEqual(f.folded(all.folding(toLevel: 3, in: f.a)), [9, 11, 26, 28])
+        // From a state with the item Write spec folded and Project folded.
+        XCTAssertEqual(f.folded(f.state(1, 11).folding(toLevel: 3, in: f.a)), [9, 11])
+        XCTAssertEqual(f.folded(f.state(11).folding(toLevel: 2, in: f.a)), [5, 9, 11, 20, 35])
+    }
+
+    func testRevealOpensTheFoldsHidingTheStartOfTheRangeOutermostFirst() throws {
+        let f = try F()
+        let state = f.state(1, 5, 9, 20)
+        // "Write spec" is hidden by Project, Plan and Tasks; Notes does not hide it.
+        let target = NSRange(location: f.offset(of: "Write spec"), length: 10)
+        XCTAssertEqual(f.folded(state.revealing(target, in: f.a)), [20], "folds that do not hide it stay")
+        // An inner fold only: just that one opens.
+        XCTAssertEqual(f.folded(f.state(9, 20).revealing(target, in: f.a)), [20])
+        XCTAssertEqual(f.folded(f.state(1, 5, 9).revealing(NSRange(location: f.offset(of: "Plan text."), length: 4), in: f.a)), [9], "Tasks does not hide Plan text")
+        // Visible start: nothing changes, even when the range runs into hidden text (Select All, R17).
+        XCTAssertEqual(state.revealing(NSRange(location: 0, length: f.text.utf16.count), in: f.a), state)
+        XCTAssertEqual(state.revealing(NSRange(location: f.end(1), length: 0), in: f.a), state)
+        XCTAssertEqual(FoldState().revealing(target, in: f.a), FoldState())
+        // A match inside a folded item inside a folded heading.
+        XCTAssertEqual(f.folded(f.state(20, 26).revealing(NSRange(location: f.offset(of: "Milk"), length: 4), in: f.a)), [])
+    }
+
+    func testStateIsPlainValueData() throws {
+        let f = try F()
+        let a = f.state(5, 20), b = f.state(20, 5)
+        XCTAssertEqual(a, b, "the order of toggling does not matter")
+        XCTAssertEqual(a.anchors, [f.region(5).anchor, f.region(20).anchor])
+        XCTAssertEqual(FoldState(anchors: [7]).anchors, [7])
+    }
+
     // MARK: Table cells
 
     func testTableCellAnalysisHasNoFoldRegions() {
