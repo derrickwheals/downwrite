@@ -78,3 +78,21 @@ GPL-3.0 (`LICENSE`), © Derrick Wheals. Dependencies must be GPL-3.0-compatible 
 - Every Core change ships with unit tests; `scripts/linux-test.sh` must be green before pushing.
 - Keep the app **light**: no new dependencies without a strong reason (current: swift-markdown, bundled Mermaid).
 - UI changes: add/adjust `StylerTests`/`EditorBehaviourTests` and look at the CI snapshots (`SnapshotTests`, `--selftest` window captures).
+
+## Development workflow (ai-sdlc)
+
+Non-trivial changes go through committed artifacts in `docs/changes/<YYYY-MM-DD>-<slug>/`: `intent.md` → `spec.md` (features only) → `plan.md` → code + tests → `review.md` + PR. Each artifact is committed at its gate, and the next stage starts from the committed file, not from conversation context. Use the `ai-sdlc` skills: `/ai-sdlc:intent`, `/ai-sdlc:spec`, `/ai-sdlc:plan`, `/ai-sdlc:build`, `/ai-sdlc:review`, `/ai-sdlc:status`.
+
+- Never write production code for a change without an approved `plan.md`.
+- If the implementation departs from `plan.md`, update the plan in the same commit.
+- Never mark your own artifact accepted or approved. Wait for the user.
+- Typos, dependency bumps and one-line config changes skip the process.
+
+Commands:
+
+- Test: `scripts/linux-test.sh` (Core, runs anywhere Docker does); `swift test` on macOS for everything
+- Lint: `<lint command>` (none configured in this repo yet)
+
+### Things Claude gets wrong here
+
+<!-- Add one line per recurring mistake found in review. Keep this list short; remove entries once they stop recurring. -->

@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "ai-sdlc-playbook": {
+      "source": { "source": "github", "repo": "derrickwheals/ai-sdlc-playbook" }
+    }
+  },
+  "enabledPlugins": {
+    "ai-sdlc@ai-sdlc-playbook": true
+  }
+}
