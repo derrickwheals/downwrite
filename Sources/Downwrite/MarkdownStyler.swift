@@ -286,7 +286,8 @@ final class MarkdownStyler {
         let mono = look.mono || f.contains(.code) || f.contains(.math) || f.contains(.html)
         let bold = look.bold || f.contains(.bold)
         let italic = f.contains(.italic)
-        let size = f.contains(.code) && !look.mono ? look.size * 0.9 : look.size
+        var size = f.contains(.code) && !look.mono ? look.size * 0.9 : look.size
+        if f.contains(.sub) || f.contains(.sup) { size = look.size * 0.75 }
         if mono != look.mono || bold != look.bold || italic || size != look.size {
             attrs[.font] = typography.font(size: size, bold: bold, italic: italic, mono: mono)
         }
@@ -318,6 +319,14 @@ final class MarkdownStyler {
 
         if f.contains(.strike) {
             attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+        }
+        if f.contains(.underline) {
+            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        if f.contains(.sup) {
+            attrs[.baselineOffset] = look.size * 0.33
+        } else if f.contains(.sub) {
+            attrs[.baselineOffset] = -look.size * 0.14
         }
         if f.contains(.highlight), !f.contains(.marker) {
             attrs[.dwPill] = palette.highlightBackground.nsColor

@@ -354,6 +354,241 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) })
     }
 
+    // MARK: HTML blocks as previews
+
+    func testReadmeStyleHtmlBlockBecomesPreviewBlock() {
+        let s = "# Title\n\n<p align=\"center\">\n  <img src=\"a.png\" width=\"48%\">\n  <img src=\"b.png\" width=\"48%\">\n</p>\n\nAfter\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        let b = a.htmlBlocks[0]
+        XCTAssertEqual(b.firstLine, 2)
+        XCTAssertEqual(b.lastLine, 5)
+        XCTAssertEqual(b.source, "<p align=\"center\">\n  <img src=\"a.png\" width=\"48%\">\n  <img src=\"b.png\" width=\"48%\">\n</p>")
+        XCTAssertEqual(ns(s, b.range), b.source)
+        XCTAssertEqual(a.previewBlocks.count, 1)
+        XCTAssertEqual(a.previewBlocks[0].kind, .html(source: b.source))
+        XCTAssertEqual(a.previewBlocks[0].reveal, b.range)
+        let extent = a.collapsibleExtent(containingLine: 4)
+        XCTAssertEqual(extent?.first, 2)
+        XCTAssertEqual(extent?.last, 5)
+        XCTAssertNil(a.collapsibleExtent(containingLine: 7))
+        // The lines keep their HTML look for when the source is shown.
+        XCTAssertEqual((2...5).map { a.lines[$0].kind }, [.html, .html, .html, .html])
+    }
+
+    func testHtmlPreviewBlocksSitInDocumentOrderWithMermaidAndImages() {
+        let s = "![a](a.png)\n\n<div>one</div>\n\n```mermaid\ngraph TD\n A-->B\n```\n\n<p>two</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.previewBlocks.map(\.firstLine), [0, 2, 4, 9])
+        XCTAssertEqual(a.htmlBlocks.map(\.source), ["<div>one</div>", "<p>two</p>"])
+    }
+
+    func testHtmlBlocksThatDrawNothingStayPlainSource() {
+        let s = "<!-- note -->\n\ntext\n\n</details>\n\n<div align=\"center\">\n\n<script>\nx()\n</script>\n\n<style>\np{}\n</style>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty, "\(a.htmlBlocks)")
+        XCTAssertTrue(a.previewBlocks.isEmpty)
+        XCTAssertEqual(a.lines[0].kind, .html)
+        XCTAssertEqual(a.lines[4].kind, .html)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) && $0.range.location == 0 })
+    }
+
+    func testNestedHtmlBlocksAreNotPreviewed() {
+        let s = "> <div>quoted</div>\n\n- item\n\n  <div>in a list</div>\n\n1. x\n   <p>y</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty, "\(a.htmlBlocks)")
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) }, "still styled as HTML source")
+    }
+
+    func testHtmlInsideFencedCodeIsNotPreviewed() {
+        let s = "```html\n<div>shown as code</div>\n```\n\n    <p>indented code</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty)
+        XCTAssertEqual(a.lines[1].kind, .codeBlock)
+    }
+
+    func testHtmlBlockRangesAreUTF16() {
+        let s = "😀 é 你好\n\n<div>héllo 😀</div>\n\nend\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        XCTAssertEqual(ns(s, a.htmlBlocks[0].range), "<div>héllo 😀</div>")
+        XCTAssertEqual(a.htmlBlocks[0].source, "<div>héllo 😀</div>")
+    }
+
+    func testHtmlBlockInterruptingAParagraphAndCRLF() {
+        let s = "text\r\n<div>\r\nhi\r\n</div>\r\n\r\nmore\r\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        XCTAssertEqual(a.htmlBlocks[0].firstLine, 1)
+        XCTAssertEqual(a.htmlBlocks[0].lastLine, 3)
+        XCTAssertEqual(ns(s, a.htmlBlocks[0].range), "<div>\r\nhi\r\n</div>")
+    }
+
+    func testHtmlBlockRevealUsesTheWholeBlockInclusive() {
+        let s = "intro\n\n<div>\nhi\n</div>\n\noutro\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        let reveal = a.previewBlocks[0].reveal
+        XCTAssertFalse(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: 4, length: 0)))
+        XCTAssertTrue(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: reveal.location, length: 0)))
+        XCTAssertTrue(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: NSMaxRange(reveal), length: 0)))
+        XCTAssertFalse(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: NSMaxRange(reveal) + 1, length: 0)))
+    }
+
+    func testTableCellsNeverGetHtmlBlocks() {
+        let a = MarkdownAnalyzer.analyzeTableCell("<div>x</div>")
+        XCTAssertTrue(a.htmlBlocks.isEmpty)
+    }
+
+    // MARK: Inline HTML tags
+
+    private func flagsRuns(_ s: String, _ a: MarkdownAnalysis, caret: Int? = nil) -> [(String, StyleFlags)] {
+        let sel = NSRange(location: caret ?? s.utf16.count, length: 0)
+        return a.runs(in: NSRange(location: 0, length: s.utf16.count), selection: sel).map { (ns(s, $0.range), $0.flags) }
+    }
+
+    func testInlineTagsAreStyledAndTheirTagsHide() {
+        let cases: [(String, StyleFlags)] = [
+            ("<b>x</b>", .bold), ("<strong>x</strong>", .bold), ("<i>x</i>", .italic), ("<em>x</em>", .italic),
+            ("<s>x</s>", .strike), ("<del>x</del>", .strike), ("<strike>x</strike>", .strike), ("<u>x</u>", .underline),
+            ("<ins>x</ins>", .underline), ("<mark>x</mark>", .highlight), ("<code>x</code>", .code), ("<kbd>x</kbd>", .code),
+            ("<samp>x</samp>", .code), ("<sub>x</sub>", .sub), ("<sup>x</sup>", .sup),
+        ]
+        for (tagged, flag) in cases {
+            let s = "a \(tagged) b"
+            let a = MarkdownAnalyzer.analyze(s)
+            XCTAssertEqual(a.markers.count, 2, tagged)
+            XCTAssertEqual(markerTexts(s, a).joined().contains("x"), false, tagged)
+            let span = a.spans.first { $0.flags.contains(flag) }
+            XCTAssertEqual(span.map { ns(s, $0.range) }, "x", tagged)
+            XCTAssertFalse(a.spans.contains { $0.flags.contains(.html) }, "\(tagged) is not dim source any more")
+            // Caret elsewhere: both tags hidden; caret inside the pair: both shown.
+            XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: 0, length: 0)).count, 2, tagged)
+            let inside = (s as NSString).range(of: "x").location
+            XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: inside, length: 0)).count, 0, tagged)
+        }
+    }
+
+    func testInlineTagMarkersRevealAtBothEdgesOfThePair() {
+        let s = "go <kbd>⌘K</kbd> now"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(markerTexts(s, a), ["<kbd>", "</kbd>"])
+        let open = (s as NSString).range(of: "<kbd>"), close = (s as NSString).range(of: "</kbd>")
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: open.location - 1, length: 0)).count, 2)
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: open.location, length: 0)).count, 0)
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: NSMaxRange(close), length: 0)).count, 0)
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: NSMaxRange(close) + 1, length: 0)).count, 2)
+    }
+
+    func testInlineTagRunsLookLikeMarkdownEmphasis() {
+        let s = "a <b>bold</b> b"
+        let runs = flagsRuns(s, MarkdownAnalyzer.analyze(s), caret: 0)
+        XCTAssertEqual(runs.map(\.0), ["a ", "<b>", "bold", "</b>", " b"])
+        XCTAssertTrue(runs[1].1.contains(.hidden) && runs[1].1.contains(.marker))
+        XCTAssertTrue(runs[2].1.contains(.bold) && !runs[2].1.contains(.hidden))
+        XCTAssertFalse(runs[2].1.contains(.html))
+    }
+
+    func testInlineTagsNestAndMixWithMarkdown() {
+        let s = "<b>one <i>two</i> **three**</b> <u>*four*</u>"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(markerTexts(s, a).sorted(), ["*", "*", "**", "**", "</b>", "</i>", "</u>", "<b>", "<i>", "<u>"])
+        let runs = flagsRuns(s, a, caret: s.utf16.count)
+        let two = runs.first { $0.0 == "two" }!
+        XCTAssertTrue(two.1.contains(.bold) && two.1.contains(.italic))
+        let four = runs.first { $0.0 == "four" }!
+        XCTAssertTrue(four.1.contains(.underline) && four.1.contains(.italic))
+    }
+
+    func testTagsAreMatchedCaseInsensitivelyAndByName() {
+        let s = "<B>x</b> <i>y</B> <u>z</u>"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.bold) && ns(s, $0.range) == "x" })
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.underline) && ns(s, $0.range) == "z" })
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.italic) }, "<i> was never closed by an </i>")
+        // The unmatched ones stay visible, in the dim HTML style.
+        let dim = a.spans.filter { $0.flags.contains(.html) }.map { ns(s, $0.range) }
+        XCTAssertEqual(dim.sorted(), ["</B>", "<i>"])
+    }
+
+    func testUnmatchedStrayAndUnsupportedTagsStayDimSource() {
+        let s = "<b>never closed, stray </i>, <span style=\"color:red\">span</span>, <br>, <br/>, <font color=red>f</font>"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.markers.isEmpty)
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.bold) })
+        let dim = a.spans.filter { $0.flags.contains(.html) }.sorted { $0.range.location < $1.range.location }.map { ns(s, $0.range) }
+        XCTAssertEqual(dim, ["<b>", "</i>", "<span style=\"color:red\">", "</span>", "<br>", "<br/>", "<font color=red>", "</font>"])
+    }
+
+    func testTagOpenedInsideAPairButNeverClosedStaysSource() {
+        let s = "<b>a <i>b</b> c"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.bold) && ns(s, $0.range) == "a <i>b" })
+        XCTAssertEqual(a.spans.filter { $0.flags.contains(.html) }.map { ns(s, $0.range) }, ["<i>"])
+        XCTAssertEqual(markerTexts(s, a), ["<b>", "</b>"])
+    }
+
+    func testTagsDoNotPairAcrossEmphasisOrParagraphs() {
+        let s = "<b>a *b</b> c*\n\n<u>next paragraph</u> and <i>one\n\n</i>"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.bold) }, "an <b> outside an emphasis and its </b> inside do not pair")
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.underline) && ns(s, $0.range) == "next paragraph" })
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.italic) && ns(s, $0.range).contains("one") })
+    }
+
+    func testAnchorBecomesALink() {
+        let s = "see <a href=\"https://example.com/a?x=1&amp;y=2\" title=\"t\">the *docs*</a> now"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.links.count, 1)
+        XCTAssertEqual(a.links[0].destination, "https://example.com/a?x=1&y=2")
+        XCTAssertEqual(ns(s, a.links[0].textRange), "the *docs*")
+        XCTAssertTrue(ns(s, a.links[0].range).hasPrefix("<a href"))
+        XCTAssertNotNil(a.link(at: (s as NSString).range(of: "docs").location))
+        XCTAssertNil(a.link(at: 1))
+        let runs = flagsRuns(s, a, caret: 0)
+        XCTAssertTrue(runs.contains { $0.0 == "the " && $0.1.contains(.link) })
+        // A named anchor is not a link.
+        let b = MarkdownAnalyzer.analyze("<a name=\"top\">x</a> and <a href=\"\">y</a>")
+        XCTAssertTrue(b.links.isEmpty)
+        XCTAssertTrue(b.markers.isEmpty)
+    }
+
+    func testInlineTagOffsetsAreUTF16() {
+        let s = "😀 é <sup>你好 😀</sup> **世界**"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.sup) && ns(s, $0.range) == "你好 😀" })
+        XCTAssertEqual(markerTexts(s, a), ["<sup>", "</sup>", "**", "**"])
+    }
+
+    func testInlineTagsInsideHeadingsListsQuotesAndTablesWork() {
+        let s = "# Title <kbd>⌘1</kbd>\n\n- item <b>bold</b>\n\n> quote <i>it</i>\n\n| a | b |\n| - | - |\n| <u>1</u> | 2 |\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.headings[0].plainTitle, "Title ⌘1", "tags are syntax, like **")
+        for text in ["⌘1", "bold", "it"] { XCTAssertTrue(a.spans.contains { ns(s, $0.range) == text }, text) }
+        // In a source-style table the markers never hide (the columns would shift).
+        let tableMarkers = a.markers.filter { ns(s, $0.range) == "<u>" || ns(s, $0.range) == "</u>" }
+        XCTAssertEqual(tableMarkers.count, 2)
+        XCTAssertEqual(a.hiddenMarkerIndices(selection: NSRange(location: 0, length: 0)).filter { ns(s, a.markers[$0].range) == "<u>" }.count, 0)
+    }
+
+    func testTableCellsStyleSupportedTagsButLeaveBrAlone() {
+        let a = MarkdownAnalyzer.analyzeTableCell("<b>x</b><br>y")
+        XCTAssertEqual(a.markers.count, 2)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.bold) })
+        let br = a.spans.filter { $0.flags.contains(.html) }
+        XCTAssertEqual(br.count, 1)
+        XCTAssertEqual(br[0].range, NSRange(location: 8, length: 4))
+        let plain = MarkdownAnalyzer.analyzeTableCell("line one<br>line two")
+        XCTAssertTrue(plain.markers.isEmpty)
+        XCTAssertEqual(plain.spans.filter { $0.flags.contains(.html) }.count, 1)
+    }
+
+    func testInlineTagsAreProtectedFromHighlightAndAutolinks() {
+        let s = "<a href=\"https://x.example/==a==\">link</a> and <b title=\"==no==\">b</b>"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertFalse(a.spans.contains { $0.flags.contains(.highlight) })
+        XCTAssertEqual(a.links.count, 1, "the URL inside the attribute is not turned into a second link")
+    }
+
     // MARK: Robustness
 
     func testUnicodeOffsetsAreUTF16() {

@@ -14,6 +14,17 @@ enum FontChoice: String, CaseIterable, Identifiable {
         case .sfMono: return "SF Mono"
         }
     }
+
+    /// The same face as a CSS `font-family` value, for HTML shown inside the editor.
+    var cssFontFamily: String {
+        switch self {
+        case .avenirNext: return "'Avenir Next', -apple-system, sans-serif"
+        case .newYork: return "ui-serif, 'New York', Georgia, serif"
+        case .sfPro: return "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        case .charter: return "Charter, 'Charter BT', Georgia, serif"
+        case .sfMono: return "ui-monospace, 'SF Mono', Menlo, monospace"
+        }
+    }
 }
 
 /// Fonts and metrics for the editor. Cheap to copy; fonts are memoised per (size, bold, italic, mono).

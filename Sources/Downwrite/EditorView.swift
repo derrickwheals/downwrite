@@ -226,6 +226,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
 
     private var isDark: Bool { styler.palette.isDark }
 
+    /// How HTML blocks are drawn in their cards: the editor's font and the current palette. (TextKit's line-height multiple
+    /// scales the font's own line height, about 1.2 × the size, which is what CSS's `line-height` multiplies.)
+    private var htmlStyle: HTMLPageStyle {
+        HTMLPageStyle(fontFamily: typography.choice.cssFontFamily, fontSize: Double(typography.size),
+                      lineHeight: Double(typography.lineHeight) * 1.2, palette: styler.palette)
+    }
+
     /// The palette for the appearance the editor is showing in, from the light/dark themes chosen in Settings.
     private func currentPalette(for appearance: NSAppearance) -> Palette {
         AppearanceResolver.palette(for: appearance, lightTheme: settings?.lightTheme ?? ThemeCatalog.defaultLightID,
@@ -254,7 +261,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
             sourceTableFirstLine = nil
         }
         overlay.baseURL = fileURL?.deletingLastPathComponent()
-        overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark)
+        overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark, style: htmlStyle)
         tableOverlay.sync()                       // (no grids in the source view: `gridBlocks` is empty then)
         preview.heights = sourceMode ? [:] : combinedHeights()
         preview.collapsed = sourceMode ? [] : collapsedBlocks(selection: tv.selectedRange())

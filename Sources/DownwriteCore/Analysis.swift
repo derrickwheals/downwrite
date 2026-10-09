@@ -42,6 +42,11 @@ public struct StyleFlags: OptionSet, Hashable, Sendable {
     public static let bullet = StyleFlags(rawValue: 1 << 25)
     /// The `- [ ] ` prefix of a bulleted task item. While its source is not revealed the editor draws a checkbox in its place.
     public static let taskPrefix = StyleFlags(rawValue: 1 << 26)
+    /// Underlined text (`<u>`, `<ins>`).
+    public static let underline = StyleFlags(rawValue: 1 << 27)
+    /// Subscript (`<sub>`) and superscript (`<sup>`) text.
+    public static let sub = StyleFlags(rawValue: 1 << 28)
+    public static let sup = StyleFlags(rawValue: 1 << 29)
 }
 
 public struct FormatSpan: Equatable, Sendable {
@@ -94,11 +99,22 @@ public struct ImageBlock: Equatable, Sendable {
     public var source: String
 }
 
-/// Anything shown as a rendered card under (or instead of) its source: Mermaid diagrams and standalone images.
+/// A top-level HTML block (`<p align="center"><img …></p>`, `<div>…</div>`, `<details>` …) that is worth rendering:
+/// shown as a card under its (collapsed) source.
+public struct RawHTMLBlock: Equatable, Sendable {
+    /// Whole block, from the start of its first line to the end of its last line's content.
+    public var range: NSRange
+    public var source: String
+    public var firstLine: Int
+    public var lastLine: Int
+}
+
+/// Anything shown as a rendered card under (or instead of) its source: Mermaid diagrams, standalone images and HTML blocks.
 public struct PreviewBlock: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case mermaid(source: String)
         case image(source: String, alt: String)
+        case html(source: String)
     }
     public var kind: Kind
     public var firstLine: Int
@@ -201,14 +217,18 @@ public struct MarkdownAnalysis: Sendable {
     public let tables: [TableBlock]
     public let headings: [HeadingInfo]
     public let imageBlocks: [ImageBlock]
+    public let htmlBlocks: [RawHTMLBlock]
 
-    /// Mermaid diagrams and standalone images in document order.
+    /// Mermaid diagrams, standalone images and HTML blocks in document order.
     public var previewBlocks: [PreviewBlock] {
         var out: [PreviewBlock] = mermaid.map {
             PreviewBlock(kind: .mermaid(source: $0.source), firstLine: $0.firstLine, lastLine: $0.lastLine, reveal: $0.range)
         }
         out += imageBlocks.map {
             PreviewBlock(kind: .image(source: $0.source, alt: $0.alt), firstLine: $0.line, lastLine: $0.line, reveal: lines[$0.line].contentRange)
+        }
+        out += htmlBlocks.map {
+            PreviewBlock(kind: .html(source: $0.source), firstLine: $0.firstLine, lastLine: $0.lastLine, reveal: $0.range)
         }
         return out.sorted { $0.firstLine < $1.firstLine }
     }

@@ -7,6 +7,17 @@ public struct RGBA: Equatable, Sendable {
         self.init(Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255, alpha)
     }
 
+    /// The colour as a CSS value: `#rrggbb`, or `rgba(r, g, b, a)` when translucent.
+    public var css: String {
+        func byte(_ c: Double) -> Int { Int((min(max(c, 0), 1) * 255).rounded()) }
+        if a >= 1 {
+            func hex(_ n: Int) -> String { (n < 16 ? "0" : "") + String(n, radix: 16) }
+            return "#" + hex(byte(r)) + hex(byte(g)) + hex(byte(b))
+        }
+        let alpha = (min(max(a, 0), 1) * 1000).rounded() / 1000
+        return "rgba(\(byte(r)), \(byte(g)), \(byte(b)), \(alpha))"
+    }
+
     /// WCAG relative luminance.
     public var luminance: Double {
         func lin(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }

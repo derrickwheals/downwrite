@@ -45,7 +45,7 @@ public enum MarkdownAnalyzer {
             .map { LinkSpan(range: moved($0.range), textRange: moved($0.textRange), destination: $0.destination) }
         let line = LineStyle(range: NSRange(location: 0, length: units.count), contentEnd: units.count)
         return MarkdownAnalysis(length: units.count, spans: spans, markers: markers, lines: [line], links: links, images: [],
-                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [])
+                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [])
     }
 }
 
@@ -68,6 +68,7 @@ private struct Builder {
     var mermaid: [MermaidBlock] = []
     var tables: [TableBlock] = []
     var headings: [HeadingInfo] = []
+    var htmlBlocks: [RawHTMLBlock] = []
     /// Analysing a single table cell: inline markers keep their real reveal ranges instead of staying visible.
     var cellMode = false
 
@@ -103,7 +104,8 @@ private struct Builder {
         }
         return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
-            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks
+            taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks,
+            htmlBlocks: htmlBlocks
         )
     }
 
@@ -217,7 +219,7 @@ private struct Builder {
             var inner = ctx; inner.listDepth += 1
             for c in node.children { walk(c, inner) }
         case let t as Table: table(t, ctx)
-        case is HTMLBlock: htmlBlock(node)
+        case is HTMLBlock: htmlBlock(node, ctx)
         default:
             for c in node.children { walk(c, ctx) }
         }
@@ -347,10 +349,17 @@ private struct Builder {
         addMarker(NSRange(location: first, length: src.lineContentEnds[l] - first), reveal: lineReveal(l), flags: .hr)
     }
 
-    private mutating func htmlBlock(_ node: Markup) {
+    private mutating func htmlBlock(_ node: Markup, _ ctx: Context) {
         guard let r = range(of: node) else { return }
-        for l in lineSpan(r) { lines[l].kind = .html }
-        addSpan(NSRange(location: src.lineStarts[lineSpan(r).lowerBound], length: NSMaxRange(r) - src.lineStarts[lineSpan(r).lowerBound]), .html)
+        let ls = lineSpan(r)
+        for l in ls { lines[l].kind = .html }
+        addSpan(NSRange(location: src.lineStarts[ls.lowerBound], length: NSMaxRange(r) - src.lineStarts[ls.lowerBound]), .html)
+        // Top-level blocks that draw something are also rendered as a card (nested ones keep showing their source, like tables).
+        guard !cellMode, ctx.quoteDepth == 0, ctx.listDepth == 0 else { return }
+        let whole = NSRange(location: src.lineStarts[ls.lowerBound], length: src.lineContentEnds[ls.upperBound] - src.lineStarts[ls.lowerBound])
+        let source = src.string(whole)
+        guard HTMLSupport.isRenderable(source) else { return }
+        htmlBlocks.append(RawHTMLBlock(range: whole, source: source, firstLine: ls.lowerBound, lastLine: ls.upperBound))
     }
 
     private mutating func listItem(_ li: ListItem, _ ctx: Context) {
@@ -478,6 +487,8 @@ private struct Builder {
     }
 
     private mutating func inline(_ node: Markup, _ protected: inout [NSRange], parent: Parent?) {
+        // Inline HTML tags that are open at this level, waiting for their closing tag (see `htmlTag`).
+        var openTags: [(tag: HTMLSupport.Tag, range: NSRange)] = []
         for child in node.children {
             let reported = range(of: child)
             switch child {
@@ -514,10 +525,58 @@ private struct Builder {
                 }
                 inline(child, &protected, parent: nil)
             case is InlineHTML:
-                if let r = reported { addSpan(r, .html); protected.append(r) }
+                if let r = reported { htmlTag(r, &openTags); protected.append(r) }
             default:
                 inline(child, &protected, parent: nil)
             }
+        }
+        for open in openTags { addSpan(open.range, .html) }          // never closed: stays visible source
+    }
+
+    /// What an inline HTML tag pair means for the editor, for the tags that have a Markdown-style equivalent.
+    private static func flags(forTag tag: HTMLSupport.Tag) -> StyleFlags? {
+        switch tag.name {
+        case "b", "strong": return .bold
+        case "i", "em": return .italic
+        case "s", "del", "strike": return .strike
+        case "u", "ins": return .underline
+        case "mark": return .highlight
+        case "code", "kbd", "samp": return .code
+        case "sub": return .sub
+        case "sup": return .sup
+        case "a": return (tag.attributes["href"] ?? "").isEmpty ? nil : .link
+        default: return nil
+        }
+    }
+
+    /// One `InlineHTML` node, which is a single tag. An opening tag of a supported element waits in `openTags` for the closing
+    /// tag at the same level; the pair then styles the text between them and hides like `**` does — both tags are markers that
+    /// show while the caret is anywhere in the pair. Everything else (other elements, `<br>`, strays, never-closed tags)
+    /// stays visible source in the dim HTML style.
+    private mutating func htmlTag(_ r: NSRange, _ openTags: inout [(tag: HTMLSupport.Tag, range: NSRange)]) {
+        guard let tag = HTMLSupport.parseTag(src.string(r)), !tag.isSelfClosing, Self.flags(forTag: tag) != nil || tag.isClosing else {
+            addSpan(r, .html)
+            return
+        }
+        if !tag.isClosing {
+            openTags.append((tag, r))
+            return
+        }
+        guard let i = openTags.lastIndex(where: { $0.tag.name == tag.name }) else {
+            addSpan(r, .html)
+            return
+        }
+        let open = openTags[i]
+        for later in openTags[(i + 1)...] { addSpan(later.range, .html) }       // opened inside the pair, never closed
+        openTags.removeSubrange(i...)
+        let whole = NSRange(location: open.range.location, length: NSMaxRange(r) - open.range.location)
+        let content = NSRange(location: NSMaxRange(open.range), length: r.location - NSMaxRange(open.range))
+        guard let flags = Self.flags(forTag: open.tag) else { return }
+        addSpan(content, flags)
+        addMarker(open.range, reveal: whole)
+        addMarker(r, reveal: whole)
+        if flags == .link, content.length > 0, let href = open.tag.attributes["href"] {
+            links.append(LinkSpan(range: whole, textRange: content, destination: href))
         }
     }
 

@@ -102,6 +102,9 @@ final class AppTests: XCTestCase {
         XCTAssertFalse(a.links.isEmpty)
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.highlight) })
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.footnote) })
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.sup) } && a.spans.contains { $0.flags.contains(.underline) }, "inline HTML tags")
+        XCTAssertEqual(a.htmlBlocks.count, 1, "an HTML block")
+        XCTAssertTrue(a.links.contains { $0.destination == "https://commonmark.org/" })
     }
 
     func testTypographyFontsAllResolve() {
