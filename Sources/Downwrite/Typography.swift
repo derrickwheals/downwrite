@@ -117,6 +117,38 @@ extension NSAttributedString.Key {
     static let dwBullet = NSAttributedString.Key("dw.bullet")
     /// On the first character of a hidden `- [ ] ` task prefix: a `CheckboxMark` for the layout manager to draw.
     static let dwCheckbox = NSAttributedString.Key("dw.checkbox")
+    /// On the first visible character of a foldable header: a `FoldMark` for the layout manager to draw as a chevron.
+    static let dwFold = NSAttributedString.Key("dw.fold")
+    /// On the last character of a folded header's last line: the same `FoldMark`, drawn as the ⋯ chip after it.
+    static let dwFoldChip = NSAttributedString.Key("dw.foldChip")
+}
+
+/// What the layout manager draws for a foldable header: a chevron (always while the region is folded, otherwise only while
+/// the pointer is over the header) and, when folded, a ⋯ chip after the header's last character. Colours are fixed when the
+/// line is styled, like `CheckboxMark`; hover is the one thing that is not in the attributes.
+final class FoldMark: NSObject {
+    let folded: Bool
+    /// The selection covers some of the hidden text, so the chip is drawn in the selection colour.
+    let covered: Bool
+    let chevron: NSColor
+    let chipFill: NSColor
+    let chipInk: NSColor
+
+    init(folded: Bool, covered: Bool, chevron: NSColor, chipFill: NSColor, chipInk: NSColor) {
+        self.folded = folded; self.covered = covered
+        self.chevron = chevron; self.chipFill = chipFill; self.chipInk = chipInk
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let o = object as? FoldMark else { return false }
+        return folded == o.folded && covered == o.covered && chevron == o.chevron && chipFill == o.chipFill && chipInk == o.chipInk
+    }
+
+    override var hash: Int {
+        var h = Hasher()
+        h.combine(folded); h.combine(covered)
+        return h.finalize()
+    }
 }
 
 /// What the layout manager draws in place of a hidden task prefix: a rounded square, filled with a tick when checked.
