@@ -80,6 +80,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var analyzedText = ""
     /// What a command with nothing to act on does (the system beep; tests listen instead).
     var beep: () -> Void = { NSSound.beep() }
+    /// True while a caret-movement command runs: the selection it leaves may sit in hidden text, which `snapCaretOverFolds`
+    /// then steps over, instead of the fold being opened.
+    var isMovingCaret = false
 
     private var settings: EditorSettings?
     var preview = PreviewState()
@@ -438,6 +441,12 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         let sel = tv.selectedRange()
         scheduleTOCPublish()
         if sourceMode { return }                  // plain text: moving the caret changes nothing that is drawn
+        // R15: Find, the sidebar, `#links`, undo… that put the start of the selection into hidden text open the folds hiding it.
+        // (Caret movement keys step over folds instead: see `snapCaretOverFolds`.)
+        if !isMovingCaret, !foldState.isEmpty, foldState.foldHiding(offset: sel.location, in: analysis) != nil {
+            setFoldState(foldState.revealing(sel, in: analysis))     // (draws the unfolded lines and runs this again)
+            return
+        }
         // Markdown source of a table is only shown while the caret is in it.
         if let first = sourceTableFirstLine,
            let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),

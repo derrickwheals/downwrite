@@ -253,6 +253,19 @@ final class EditorTextView: NSTextView {
     @objc func dwIndent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: false)) }
     @objc func dwOutdent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: true)) }
 
+    // MARK: Caret movement over folds (R14)
+
+    /// Arrow keys (with ⌥ and ⌘), Page Up/Down and their Shift forms: run the command, then, if the end that moved landed in
+    /// folded text, step it to the nearest visible position in the direction of travel.
+    override func doCommand(by selector: Selector) {
+        guard let coordinator, coordinator.isCaretMovement(selector), !hasMarkedText() else { super.doCommand(by: selector); return }
+        let before = selectedRange()
+        coordinator.isMovingCaret = true
+        super.doCommand(by: selector)
+        coordinator.snapCaretOverFolds(from: before, after: selector)
+        coordinator.isMovingCaret = false
+    }
+
     // MARK: Smart keys
 
     /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source.

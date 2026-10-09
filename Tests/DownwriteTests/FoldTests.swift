@@ -705,6 +705,140 @@ final class FoldTests: XCTestCase {
         XCTAssertTrue(foldedHeaders(h).contains("## Plan"))
     }
 
+    // MARK: Caret movement and reveal (R14, R15)
+
+    private func move(_ h: EditorHarness, _ selector: Selector) { h.textView.doCommand(by: selector) }
+    private func caretLine(_ h: EditorHarness) -> Int { h.coordinator.analysis.lineIndex(at: h.textView.selectedRange().location) + 1 }
+    private func caretIsHidden(_ h: EditorHarness) -> Bool {
+        h.coordinator.foldState.foldHiding(offset: h.textView.selectedRange().location, in: h.coordinator.analysis) != nil
+    }
+
+    func testArrowKeysStepOverAFoldedSection() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineEnd(h, 5))
+        move(h, #selector(NSResponder.moveDown(_:)))
+        XCTAssertEqual(caretLine(h), 20, "↓ from the folded header lands on the next visible line")
+        XCTAssertFalse(caretIsHidden(h))
+        move(h, #selector(NSResponder.moveUp(_:)))
+        XCTAssertEqual(caretLine(h), 5, "↑ comes back to the header line")
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"], "walking over a fold does not open it")
+        h.select(lineEnd(h, 5))
+        move(h, #selector(NSResponder.moveRight(_:)))
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineStart(h, 20), length: 0), "→ at the end of a folded header goes to the next visible line")
+        move(h, #selector(NSResponder.moveLeft(_:)))
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 5), length: 0), "← from there goes back to the end of the header")
+    }
+
+    func testVerticalMovesKeepTheColumnWhereTheTargetLineIsLongEnough() async throws {
+        let h = try await fixtureHarness()
+        let text = "# Title\nA longer line of body text here.\n\n## Folded\nhidden body\n\nAnother line of body text, long enough.\n"
+        let w = EditorHarness(text: text, size: NSSize(width: 900, height: 600))
+        w.select(w.index(of: "A longer") + 9)
+        w.coordinator.setFoldState(w.coordinator.analysis.foldRegions.filter { $0.headerLines.lowerBound == 3 }.reduce(FoldState()) { $0.toggled($1) })
+        let column = 9
+        // ↓ from the paragraph above lands on the folded heading, ↓ again steps over its hidden body to the paragraph below.
+        move(w, #selector(NSResponder.moveDown(_:)))
+        move(w, #selector(NSResponder.moveDown(_:)))
+        move(w, #selector(NSResponder.moveDown(_:)))
+        let a = w.coordinator.analysis
+        XCTAssertFalse(w.coordinator.foldState.foldHiding(offset: w.textView.selectedRange().location, in: a) != nil)
+        XCTAssertEqual(w.textView.selectedRange().location - a.lines[a.lineIndex(at: w.textView.selectedRange().location)].range.location, column, accuracy: 2,
+                       "the column is kept on the line below the fold")
+        _ = h
+    }
+
+    func testWordLineAndDocumentMovesNeverEndInHiddenText() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20, 35))
+        let selectors: [Selector] = [#selector(NSResponder.moveWordRight(_:)), #selector(NSResponder.moveToEndOfLine(_:)), #selector(NSResponder.moveToEndOfParagraph(_:)),
+                                     #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveRight(_:)), #selector(NSResponder.pageDown(_:)),
+                                     #selector(NSResponder.moveToEndOfDocument(_:)), #selector(NSResponder.moveParagraphForwardAndModifySelection(_:)),
+                                     #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveToBeginningOfDocument(_:)),
+                                     #selector(NSResponder.moveWordLeft(_:)), #selector(NSResponder.pageUp(_:))]
+        for start in [lineEnd(h, 5), lineEnd(h, 20), lineStart(h, 20), lineEnd(h, 35), h.index(of: "Intro"), 0] {
+            for selector in selectors {
+                h.select(start)
+                move(h, selector)
+                XCTAssertFalse(caretIsHidden(h), "\(selector) from \(start) left the caret at \(h.textView.selectedRange().location), in hidden text")
+            }
+        }
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes", "## Last"], "none of that opened a fold")
+        h.select(0)
+        move(h, #selector(NSResponder.moveToEndOfDocument(_:)))
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 35), length: 0), "⌘↓ with a hidden end goes to the end of the header of the fold hiding it")
+    }
+
+    func testShiftArrowsExtendTheSelectionOverTheFold() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineEnd(h, 5))
+        move(h, #selector(NSResponder.moveDownAndModifySelection(_:)))
+        let sel = h.textView.selectedRange()
+        XCTAssertEqual(sel.location, lineEnd(h, 5))
+        XCTAssertGreaterThanOrEqual(NSMaxRange(sel), lineStart(h, 20), "it reaches the next visible line, covering the hidden text between")
+        XCTAssertLessThanOrEqual(NSMaxRange(sel), lineEnd(h, 20))
+        XCTAssertFalse(h.coordinator.foldState.foldHiding(offset: NSMaxRange(sel), in: h.coordinator.analysis) != nil)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"])
+        // Extending upwards from below the fold ends on the header.
+        h.select(lineStart(h, 20) + 2)
+        move(h, #selector(NSResponder.moveUpAndModifySelection(_:)))
+        XCTAssertEqual(NSMaxRange(h.textView.selectedRange()), lineStart(h, 20) + 2)
+        XCTAssertEqual(h.coordinator.analysis.lineIndex(at: h.textView.selectedRange().location) + 1, 5, "the moving end stops on the header's line (column kept)")
+        XCTAssertGreaterThanOrEqual(h.textView.selectedRange().location, lineStart(h, 5))
+        XCTAssertLessThanOrEqual(h.textView.selectedRange().location, lineEnd(h, 5))
+    }
+
+    func testPageDownThroughAFoldedDocumentNeverLeavesTheCaretHidden() async throws {
+        var doc = ""
+        for i in 1...40 { doc += "## Section \(i)\n\n" + (1...6).map { "Body line \($0) of \(i)." }.joined(separator: "\n") + "\n\n" }
+        let h = EditorHarness(text: doc, size: NSSize(width: 900, height: 500))
+        h.window.makeKeyAndOrderFront(nil)
+        h.coordinator.setFoldState(h.coordinator.analysis.foldRegions.enumerated().filter { $0.offset % 3 != 0 }.reduce(FoldState()) { $0.toggled($1.element) })
+        h.select(0)
+        for _ in 0..<12 {
+            move(h, #selector(NSResponder.pageDown(_:)))
+            XCTAssertFalse(caretIsHidden(h))
+        }
+        for _ in 0..<12 {
+            move(h, #selector(NSResponder.pageUp(_:)))
+            XCTAssertFalse(caretIsHidden(h))
+        }
+    }
+
+    func testASelectionThatReachesIntoHiddenTextOpensOnlyTheFoldsHidingIt() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.select(h.index(of: "Milk"), 4)                              // hidden by Notes (as Find would leave it)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"], "Notes opened, Plan did not hide it")
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Milk")).pointSize, 10)
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: h.index(of: "Milk"), length: 4), "the selection is untouched")
+    }
+
+    func testAnOpenSelectionEndingInHiddenTextLeavesTheFoldsAlone() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(0, h.textView.string.utf16.count)                    // Select All
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"])
+    }
+
+    func testAContentsClickOnAHiddenHeadingOpensItsFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 1, 5))
+        let tasks = try XCTUnwrap(h.coordinator.analysis.headings.firstIndex { $0.title == "Tasks" })
+        h.coordinator.revealHeading(at: tasks, animated: false)
+        XCTAssertEqual(foldedHeaders(h), [], "Project and Plan both hid it")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 9), length: 0), "the caret is at the end of the heading")
+    }
+
+    func testAHashLinkToAHiddenHeadingOpensItsFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.coordinator.open(destination: "#tasks")
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"], "only Plan hid ### Tasks")
+        XCTAssertEqual(caretLine(h), 9)
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)

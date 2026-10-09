@@ -198,4 +198,57 @@ extension EditorCoordinator {
         guard next != foldState else { return beep() }
         setFoldState(next)
     }
+
+    // MARK: Caret movement (R14)
+
+    /// Movement commands: `moveDown:`, `moveWordRight:`, `moveToEndOfDocument:`, `pageUp:` and their `…AndModifySelection:` forms.
+    func isCaretMovement(_ selector: Selector) -> Bool {
+        guard !sourceMode, !foldState.isEmpty else { return false }
+        let name = NSStringFromSelector(selector)
+        return name.hasPrefix("move") || name.hasPrefix("page")
+    }
+
+    /// After a movement command: a moving end that landed in hidden text goes to the nearest visible position in the direction
+    /// it travelled — the next visible line going forward, the end of the header going back, the header itself for ⌘↓ when the end
+    /// of the document is hidden. Up and down keep the column where the target line is long enough. With Shift the selection
+    /// extends to there (and may cover hidden text, R17); a selection's start never stays hidden.
+    func snapCaretOverFolds(from before: NSRange, after selector: Selector) {
+        guard let tv = textView, analysis.length == tv.textStorage?.length else { return }
+        let after = tv.selectedRange()
+        guard after != before else { return }
+        // The end that moved: a collapsed result is the caret itself; otherwise the end that differs from before.
+        let headIsStart = after.length > 0 && after.location != before.location && NSMaxRange(after) == NSMaxRange(before)
+        let head = headIsStart || after.length == 0 ? after.location : NSMaxRange(after)
+        let anchor = headIsStart ? NSMaxRange(after) : after.location
+        let headBefore = (before.length == 0 || headIsStart) ? before.location : NSMaxRange(before)
+        guard foldState.foldHiding(offset: head, in: analysis) != nil else { return }
+        let forward = head >= headBefore
+        var target = foldState.visibleOffset(from: head, forward: forward, in: analysis)
+        let name = NSStringFromSelector(selector)
+        if name.hasPrefix("moveUp") || name.hasPrefix("moveDown"), let x = caretX(at: headBefore), let column = offset(onLineOf: target, atX: x) {
+            target = column
+        }
+        let collapsed = after.length == 0
+        let range = collapsed ? NSRange(location: target, length: 0) : NSRange(location: min(anchor, target), length: abs(anchor - target))
+        tv.setSelectedRange(range)
+        tv.scrollRangeToVisible(NSRange(location: target, length: 0))
+    }
+
+    /// The x position (text container coordinates) of the insertion point at `offset`.
+    private func caretX(at offset: Int) -> CGFloat? {
+        guard let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer, let length = tv.textStorage?.length, length > 0 else { return nil }
+        let i = min(offset, length - 1)
+        let box = lm.boundingRect(forGlyphRange: NSRange(location: lm.glyphIndexForCharacter(at: i), length: 1), in: tc)
+        return offset >= length ? box.maxX : box.minX
+    }
+
+    /// The character of the line holding `offset` that is nearest to horizontal position `x`, kept inside the line's text.
+    private func offset(onLineOf offset: Int, atX x: CGFloat) -> Int? {
+        guard let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer, tv.textStorage?.length ?? 0 > 0 else { return nil }
+        let line = analysis.lines[analysis.lineIndex(at: offset)]
+        let probe = min(max(line.range.location, offset), max(0, (tv.textStorage?.length ?? 1) - 1))
+        let rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: probe), effectiveRange: nil)
+        let index = lm.characterIndex(for: NSPoint(x: x, y: rect.midY), in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
+        return min(max(index, line.range.location), line.contentEnd)
+    }
 }
