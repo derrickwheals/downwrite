@@ -78,6 +78,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var foldState = FoldState()
     /// The text `analysis` was made from, so the folds can be carried through the next change by diffing (R18).
     var analyzedText = ""
+    /// What a command with nothing to act on does (the system beep; tests listen instead).
+    var beep: () -> Void = { NSSound.beep() }
 
     private var settings: EditorSettings?
     var preview = PreviewState()

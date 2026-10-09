@@ -143,6 +143,11 @@ enum Responder {
         NSApp.sendAction(#selector(TableGridView.dwTableCommand(_:)), to: nil, from: TableCommandBox(command))
     }
     static func indent() { NSApp.sendAction(#selector(EditorTextView.dwIndent(_:)), to: nil, from: nil) }
+    static func fold() { NSApp.sendAction(#selector(EditorTextView.dwFold(_:)), to: nil, from: nil) }
+    static func unfold() { NSApp.sendAction(#selector(EditorTextView.dwUnfold(_:)), to: nil, from: nil) }
+    static func foldAll() { NSApp.sendAction(#selector(EditorTextView.dwFoldAll(_:)), to: nil, from: nil) }
+    static func unfoldAll() { NSApp.sendAction(#selector(EditorTextView.dwUnfoldAll(_:)), to: nil, from: nil) }
+    static func fold(toLevel level: Int) { NSApp.sendAction(#selector(EditorTextView.dwFoldToLevel(_:)), to: nil, from: FoldLevelBox(level)) }
     static func outdent() { NSApp.sendAction(#selector(EditorTextView.dwOutdent(_:)), to: nil, from: nil) }
 
     static func find(_ action: NSTextFinder.Action) {
@@ -248,6 +253,16 @@ struct ViewCommands: Commands {
                 .disabled(sourceMode == nil)
             Button(showTOC ? "Hide Table of Contents" : "Show Table of Contents") { showTOC.toggle() }
                 .keyboardShortcut("o", modifiers: [.command, .control])
+            Divider()
+            // Folding acts on the frontmost editor and is not available while it shows the Markdown source.
+            Button("Fold") { Responder.fold() }.keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(sourceMode != false)
+            Button("Unfold") { Responder.unfold() }.keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(sourceMode != false)
+            Button("Fold All") { Responder.foldAll() }.keyboardShortcut(.leftArrow, modifiers: [.command, .option, .shift]).disabled(sourceMode != false)
+            Button("Unfold All") { Responder.unfoldAll() }.keyboardShortcut(.rightArrow, modifiers: [.command, .option, .shift]).disabled(sourceMode != false)
+            Menu("Fold to Level") {
+                ForEach(1...6, id: \.self) { level in Button("Heading \(level)") { Responder.fold(toLevel: level) } }
+            }
+            .disabled(sourceMode != false)
             Divider()
             Picker("Appearance", selection: $theme) {
                 ForEach(ThemeChoice.allCases) { Text($0.label).tag($0.rawValue) }

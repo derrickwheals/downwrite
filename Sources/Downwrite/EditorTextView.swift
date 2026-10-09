@@ -7,6 +7,12 @@ final class FormatCommandBox: NSObject {
     init(_ command: FormatCommand) { self.command = command }
 }
 
+/// Carries the level of a Fold to Level command through the responder chain.
+final class FoldLevelBox: NSObject {
+    let level: Int
+    init(_ level: Int) { self.level = level }
+}
+
 /// The Markdown editing surface: a TextKit 1 `NSTextView` with Markdown-aware commands, smart Return/Tab,
 /// clickable task boxes and a centred readable column.
 final class EditorTextView: NSTextView {
@@ -232,6 +238,16 @@ final class EditorTextView: NSTextView {
     @objc func dwTableCommand(_ sender: Any?) {
         guard let box = sender as? TableCommandBox, let overlay = coordinator?.tableOverlay else { NSSound.beep(); return }
         overlay.perform(box.command, atOffset: selectedRange().location)
+    }
+
+    // Folding (View menu): the commands live on the coordinator, which owns the fold state.
+    @objc func dwFold(_ sender: Any?) { coordinator?.foldAtCaret() }
+    @objc func dwUnfold(_ sender: Any?) { coordinator?.unfoldAtCaret() }
+    @objc func dwFoldAll(_ sender: Any?) { coordinator?.foldAll() }
+    @objc func dwUnfoldAll(_ sender: Any?) { coordinator?.unfoldAll() }
+    @objc func dwFoldToLevel(_ sender: Any?) {
+        guard let box = sender as? FoldLevelBox else { return }
+        coordinator?.fold(toLevel: box.level)
     }
 
     @objc func dwIndent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: false)) }

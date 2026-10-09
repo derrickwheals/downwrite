@@ -581,6 +581,130 @@ final class FoldTests: XCTestCase {
         XCTAssertEqual((h.attrs(at: chipChar)[.dwFoldChip] as? FoldMark)?.covered, false, "and back")
     }
 
+    // MARK: Commands (R10 to R13)
+
+    /// Counts the beeps the editor makes (a command with nothing to act on).
+    private final class Beeps { var count = 0 }
+
+    private func countBeeps(_ h: EditorHarness) -> Beeps {
+        let b = Beeps()
+        h.coordinator.beep = { b.count += 1 }
+        return b
+    }
+
+    func testFoldAtTheCaretWorkedExampleWithTheRealCommand() async throws {
+        let h = try await fixtureHarness()
+        let beeps = countBeeps(h)
+        h.select(h.index(of: "Review") + 2)
+        var seen: [[String]] = []
+        for _ in 0..<4 {
+            h.textView.dwFold(nil)
+            seen.append(foldedHeaders(h))
+            let a = h.coordinator.analysis, state = h.coordinator.foldState
+            let outermost = a.foldRegions.filter { state.isFolded($0) }.min { $0.headerLines.upperBound > $1.headerLines.upperBound }!   // the newest, innermost-out
+            _ = outermost
+            XCTAssertEqual(h.textView.selectedRange().length, 0)
+        }
+        XCTAssertEqual(seen[0], ["- [ ] Write spec"])
+        XCTAssertEqual(seen[1], ["### Tasks", "- [ ] Write spec"])
+        XCTAssertEqual(seen[2], ["## Plan", "### Tasks", "- [ ] Write spec"])
+        XCTAssertEqual(seen[3], ["# Project", "## Plan", "### Tasks", "- [ ] Write spec"])
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 1), length: 0), "the caret ends on the one visible header")
+        XCTAssertEqual(beeps.count, 0)
+        h.textView.dwFold(nil)
+        XCTAssertEqual(beeps.count, 1, "nothing left to fold: the system beep")
+        XCTAssertEqual(foldedHeaders(h).count, 4)
+    }
+
+    func testFoldMovesTheCaretToTheEndOfTheHeaderOnlyWhenItWasHidden() async throws {
+        let h = try await fixtureHarness()
+        h.select(h.index(of: "Draft") + 2)                          // inside the nested items
+        h.textView.dwFold(nil)
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 11), length: 0), "hidden by the fold: onto its header")
+        h.coordinator.setFoldState(FoldState())
+        h.select(lineStart(h, 11) + 3)                              // on the header line itself
+        h.textView.dwFold(nil)
+        XCTAssertEqual(foldedHeaders(h), ["- [ ] Write spec"])
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineStart(h, 11) + 3, length: 0), "a visible caret is left alone")
+    }
+
+    func testUnfoldAtTheCaret() async throws {
+        let h = try await fixtureHarness()
+        let beeps = countBeeps(h)
+        h.coordinator.setFoldState(folded(h, 1, 5))
+        h.select(lineEnd(h, 1))
+        h.textView.dwUnfold(nil)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"], "Project opens, Plan stays folded inside it")
+        h.textView.dwUnfold(nil)
+        XCTAssertEqual(beeps.count, 1, "the caret line is not a folded header any more")
+        h.select(lineEnd(h, 5))
+        h.textView.dwUnfold(nil)
+        XCTAssertEqual(foldedHeaders(h), [])
+        XCTAssertEqual(beeps.count, 1)
+    }
+
+    func testFoldAllUnfoldAllAndFoldToLevel() async throws {
+        let h = try await fixtureHarness()
+        let beeps = countBeeps(h)
+        h.textView.dwFoldAll(nil)
+        XCTAssertEqual(foldedHeaders(h), ["# Project", "## Plan", "### Tasks", "- [ ] Write spec", "## Notes", "- Groceries", "  - Eggs", "## Last"])
+        h.textView.dwFoldAll(nil)
+        XCTAssertEqual(beeps.count, 1, "everything is folded already")
+        h.textView.dwUnfoldAll(nil)
+        XCTAssertEqual(foldedHeaders(h), [])
+        h.textView.dwUnfoldAll(nil)
+        XCTAssertEqual(beeps.count, 2)
+        h.textView.dwFoldToLevel(FoldLevelBox(2))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "### Tasks", "## Notes", "## Last"], "Project stays open; list items are left alone; ## Empty cannot fold")
+        h.textView.dwFoldToLevel(FoldLevelBox(2))
+        XCTAssertEqual(beeps.count, 3, "no change")
+        h.textView.dwFoldToLevel(FoldLevelBox(3))
+        XCTAssertEqual(foldedHeaders(h), ["### Tasks"], "level 3 opens the shallower headings")
+        h.textView.dwFoldToLevel(nil)                              // (no level: ignored)
+        XCTAssertEqual(foldedHeaders(h), ["### Tasks"])
+    }
+
+    func testFoldCommandsDoNothingInTheSourceView() async throws {
+        let h = try await fixtureHarness()
+        let beeps = countBeeps(h)
+        h.coordinator.setSourceMode(true)
+        h.textView.dwFold(nil); h.textView.dwUnfold(nil); h.textView.dwFoldAll(nil); h.textView.dwUnfoldAll(nil)
+        h.textView.dwFoldToLevel(FoldLevelBox(1))
+        XCTAssertEqual(foldedHeaders(h), [])
+        XCTAssertEqual(beeps.count, 5)
+    }
+
+    func testTheHeaderIsScrolledIntoViewWhenAFoldHidesTheCaret() async throws {
+        var doc = "# Top\n\n"
+        for i in 1...150 { doc += "## Section \(i)\n\nFirst line of \(i).\nSecond line of \(i).\n\n" }
+        let h = EditorHarness(text: doc, size: NSSize(width: 900, height: 600))
+        h.window.makeKeyAndOrderFront(nil)
+        h.select(h.index(of: "Second line of 140."))
+        h.textView.scrollRangeToVisible(h.textView.selectedRange())
+        XCTAssertGreaterThan(h.textView.visibleRect.minY, 1000, "precondition: scrolled far down")
+        h.textView.dwFoldAll(nil)                                    // the caret is hidden: it goes to `# Top`, at the very start
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: "# Top".utf16.count, length: 0))
+        XCTAssertLessThan(h.textView.visibleRect.minY, 40, "and the view followed it up to the header")
+    }
+
+    func testTheActionsAreReachableBySelector() async throws {
+        // (The real menu route, through the key window's responder chain, is exercised by the end-to-end run.)
+        let h = try await fixtureHarness()
+        func send(_ selector: Selector, from sender: Any? = nil) { XCTAssertTrue(NSApp.sendAction(selector, to: h.textView, from: sender), "\(selector)") }
+        send(#selector(EditorTextView.dwFoldAll(_:)))
+        XCTAssertEqual(foldedHeaders(h).count, 8)
+        send(#selector(EditorTextView.dwUnfoldAll(_:)))
+        XCTAssertEqual(foldedHeaders(h), [])
+        send(#selector(EditorTextView.dwFoldToLevel(_:)), from: FoldLevelBox(2))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "### Tasks", "## Notes", "## Last"])
+        h.select(lineEnd(h, 5))
+        send(#selector(EditorTextView.dwUnfold(_:)))
+        XCTAssertEqual(foldedHeaders(h), ["### Tasks", "## Notes", "## Last"])
+        h.select(lineEnd(h, 5))
+        send(#selector(EditorTextView.dwFold(_:)))
+        XCTAssertTrue(foldedHeaders(h).contains("## Plan"))
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)

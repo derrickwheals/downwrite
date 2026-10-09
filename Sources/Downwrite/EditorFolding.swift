@@ -162,4 +162,40 @@ extension EditorCoordinator {
         }
         return dirty
     }
+
+    // MARK: Commands (R10 to R13)
+
+    /// Fold: the innermost open region around the caret (R11). Repeated, it folds outwards.
+    func foldAtCaret() {
+        guard !sourceMode, let tv = textView, analysis.length == tv.textStorage?.length,
+              let next = foldState.folding(atCaret: tv.selectedRange().location, in: analysis) else { return beep() }
+        setFoldState(next)
+    }
+
+    /// Unfold: the folded region whose header holds the caret (R11).
+    func unfoldAtCaret() {
+        guard !sourceMode, let tv = textView, analysis.length == tv.textStorage?.length,
+              let next = foldState.unfolding(atCaret: tv.selectedRange().location, in: analysis) else { return beep() }
+        setFoldState(next)
+    }
+
+    func foldAll() {
+        guard !sourceMode else { return beep() }
+        let next = foldState.foldingAll(in: analysis)
+        guard next != foldState else { return beep() }
+        setFoldState(next)
+    }
+
+    func unfoldAll() {
+        guard !sourceMode, !foldState.isEmpty else { return beep() }
+        setFoldState(foldState.unfoldingAll())
+    }
+
+    /// Fold to Level N: headings of level N and deeper fold, shallower ones open; list items keep their state (R12).
+    func fold(toLevel level: Int) {
+        guard !sourceMode else { return beep() }
+        let next = foldState.folding(toLevel: level, in: analysis)
+        guard next != foldState else { return beep() }
+        setFoldState(next)
+    }
 }
