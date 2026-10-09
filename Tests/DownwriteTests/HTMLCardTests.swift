@@ -141,6 +141,24 @@ final class HTMLCardTests: XCTestCase {
         XCTAssertTrue(settled, "\(h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis))")
     }
 
+    func testCardMovesWithItsBlockWhenLinesAreInsertedAbove() async throws {
+        let h = EditorHarness(text: "intro\n\n<div style=\"height:80px\">box</div>\n\nafter\n")
+        h.select(h.index(of: "after"))
+        let ok = await waitUntil { self.reserved(h, 2) > 80 }
+        XCTAssertTrue(ok)
+        let card = try XCTUnwrap(cards(h).first)
+        let before = reserved(h, 2)
+        h.textView.insertText("one\n\ntwo\n\n", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(h.coordinator.analysis.htmlBlocks.first?.firstLine, 6)
+        XCTAssertEqual(cards(h).count, 1)
+        XCTAssertTrue(cards(h).first === card, "the same card, not a new web view")
+        XCTAssertEqual(reserved(h, 6), before, accuracy: 0.5, "…with its height ready straight away")
+        XCTAssertEqual(reserved(h, 2), 0, "nothing is left reserved under the old line")
+        XCTAssertTrue(h.isHidden(at: h.index(of: "<div")))
+        let settled = await waitUntil { h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis).isEmpty }
+        XCTAssertTrue(settled, "\(h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis))")
+    }
+
     func testTypingInTheBlockRendersTheNewContent() async throws {
         let h = EditorHarness(text: "<div style=\"height:50px\">box</div>\n\nafter\n")
         h.select(5)

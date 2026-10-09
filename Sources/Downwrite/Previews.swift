@@ -250,6 +250,8 @@ final class DiagramOverlay {
         /// The width an HTML card was last rendered at: HTML reflows, so a different column width means a new height.
         var renderedWidth: CGFloat = 0
         var hasRendered = false
+        /// A render is under way (its result is filed under the entry's current key, so a changed key restarts it).
+        var rendering = false
         var view: DiagramView
         var reserved: CGFloat
         var task: Task<Void, Never>?
@@ -285,12 +287,11 @@ final class DiagramOverlay {
     /// different one (theme, font) renders them again.
     func sync(blocks: [PreviewBlock], dark: Bool, style: HTMLPageStyle) {
         guard let tv = textView else { return }
+        // Cards are filed under their block's first line, which moves whenever a line is typed above them. A card whose block
+        // has the same content at another line moves with it instead of being thrown away and rendered again.
         let keep = Set(blocks.map(\.firstLine))
-        for (key, entry) in entries where !keep.contains(key) {
-            entry.task?.cancel()
-            entry.view.removeFromSuperview()
-            entries[key] = nil
-        }
+        var orphans = entries.filter { !keep.contains($0.key) }
+        for key in orphans.keys { entries[key] = nil }
         var changed = false
         for block in blocks {
             var blockStyle: HTMLPageStyle?
@@ -301,6 +302,11 @@ final class DiagramOverlay {
                 e.kind = block.kind; e.dark = dark; e.style = blockStyle
                 entries[block.firstLine] = e
                 start(block.firstLine)
+            } else if let moved = orphans.filter({ $0.value.kind == block.kind && $0.value.dark == dark && $0.value.style == blockStyle })
+                        .min(by: { abs($0.key - block.firstLine) < abs($1.key - block.firstLine) }) {
+                orphans[moved.key] = nil
+                entries[block.firstLine] = moved.value
+                if moved.value.rendering { start(block.firstLine) }          // (its result would be filed under the old line)
             } else {
                 let v = DiagramView(frame: NSRect(x: 0, y: 0, width: availableWidth, height: 100))
                 v.applyPalette(palette)
@@ -311,6 +317,10 @@ final class DiagramOverlay {
                 changed = true
                 start(block.firstLine)
             }
+        }
+        for (_, gone) in orphans {
+            gone.task?.cancel()
+            gone.view.removeFromSuperview()
         }
         if changed { onReservedHeightsChanged?() }
     }
@@ -341,6 +351,7 @@ final class DiagramOverlay {
         let firstRender = !entry.hasRendered
         let width = availableWidth
         if case .html = kind { entries[key]?.renderedWidth = width }
+        entries[key]?.rendering = true
         let base = baseURL ?? textView?.window?.representedURL?.deletingLastPathComponent()
         entries[key]?.task = Task { [weak self] in
             var reserved: CGFloat = 56
@@ -392,6 +403,7 @@ final class DiagramOverlay {
             let old = e.reserved
             e.reserved = reserved
             e.hasRendered = true
+            e.rendering = false
             self.entries[key] = e
             if old != reserved { self.onReservedHeightsChanged?() }
             self.reposition(analysis: self.lastAnalysis)
