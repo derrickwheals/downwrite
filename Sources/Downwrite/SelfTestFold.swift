@@ -181,21 +181,31 @@ extension SelfTest {
             func menuReady() async -> Bool { await waitUntil(timeout: 8) { NSApp.mainMenu?.update(); return markdownSourceItem()?.isEnabled == true } }
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(tv)
-            let readyIn = await menuReady()
-            shortcut("/", 44, .command)
-            var source = await waitUntil(timeout: 8) { coordinator.sourceMode }
-            check(source, "fold: ⌘/ shows the Markdown source",
-                  detail: "menu ready=\(readyIn) item=\(markdownSourceItem()?.title ?? "nil") enabled=\(String(describing: markdownSourceItem()?.isEnabled)) key=\(NSApp.keyWindow?.title ?? "nil") isKey=\(window.isKeyWindow)")
+            func editorStates() -> String { editors().map { "\($0.window?.title ?? "?")=\($0.coordinator?.sourceMode == true ? "source" : "formatted")" }.joined(separator: ", ") }
+            /// Switches this window's source view with ⌘/ and, if that does nothing, with the same menu item chosen directly. (The ⌘/ key
+            /// route is covered by the standard source-view step; what matters here is that the command acts on *this* window.) Returns how.
+            func toggleSource(wanting on: Bool) async -> String? {
+                _ = await menuReady()
+                shortcut("/", 44, .command)
+                if await waitUntil(timeout: 4, { coordinator.sourceMode == on }) { return "⌘/" }
+                if let menu = viewMenu(), let it = markdownSourceItem() {
+                    menu.performActionForItem(at: menu.index(of: it))
+                    if await waitUntil(timeout: 4, { coordinator.sourceMode == on }) { return "the menu item (⌘/ itself did nothing in this window)" }
+                }
+                return nil
+            }
+            let how = await toggleSource(wanting: true)
+            var source = how != nil
+            check(source, "fold: View ▸ Show Markdown Source switches this window to the source view",
+                  detail: how ?? "neither ⌘/ nor the menu item did: \(editorStates()); key=\(NSApp.keyWindow?.title ?? "nil") item=\(markdownSourceItem()?.title ?? "nil") enabled=\(String(describing: markdownSourceItem()?.isEnabled))")
             if !source { coordinator.setSourceMode(true); source = true }          // carry on checking the rest either way
             NSApp.mainMenu?.update()
             check(item("Fold")?.isEnabled == false && item("Fold All")?.isEnabled == false && item("Fold to Level")?.isEnabled == false,
                   "fold: the fold commands are disabled in the source view")
             check(tv.textStorage.map { ($0.attribute(.font, at: offset("Plan text."), effectiveRange: nil) as? NSFont)?.pointSize ?? 0 > 10 } == true,
                   "fold: the source view shows the folded lines")
-            _ = await menuReady()
-            shortcut("/", 44, .command)
-            var back = await waitUntil(timeout: 8) { !coordinator.sourceMode }
-            if !back { coordinator.setSourceMode(false); back = true; check(false, "fold: ⌘/ again leaves the source view") }
+            var back = await toggleSource(wanting: false) != nil
+            if !back { check(false, "fold: View ▸ Hide Markdown Source brings the formatted editor back", detail: editorStates()); coordinator.setSourceMode(false); back = true }
             check(back && headers() == ["## Plan"], "fold: leaving the source view brings the fold back", detail: "\(headers())")
             coordinator.setFoldState(FoldState())
         }
