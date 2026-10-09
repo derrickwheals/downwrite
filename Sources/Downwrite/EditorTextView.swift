@@ -150,6 +150,12 @@ final class EditorTextView: NSTextView {
         "Start writing…".draw(at: NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y), withAttributes: attrs)
     }
 
+    /// Fold chevrons and chips are drawn here, before the text: they reach into the margins, outside the layout manager's clip.
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        (layoutManager as? DWLayoutManager)?.drawFoldControls(in: rect, origin: textContainerOrigin)
+    }
+
     override func didChangeText() {
         super.didChangeText()
         if !isApplyingGridEdit { gridTypingKey = nil }
@@ -332,8 +338,39 @@ final class EditorTextView: NSTextView {
         return rect.insetBy(dx: -4, dy: -3).contains(point) ? box : nil
     }
 
+    // MARK: Fold controls
+
+    private var foldTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = foldTrackingArea { removeTrackingArea(area) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        foldTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        coordinator?.pointerMoved(to: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        coordinator?.pointerLeft()
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A click on a chevron or a ⋯ chip folds or unfolds without touching the selection.
+        if let header = coordinator?.foldControl(at: point) {
+            if event.clickCount == 1 {
+                if window?.firstResponder !== self { window?.makeFirstResponder(self) }
+                coordinator?.toggleFold(headerLine: header.firstLine)
+            }
+            return
+        }
         if coordinator?.tableOverlay?.focusNearestCell(atTextViewPoint: point) == true { return }
         if let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer {
             let index = characterIndexForInsertion(at: point)

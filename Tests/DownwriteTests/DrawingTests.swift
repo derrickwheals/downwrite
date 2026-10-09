@@ -194,4 +194,178 @@ final class DrawingTests: XCTestCase {
         XCTAssertEqual(ink(open.insetBy(dx: 3, dy: 3)).share, 0, accuracy: 0.02, "an open box is empty inside")
         XCTAssertEqual(ink(open.offsetBy(dx: -(open.width + 8), dy: 0)).share, 0, accuracy: 0.02, "nothing is drawn to the left of the box")
     }
+
+    // MARK: Fold chevron and chip (R8, R9)
+
+    private func foldHarness(dark: Bool = false, theme: String? = nil, text: String? = nil) throws -> EditorHarness {
+        let h = EditorHarness(text: try text ?? FoldTests.fixtureF(), dark: dark, size: NSSize(width: 900, height: 760))
+        if let theme {
+            h.coordinator.update(text: h.textView.string, settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720,
+                                                                                   lightTheme: theme, darkTheme: theme))
+        }
+        makeKey(h)
+        h.select(h.textView.string.utf16.count)             // (away from every header: a caret on one shows its `#` markers)
+        return h
+    }
+
+    private func folded(_ h: EditorHarness, _ headers: Int...) -> FoldState {
+        headers.reduce(FoldState()) { s, n in s.toggled(h.coordinator.analysis.foldRegions.first { $0.headerLines.lowerBound == n - 1 }!) }
+    }
+
+    /// The chevron's click target for the header whose carrier character is the first character of `word`, in view coordinates.
+    private func chevronTarget(_ h: EditorHarness, word: String) -> NSRect {
+        let o = h.textView.textContainerOrigin
+        return lm(h).foldChevronRect(forCharacterAt: h.index(of: word))!.offsetBy(dx: o.x, dy: o.y)
+    }
+
+    private func chipRect(_ h: EditorHarness, lastCharacterOf line: Int) -> NSRect {
+        let o = h.textView.textContainerOrigin
+        return lm(h).foldChipRect(forCharacterAt: h.coordinator.analysis.lines[line - 1].contentEnd - 1)!.offsetBy(dx: o.x, dy: o.y)
+    }
+
+    private func inkPoints(_ rep: NSBitmapImageRep, in r: NSRect, _ h: EditorHarness, threshold: CGFloat = 0.25) -> [NSPoint] {
+        let page = h.coordinator.styler.palette.background.nsColor
+        var out: [NSPoint] = []
+        var y = r.minY
+        while y < r.maxY {
+            var x = r.minX
+            while x < r.maxX {
+                if distance(color(rep, atViewPoint: NSPoint(x: x, y: y), in: h), page) > threshold { out.append(NSPoint(x: x, y: y)) }
+                x += 0.5
+            }
+            y += 0.5
+        }
+        return out
+    }
+
+    /// How the ink is spread: its horizontal extent in the upper and lower half of its own bounding box, and its vertical extent
+    /// in the left and right half.
+    private func shape(_ ink: [NSPoint]) -> (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) {
+        guard let minX = ink.map(\.x).min(), let maxX = ink.map(\.x).max(), let minY = ink.map(\.y).min(), let maxY = ink.map(\.y).max() else { return (0, 0, 0, 0) }
+        func extent(_ pts: [NSPoint], _ v: (NSPoint) -> CGFloat) -> CGFloat {
+            guard let lo = pts.map(v).min(), let hi = pts.map(v).max() else { return 0 }
+            return hi - lo
+        }
+        let midX = (minX + maxX) / 2, midY = (minY + maxY) / 2
+        return (extent(ink.filter { $0.y < midY }, { $0.x }), extent(ink.filter { $0.y >= midY }, { $0.x }),
+                extent(ink.filter { $0.x < midX }, { $0.y }), extent(ink.filter { $0.x >= midX }, { $0.y }))
+    }
+
+    func testChevronTargetIsSixteenPointsAndClearOfTheText() throws {
+        let h = try foldHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        // (The chevron sits on the header's first visible character: a heading's first letter, an item's bullet.)
+        for (needle, carrier) in [("Plan", 4), ("Notes", 5), ("Project", 7), ("- Groceries", 1)] {
+            let target = chevronTarget(h, word: needle)
+            XCTAssertEqual(target.width, 16, needle); XCTAssertEqual(target.height, 16, needle)
+            let text = rect(of: NSRange(location: h.index(of: needle), length: carrier), in: h)
+            XCTAssertLessThanOrEqual(target.maxX, text.minX, "\(needle): the target does not overlap the text")
+            XCTAssertEqual(target.midY, text.midY, accuracy: 6, "\(needle): and sits on its line")
+        }
+        // Beside a drawn task checkbox it stays left of the box (Write spec is hidden while Plan is folded).
+        h.coordinator.setFoldState(FoldState())
+        let item = lm(h).foldChevronRect(forCharacterAt: h.index(of: "- [ ] Write spec"))!
+        let box = lm(h).checkboxRect(forCharacterAt: h.index(of: "- [ ] Write spec"))!
+        XCTAssertLessThanOrEqual(item.maxX, box.minX)
+        XCTAssertEqual(item.midY, box.midY, accuracy: 6)
+    }
+
+    func testFoldedChevronPointsRightAndAnOpenOneShowsOnlyUnderThePointerPointingDown() throws {
+        let h = try foldHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        let planTarget = chevronTarget(h, word: "Plan"), notesTarget = chevronTarget(h, word: "Notes")
+        var rep = render(h)
+        let folded = inkPoints(rep, in: planTarget, h)
+        XCTAssertGreaterThan(folded.count, 15, "a folded header always shows its chevron")
+        let right = shape(folded)
+        XCTAssertGreaterThan(right.left, right.right + 2, "▸: tall on the left, a point on the right")
+        XCTAssertEqual(inkPoints(rep, in: notesTarget, h).count, 0, "an open header shows no chevron while the pointer is elsewhere")
+
+        // The pointer beside the header, in the left margin.
+        h.coordinator.pointerMoved(to: NSPoint(x: 4, y: notesTarget.midY))
+        rep = render(h)
+        let open = inkPoints(rep, in: notesTarget, h)
+        XCTAssertGreaterThan(open.count, 15, "the pointer over the header's margin shows the chevron")
+        let down = shape(open)
+        XCTAssertGreaterThan(down.top, down.bottom + 2, "▾: wide at the top, a point at the bottom")
+
+        h.coordinator.pointerLeft()
+        XCTAssertEqual(inkPoints(render(h), in: notesTarget, h).count, 0, "gone again when the pointer leaves")
+        XCTAssertGreaterThan(inkPoints(render(h), in: planTarget, h).count, 15, "the folded one stays")
+    }
+
+    func testChipFollowsTheHeaderTextAndUsesTheChipColour() throws {
+        for dark in [false, true] {
+            let h = try foldHarness(dark: dark)
+            h.coordinator.setFoldState(folded(h, 5))
+            let chip = chipRect(h, lastCharacterOf: 5)
+            let text = rect(of: NSRange(location: h.index(of: "Plan"), length: 4), in: h)
+            XCTAssertGreaterThan(chip.minX, text.maxX, "dark=\(dark): the chip starts after the text")
+            XCTAssertGreaterThan(chip.height, 8)
+            let p = h.coordinator.styler.palette
+            let rep = render(h)
+            let sample = color(rep, atViewPoint: NSPoint(x: chip.minX + 2.5, y: chip.midY), in: h)
+            XCTAssertLessThan(distance(sample, p.inlineCodeBackground.nsColor), 0.2, "dark=\(dark): chip fill")
+            XCTAssertLessThan(distance(sample, p.inlineCodeBackground.nsColor), distance(sample, p.background.nsColor) + 0.02, "dark=\(dark): nearer the chip colour than the page")
+            let dots = inkPoints(rep, in: chip.insetBy(dx: 4, dy: 3), h, threshold: 0.2)
+            XCTAssertGreaterThan(dots.count, 6, "dark=\(dark): the three dots are drawn")
+        }
+    }
+
+    func testCoveredChipIsDrawnInTheSelectionColour() throws {
+        let h = try foldHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        let p = h.coordinator.styler.palette
+        func probe() -> NSPoint { let chip = chipRect(h, lastCharacterOf: 5); return NSPoint(x: chip.minX + 2.5, y: chip.midY) }
+        let plain = color(render(h), atViewPoint: probe(), in: h)
+        // The selection runs from the paragraph above into the hidden lines. (It reveals the heading's `## `, so the chip moves.)
+        let a = h.coordinator.analysis
+        h.select(a.lines[2].range.location, a.lines[7].range.location + 3 - a.lines[2].range.location)
+        let covered = color(render(h), atViewPoint: probe(), in: h)
+        let page = p.background, sel = p.selection
+        let tint = NSColor(srgbRed: page.r * (1 - sel.a) + sel.r * sel.a, green: page.g * (1 - sel.a) + sel.g * sel.a,
+                           blue: page.b * (1 - sel.a) + sel.b * sel.a, alpha: 1)
+        XCTAssertGreaterThan(distance(plain, covered), 0.1, "the chip changes colour when the selection covers hidden text")
+        // (The system highlight of the selected line is painted over the chip as well, so it ends up a little deeper than the tint.)
+        XCTAssertLessThan(distance(covered, tint), distance(plain, tint) - 0.01, "it moved from the chip colour towards the selection colour")
+        // And goes back when the selection leaves.
+        h.select(h.textView.string.utf16.count)
+        XCTAssertLessThan(distance(color(render(h), atViewPoint: probe(), in: h), plain), 0.03)
+    }
+
+    func testChevronAndChipAreDrawnInEveryBuiltInTheme() throws {
+        for theme in ThemeCatalog.builtIn {
+            let h = try foldHarness(dark: theme.appearance == .dark, theme: theme.id)
+            h.coordinator.setFoldState(folded(h, 5))
+            let p = h.coordinator.styler.palette
+            XCTAssertEqual(p, theme.palette, "\(theme.id): the editor uses the theme")
+            let rep = render(h)
+            let target = chevronTarget(h, word: "Plan"), chip = chipRect(h, lastCharacterOf: 5)
+            XCTAssertGreaterThan(inkPoints(rep, in: target, h, threshold: 0.12).count, 10, "\(theme.id): chevron ink")
+            // The chip fill is told apart from the page, and its dots from the fill (the palette floors give the contrast).
+            let fill = color(rep, atViewPoint: NSPoint(x: chip.minX + 2.5, y: chip.midY), in: h)
+            XCTAssertGreaterThan(distance(fill, p.background.nsColor), 0.01, "\(theme.id): chip fill differs from the page")
+            XCTAssertGreaterThan(inkPoints(rep, in: chip.insetBy(dx: 4, dy: 3), h, threshold: 0.15).count, 4, "\(theme.id): dots")
+            // Covered: dark text on the selection tint must stay readable.
+            let tint = NSColor(srgbRed: p.background.r * (1 - p.selection.a) + p.selection.r * p.selection.a,
+                               green: p.background.g * (1 - p.selection.a) + p.selection.g * p.selection.a,
+                               blue: p.background.b * (1 - p.selection.a) + p.selection.b * p.selection.a, alpha: 1)
+            let tintRGBA = RGBA(Double(tint.redComponent), Double(tint.greenComponent), Double(tint.blueComponent))
+            XCTAssertGreaterThanOrEqual(p.text.contrast(with: tintRGBA), 4.5, "\(theme.id): chip dots over the selection colour")
+        }
+    }
+
+    func testHiddenLinesLeaveNoHoleAndNoInk() throws {
+        let h = try foldHarness()
+        h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
+        let before = rect(of: NSRange(location: h.index(of: "Notes"), length: 5), in: h).minY - rect(of: NSRange(location: h.index(of: "Plan"), length: 4), in: h).minY
+        h.coordinator.setFoldState(folded(h, 5))
+        h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
+        let plan = rect(of: NSRange(location: h.index(of: "Plan"), length: 4), in: h), notes = rect(of: NSRange(location: h.index(of: "Notes"), length: 5), in: h)
+        let gap = notes.minY - plan.minY
+        XCTAssertLessThan(gap, before / 4, "Notes follows the folded Plan directly (was \(Int(before)) pt away, now \(Int(gap)))")
+        XCTAssertLessThan(gap, 90, "a normal heading gap")
+        let strip = NSRect(x: h.textView.textContainerOrigin.x, y: plan.maxY + 12, width: 500, height: max(0, notes.minY - plan.maxY - 16))
+        XCTAssertEqual(inkPoints(render(h), in: strip, h).count, 0, "nothing is drawn between the two headings")
+    }
 }

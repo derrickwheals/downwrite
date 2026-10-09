@@ -49,6 +49,106 @@ final class DWLayoutManager: NSLayoutManager {
         return NSRect(x: x, y: baseline - mark.centerAboveBaseline - mark.side / 2, width: mark.side, height: mark.side)
     }
 
+    // MARK: Fold controls
+
+    /// Edge length of a chevron's click target, and the gap between it and the text.
+    static let foldTarget: CGFloat = 16
+    static let foldGap: CGFloat = 4
+    /// The characters of the header the pointer is over; its chevron shows even while the region is open.
+    var hoveredFoldRange: NSRange?
+
+    /// The font of the nearest character at or before `index` on its line that shows (a header can end in hidden syntax).
+    private func visibleFont(atOrBefore index: Int, in storage: NSTextStorage) -> NSFont {
+        let whole = storage.string as NSString
+        let lineStart = whole.lineRange(for: NSRange(location: index, length: 0)).location
+        var i = index
+        while i >= lineStart {
+            if let f = storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont, f.pointSize > 1 { return f }
+            i -= 1
+        }
+        return (storage.attribute(.font, at: index, effectiveRange: nil) as? NSFont) ?? NSFont.systemFont(ofSize: 14)
+    }
+
+    /// The chevron's click target (text container coordinates) for the `FoldMark` on the character at `index`: a square to the
+    /// left of that character, clear of the text and of a drawn checkbox. `nil` if the character carries none.
+    func foldChevronRect(forCharacterAt index: Int) -> NSRect? {
+        guard let storage = textStorage, index >= 0, index < storage.length, let container = textContainers.first,
+              storage.attribute(.dwFold, at: index, effectiveRange: nil) is FoldMark else { return nil }
+        let glyph = glyphIndexForCharacter(at: index)
+        guard glyph < numberOfGlyphs else { return nil }
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let x = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container).minX
+        let font = visibleFont(atOrBefore: index, in: storage)
+        let centre = line.minY + location(forGlyphAt: glyph).y - (font.capHeight + font.xHeight) / 4
+        return NSRect(x: x - Self.foldGap - Self.foldTarget, y: centre - Self.foldTarget / 2, width: Self.foldTarget, height: Self.foldTarget)
+    }
+
+    /// The ⋯ chip (text container coordinates) for the `FoldMark` on the header's last character at `index`: right after that
+    /// character, as tall as an inline pill. It may run into the right margin when the line is full, but never over text.
+    func foldChipRect(forCharacterAt index: Int) -> NSRect? {
+        guard let storage = textStorage, index >= 0, index < storage.length, let container = textContainers.first,
+              storage.attribute(.dwFoldChip, at: index, effectiveRange: nil) is FoldMark else { return nil }
+        let glyph = glyphIndexForCharacter(at: index)
+        guard glyph < numberOfGlyphs else { return nil }
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let box = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        let font = visibleFont(atOrBefore: index, in: storage)
+        let baseline = line.minY + location(forGlyphAt: glyph).y
+        let gap = max(1.5, font.pointSize * Self.pillGapRatio)
+        let top = baseline - font.capHeight - gap, bottom = baseline - font.descender + gap
+        return NSRect(x: box.maxX + Self.foldGap + 2, y: top, width: (font.pointSize * 1.45).rounded(), height: bottom - top)
+    }
+
+    /// Draws the chevron and the chip of every foldable header on the lines that meet `rect` (text view coordinates): a chevron
+    /// always on a folded header and otherwise only under the pointer, a chip on a folded header. They reach outside the text
+    /// container — the chevron into the left margin, a chip on a full line into the right one — where this layout manager's own
+    /// drawing is clipped away, so the text view calls this from its background pass. That still puts them behind the text and
+    /// behind the system selection highlight.
+    func drawFoldControls(in rect: NSRect, origin: NSPoint) {
+        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return }
+        let band = NSRect(x: 0, y: rect.minY - origin.y, width: container.size.width, height: rect.height)
+        let chars = characterRange(forGlyphRange: glyphRange(forBoundingRect: band, in: container), actualGlyphRange: nil)
+        storage.enumerateAttribute(.dwFold, in: chars, options: []) { value, range, _ in
+            guard let mark = value as? FoldMark else { return }
+            let hovered = self.hoveredFoldRange.map { NSLocationInRange(range.location, $0) } ?? false
+            guard mark.folded || hovered, let target = self.foldChevronRect(forCharacterAt: range.location) else { return }
+            self.drawChevron(mark, in: target.offsetBy(dx: origin.x, dy: origin.y))
+        }
+        storage.enumerateAttribute(.dwFoldChip, in: chars, options: []) { value, range, _ in
+            guard let mark = value as? FoldMark, let chip = self.foldChipRect(forCharacterAt: range.location) else { return }
+            self.drawChip(mark, in: chip.offsetBy(dx: origin.x, dy: origin.y))
+        }
+    }
+
+    private func drawChevron(_ mark: FoldMark, in target: NSRect) {
+        let c = NSPoint(x: target.midX, y: target.midY)
+        let path = NSBezierPath()
+        if mark.folded {                                  // ▸
+            path.move(to: NSPoint(x: c.x - 2, y: c.y - 3.6))
+            path.line(to: NSPoint(x: c.x + 2, y: c.y))
+            path.line(to: NSPoint(x: c.x - 2, y: c.y + 3.6))
+        } else {                                          // ▾
+            path.move(to: NSPoint(x: c.x - 3.6, y: c.y - 2))
+            path.line(to: NSPoint(x: c.x, y: c.y + 2))
+            path.line(to: NSPoint(x: c.x + 3.6, y: c.y - 2))
+        }
+        path.lineWidth = 1.7
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        mark.chevron.setStroke()
+        path.stroke()
+    }
+
+    private func drawChip(_ mark: FoldMark, in rect: NSRect) {
+        mark.chipFill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: min(4.5, rect.height / 2), yRadius: min(4.5, rect.height / 2)).fill()
+        let r = max(1.1, rect.height * 0.08), spacing = r * 3.4
+        mark.chipInk.setFill()
+        for k in -1...1 {
+            NSBezierPath(ovalIn: NSRect(x: rect.midX + CGFloat(k) * spacing - r, y: rect.midY - r, width: r * 2, height: r * 2)).fill()
+        }
+    }
+
     private func drawCheckbox(_ mark: CheckboxMark, in box: NSRect) {
         let radius = box.width * 0.3
         if mark.checked {

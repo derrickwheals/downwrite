@@ -503,6 +503,84 @@ final class FoldTests: XCTestCase {
         XCTAssertNotNil(h.attrs(at: probe)[NSAttributedString.Key("test.probe")], "so does unfolding it")
     }
 
+    // MARK: Clicks (R8, R9)
+
+    /// A left click at `point` (text view coordinates). A click that is not on a fold control falls through to `NSTextView`, which
+    /// tracks the mouse until the button comes up, so `release` posts that mouse-up first.
+    private func click(_ h: EditorHarness, atView point: NSPoint, count: Int = 1, release: Bool = false) {
+        func event(_ type: NSEvent.EventType) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: h.textView.convert(point, to: nil), modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: h.window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: count, pressure: type == .leftMouseDown ? 1 : 0)!
+        }
+        if release { NSApp.postEvent(event(.leftMouseUp), atStart: false) }
+        h.textView.mouseDown(with: event(.leftMouseDown))
+    }
+
+    private func chevronCentre(_ h: EditorHarness, word: String) -> NSPoint {
+        let o = h.textView.textContainerOrigin
+        let r = (h.textView.layoutManager as! DWLayoutManager).foldChevronRect(forCharacterAt: h.index(of: word))!
+        return NSPoint(x: r.midX + o.x, y: r.midY + o.y)
+    }
+
+    func testClickingTheChevronTogglesTheFoldWithoutTouchingTheSelection() async throws {
+        let h = try await fixtureHarness()
+        h.window.makeKeyAndOrderFront(nil)
+        h.select(h.index(of: "Intro") + 3, 4)
+        let selection = h.textView.selectedRange()
+        click(h, atView: chevronCentre(h, word: "Plan"))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"], "the chevron folds an open region")
+        XCTAssertEqual(h.textView.selectedRange(), selection, "and the selection is where it was")
+        click(h, atView: chevronCentre(h, word: "Plan"))
+        XCTAssertEqual(foldedHeaders(h), [], "the same chevron opens it again")
+        XCTAssertEqual(h.textView.selectedRange(), selection)
+        XCTAssertFalse(h.textView.undoManager!.canUndo)
+        XCTAssertEqual(h.box.value, try Self.fixtureF())
+    }
+
+    func testClickingTheChipUnfolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        let o = h.textView.textContainerOrigin
+        let chip = (h.textView.layoutManager as! DWLayoutManager).foldChipRect(forCharacterAt: lineEnd(h, 5) - 1)!
+        click(h, atView: NSPoint(x: chip.midX + o.x, y: chip.midY + o.y))
+        XCTAssertEqual(foldedHeaders(h), [])
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Plan text.")).pointSize, 10)
+    }
+
+    func testClicksElsewhereOnTheHeaderDoNotFold() async throws {
+        let h = try await fixtureHarness()
+        let o = h.textView.textContainerOrigin
+        let r = (h.textView.layoutManager as! DWLayoutManager).boundingRect(forGlyphRange: NSRange(location: h.index(of: "Plan"), length: 4), in: h.textView.textContainer!)
+        click(h, atView: NSPoint(x: r.midX + o.x, y: r.midY + o.y), release: true)    // on the heading text
+        XCTAssertEqual(foldedHeaders(h), [], "a click on the text just places the caret")
+        XCTAssertEqual(h.textView.selectedRange().length, 0)
+        click(h, atView: NSPoint(x: o.x + 400, y: r.midY + o.y), release: true)       // far right of the header, in the text column
+        XCTAssertEqual(foldedHeaders(h), [])
+    }
+
+    func testAChipOnlyExistsWhileFoldedAndAnOpenHeaderHasNoChipToClick() async throws {
+        let h = try await fixtureHarness()
+        let o = h.textView.textContainerOrigin
+        let lm = h.textView.layoutManager as! DWLayoutManager
+        XCTAssertNil(lm.foldChipRect(forCharacterAt: lineEnd(h, 5) - 1), "no chip on an open header")
+        let end = lm.boundingRect(forGlyphRange: NSRange(location: lineEnd(h, 5) - 1, length: 1), in: h.textView.textContainer!)
+        click(h, atView: NSPoint(x: end.maxX + o.x + 14, y: end.midY + o.y), release: true)
+        XCTAssertEqual(foldedHeaders(h), [], "clicking where a chip would be does nothing while open")
+    }
+
+    func testTheCoveredStateFollowsTheSelection() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        let chipChar = lineEnd(h, 5) - 1
+        XCTAssertEqual((h.attrs(at: chipChar)[.dwFoldChip] as? FoldMark)?.covered, false)
+        h.select(lineStart(h, 3), lineStart(h, 8) - lineStart(h, 3))
+        XCTAssertEqual((h.attrs(at: chipChar)[.dwFoldChip] as? FoldMark)?.covered, true, "restyled when the selection reaches hidden text")
+        XCTAssertEqual((h.attrs(at: lineStart(h, 5))[.dwFold] as? FoldMark)?.covered, true, "(the selection shows the heading's `##`, so the chevron is on the first `#`)")
+        h.select(0)
+        XCTAssertEqual((h.attrs(at: chipChar)[.dwFoldChip] as? FoldMark)?.covered, false, "and back")
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)

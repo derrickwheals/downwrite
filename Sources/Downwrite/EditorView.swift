@@ -265,6 +265,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         analysis = MarkdownAnalyzer.analyze(text)
         carryFolds(from: previous, previousText: analyzedText, to: text)
         analyzedText = text
+        (tv.layoutManager as? DWLayoutManager)?.hoveredFoldRange = nil        // (its offsets may have moved; the next mouse move sets it)
         tableOfContents = analysis.tableOfContents
         scheduleTOCPublish()
         if let first = sourceTableFirstLine, !analysis.tables.contains(where: { $0.isGrid && $0.firstLine == first }) {
@@ -455,6 +456,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
             if let e = analysis.collapsibleExtent(containingLine: first) { for l in e.first...e.last { dirty.insert(l) } }
         }
         preview.collapsed = collapsed
+        dirty.formUnion(refreshFoldCoverage(selection: sel))
         lastHidden = hidden
         if !dirty.isEmpty {
             isStyling = true
