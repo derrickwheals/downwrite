@@ -354,6 +354,91 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) })
     }
 
+    // MARK: HTML blocks as previews
+
+    func testReadmeStyleHtmlBlockBecomesPreviewBlock() {
+        let s = "# Title\n\n<p align=\"center\">\n  <img src=\"a.png\" width=\"48%\">\n  <img src=\"b.png\" width=\"48%\">\n</p>\n\nAfter\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        let b = a.htmlBlocks[0]
+        XCTAssertEqual(b.firstLine, 2)
+        XCTAssertEqual(b.lastLine, 5)
+        XCTAssertEqual(b.source, "<p align=\"center\">\n  <img src=\"a.png\" width=\"48%\">\n  <img src=\"b.png\" width=\"48%\">\n</p>")
+        XCTAssertEqual(ns(s, b.range), b.source)
+        XCTAssertEqual(a.previewBlocks.count, 1)
+        XCTAssertEqual(a.previewBlocks[0].kind, .html(source: b.source))
+        XCTAssertEqual(a.previewBlocks[0].reveal, b.range)
+        let extent = a.collapsibleExtent(containingLine: 4)
+        XCTAssertEqual(extent?.first, 2)
+        XCTAssertEqual(extent?.last, 5)
+        XCTAssertNil(a.collapsibleExtent(containingLine: 7))
+        // The lines keep their HTML look for when the source is shown.
+        XCTAssertEqual((2...5).map { a.lines[$0].kind }, [.html, .html, .html, .html])
+    }
+
+    func testHtmlPreviewBlocksSitInDocumentOrderWithMermaidAndImages() {
+        let s = "![a](a.png)\n\n<div>one</div>\n\n```mermaid\ngraph TD\n A-->B\n```\n\n<p>two</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.previewBlocks.map(\.firstLine), [0, 2, 4, 9])
+        XCTAssertEqual(a.htmlBlocks.map(\.source), ["<div>one</div>", "<p>two</p>"])
+    }
+
+    func testHtmlBlocksThatDrawNothingStayPlainSource() {
+        let s = "<!-- note -->\n\ntext\n\n</details>\n\n<div align=\"center\">\n\n<script>\nx()\n</script>\n\n<style>\np{}\n</style>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty, "\(a.htmlBlocks)")
+        XCTAssertTrue(a.previewBlocks.isEmpty)
+        XCTAssertEqual(a.lines[0].kind, .html)
+        XCTAssertEqual(a.lines[4].kind, .html)
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) && $0.range.location == 0 })
+    }
+
+    func testNestedHtmlBlocksAreNotPreviewed() {
+        let s = "> <div>quoted</div>\n\n- item\n\n  <div>in a list</div>\n\n1. x\n   <p>y</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty, "\(a.htmlBlocks)")
+        XCTAssertTrue(a.spans.contains { $0.flags.contains(.html) }, "still styled as HTML source")
+    }
+
+    func testHtmlInsideFencedCodeIsNotPreviewed() {
+        let s = "```html\n<div>shown as code</div>\n```\n\n    <p>indented code</p>\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertTrue(a.htmlBlocks.isEmpty)
+        XCTAssertEqual(a.lines[1].kind, .codeBlock)
+    }
+
+    func testHtmlBlockRangesAreUTF16() {
+        let s = "😀 é 你好\n\n<div>héllo 😀</div>\n\nend\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        XCTAssertEqual(ns(s, a.htmlBlocks[0].range), "<div>héllo 😀</div>")
+        XCTAssertEqual(a.htmlBlocks[0].source, "<div>héllo 😀</div>")
+    }
+
+    func testHtmlBlockInterruptingAParagraphAndCRLF() {
+        let s = "text\r\n<div>\r\nhi\r\n</div>\r\n\r\nmore\r\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(a.htmlBlocks.count, 1)
+        XCTAssertEqual(a.htmlBlocks[0].firstLine, 1)
+        XCTAssertEqual(a.htmlBlocks[0].lastLine, 3)
+        XCTAssertEqual(ns(s, a.htmlBlocks[0].range), "<div>\r\nhi\r\n</div>")
+    }
+
+    func testHtmlBlockRevealUsesTheWholeBlockInclusive() {
+        let s = "intro\n\n<div>\nhi\n</div>\n\noutro\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        let reveal = a.previewBlocks[0].reveal
+        XCTAssertFalse(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: 4, length: 0)))
+        XCTAssertTrue(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: reveal.location, length: 0)))
+        XCTAssertTrue(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: NSMaxRange(reveal), length: 0)))
+        XCTAssertFalse(MarkdownAnalysis.isRevealed(reveal, by: NSRange(location: NSMaxRange(reveal) + 1, length: 0)))
+    }
+
+    func testTableCellsNeverGetHtmlBlocks() {
+        let a = MarkdownAnalyzer.analyzeTableCell("<div>x</div>")
+        XCTAssertTrue(a.htmlBlocks.isEmpty)
+    }
+
     // MARK: Robustness
 
     func testUnicodeOffsetsAreUTF16() {
