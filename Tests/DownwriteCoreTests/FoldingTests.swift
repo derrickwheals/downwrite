@@ -291,6 +291,14 @@ final class FoldingTests: XCTestCase {
         XCTAssertNil(folded.foldHiding(offset: 3, in: a), "the end of the header")
         XCTAssertNotNil(folded.foldHiding(offset: 4, in: a))
         XCTAssertNotNil(folded.foldHiding(offset: s.utf16.count, in: a), "the empty final line")
+
+        // ...but an item's hidden lines stop before that empty final line, which stays visible.
+        let item = "- a\n  - b\n"
+        let ia = MarkdownAnalyzer.analyze(item)
+        let foldedItem = FoldState().toggled(ia.foldRegions[0])
+        XCTAssertEqual(NSMaxRange(ia.foldRegions[0].hiddenRange), item.utf16.count, "the hidden range reaches the end of the text")
+        XCTAssertNotNil(foldedItem.foldHiding(offset: 7, in: ia), "inside `  - b`")
+        XCTAssertNil(foldedItem.foldHiding(offset: item.utf16.count, in: ia), "the empty final line is not one of the item's hidden lines")
     }
 
     func testFoldAtTheCaretWorkedExampleOnFixtureF() throws {
@@ -388,6 +396,104 @@ final class FoldingTests: XCTestCase {
         XCTAssertEqual(FoldState().revealing(target, in: f.a), FoldState())
         // A match inside a folded item inside a folded heading.
         XCTAssertEqual(f.folded(f.state(20, 26).revealing(NSRange(location: f.offset(of: "Milk"), length: 4), in: f.a)), [])
+    }
+
+    // MARK: Caret helpers (R13, R14, R16)
+
+    func testHeaderEndIsTheEndOfTheHeadersLastLineContent() throws {
+        let f = try F()
+        XCTAssertEqual(FoldState().headerEnd(of: f.region(5), in: f.a), f.end(5))
+        XCTAssertEqual(FoldState().headerEnd(of: f.region(11), in: f.a), f.end(11))
+        let wrapped = MarkdownAnalyzer.analyze("- first line\n  wrapped line\n  - nested")
+        XCTAssertEqual(FoldState().headerEnd(of: wrapped.foldRegions[0], in: wrapped), "- first line\n  wrapped line".utf16.count, "an item header's last wrapped line")
+        let setext = MarkdownAnalyzer.analyze("Title\n=====\ntext")
+        XCTAssertEqual(FoldState().headerEnd(of: setext.foldRegions[0], in: setext), "Title\n=====".utf16.count, "a setext header ends after its underline")
+    }
+
+    func testVisibleOffsetLeavesVisiblePositionsAlone() throws {
+        let f = try F()
+        let s = f.state(5)
+        for offset in [0, f.end(1), f.start(5), f.end(5), f.start(20), f.offset(of: "Intro"), f.text.utf16.count] {
+            XCTAssertEqual(s.visibleOffset(from: offset, forward: true, in: f.a), offset)
+            XCTAssertEqual(s.visibleOffset(from: offset, forward: false, in: f.a), offset)
+        }
+        XCTAssertEqual(FoldState().visibleOffset(from: f.offset(of: "Plan text."), forward: true, in: f.a), f.offset(of: "Plan text."))
+    }
+
+    func testVisibleOffsetStepsOverAFoldInTheDirectionOfTravel() throws {
+        let f = try F()
+        let plan = f.state(5)
+        let inside = f.offset(of: "Plan text.")
+        XCTAssertEqual(plan.visibleOffset(from: inside, forward: true, in: f.a), f.start(20), "down/right lands on the next visible line")
+        XCTAssertEqual(plan.visibleOffset(from: inside, forward: false, in: f.a), f.end(5), "up/left lands on the end of the header")
+        let first = f.region(5).hiddenRange.location        // where → from the end of the header lands
+        XCTAssertEqual(plan.visibleOffset(from: first, forward: true, in: f.a), f.start(20))
+        XCTAssertEqual(plan.visibleOffset(from: first, forward: false, in: f.a), f.end(5))
+        let lastHidden = NSMaxRange(f.region(5).hiddenRange) - 1       // where ← from the start of ## Notes lands
+        XCTAssertEqual(plan.visibleOffset(from: lastHidden, forward: false, in: f.a), f.end(5))
+        XCTAssertEqual(f.state(20).visibleOffset(from: f.offset(of: "graph TD"), forward: true, in: f.a), f.start(33))
+        XCTAssertEqual(f.state(20).visibleOffset(from: f.offset(of: "graph TD"), forward: false, in: f.a), f.end(20))
+        XCTAssertEqual(f.state(11).visibleOffset(from: f.offset(of: "Draft"), forward: true, in: f.a), f.start(14), "an item fold: the next sibling")
+        XCTAssertEqual(f.state(11).visibleOffset(from: f.offset(of: "Draft"), forward: false, in: f.a), f.end(11))
+    }
+
+    func testVisibleOffsetUsesTheOutermostFold() throws {
+        let f = try F()
+        // Plan is inside Project: both fold, Project hides everything after its header, including the end of the document.
+        let nested = f.state(1, 5)
+        let inside = f.offset(of: "Plan text.")
+        XCTAssertEqual(nested.visibleOffset(from: inside, forward: false, in: f.a), f.end(1))
+        XCTAssertEqual(nested.visibleOffset(from: inside, forward: true, in: f.a), f.end(1), "nothing is visible after it, so it stays on the header")
+        // An inner fold under an outer one that is open: only the inner one matters.
+        XCTAssertEqual(f.state(9).visibleOffset(from: f.offset(of: "Write spec"), forward: true, in: f.a), f.start(20))
+    }
+
+    func testVisibleOffsetAtTheHiddenEndOfTheDocument() throws {
+        let f = try F()
+        let last = f.state(35)
+        let end = f.text.utf16.count
+        XCTAssertEqual(last.visibleOffset(from: end, forward: true, in: f.a), f.end(35), "⌘↓ goes to the end of the header of the fold hiding the end")
+        XCTAssertEqual(last.visibleOffset(from: end, forward: false, in: f.a), f.end(35))
+        XCTAssertEqual(last.visibleOffset(from: f.start(36), forward: true, in: f.a), f.end(35))
+        // The whole document folded under the first heading.
+        XCTAssertEqual(f.state(1, 35).visibleOffset(from: end, forward: true, in: f.a), f.end(1), "the outermost fold hiding the end")
+        // With a trailing newline the empty last line hides with its section.
+        let s = "# A\ntext\n"
+        let a = MarkdownAnalyzer.analyze(s)
+        XCTAssertEqual(FoldState().toggled(a.foldRegions[0]).visibleOffset(from: s.utf16.count, forward: true, in: a), 3)
+        // An item at the end whose trailing empty line stays visible.
+        let item = "- a\n  - b\n"
+        let ia = MarkdownAnalyzer.analyze(item)
+        XCTAssertEqual(FoldState().toggled(ia.foldRegions[0]).visibleOffset(from: 7, forward: true, in: ia), item.utf16.count, "forward lands on the visible empty last line")
+        XCTAssertEqual(FoldState().toggled(ia.foldRegions[0]).visibleOffset(from: 7, forward: false, in: ia), 3)
+    }
+
+    func testHeaderFoldFindsTheFoldedRegionWhoseHeaderHoldsTheOffset() throws {
+        let f = try F()
+        let plan = f.state(5)
+        XCTAssertEqual(plan.headerFold(containing: f.start(5), in: f.a), f.region(5))
+        XCTAssertEqual(plan.headerFold(containing: f.start(5) + 3, in: f.a), f.region(5))
+        XCTAssertEqual(plan.headerFold(containing: f.end(5), in: f.a), f.region(5), "at the end of the header, where Return opens the fold")
+        XCTAssertNil(plan.headerFold(containing: f.start(20), in: f.a))
+        XCTAssertNil(plan.headerFold(containing: f.start(3), in: f.a))
+        XCTAssertNil(FoldState().headerFold(containing: f.start(5), in: f.a), "an unfolded header")
+        // A wrapped item header spans two lines.
+        let s = "- first line\n  wrapped line\n  - nested"
+        let a = MarkdownAnalyzer.analyze(s)
+        let folded = FoldState().toggled(a.foldRegions[0])
+        XCTAssertNotNil(folded.headerFold(containing: 2, in: a))
+        XCTAssertNotNil(folded.headerFold(containing: s.firstIndex(of: "w").map { s.utf16.distance(from: s.utf16.startIndex, to: $0) }!, in: a))
+    }
+
+    func testOutermostFoldEndingAtAnOffset() throws {
+        let f = try F()
+        // Plan and Tasks both end where ## Notes starts; the outermost is Plan.
+        XCTAssertEqual(f.state(5, 9).outermostFold(endingAt: f.start(20), in: f.a), f.region(5))
+        XCTAssertEqual(f.state(9).outermostFold(endingAt: f.start(20), in: f.a), f.region(9))
+        XCTAssertEqual(f.state(11).outermostFold(endingAt: f.start(14), in: f.a), f.region(11), "an item fold ends at the next sibling")
+        XCTAssertNil(f.state(5).outermostFold(endingAt: f.start(21), in: f.a))
+        XCTAssertNil(FoldState().outermostFold(endingAt: f.start(20), in: f.a))
+        XCTAssertNil(f.state(5).outermostFold(endingAt: f.end(5), in: f.a), "the end of the header is not where a fold ends")
     }
 
     func testStateIsPlainValueData() throws {

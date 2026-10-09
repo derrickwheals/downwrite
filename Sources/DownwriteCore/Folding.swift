@@ -29,17 +29,48 @@ public struct FoldState: Equatable, Sendable {
         return out
     }
 
-    /// The outermost folded region that hides the caret position `offset`, if any. The end of a header line is visible (the
-    /// chip sits there); the start of its first hidden line is not. When the hidden text runs to the end of the document,
-    /// the position at the very end is hidden too, since it sits on the last hidden line.
+    /// The outermost folded region that hides the caret position `offset`, if any: a position is hidden when its line is one of
+    /// the region's hidden lines. The end of a header line is visible (the chip sits there); the start of the first hidden line
+    /// is not; the start of the line after the region is visible. At the very end of the text the position is on the last
+    /// line, which is hidden only if that line is one of the region's hidden lines.
     public func foldHiding(offset: Int, in analysis: MarkdownAnalysis) -> FoldRegion? {
         guard !anchors.isEmpty else { return nil }
+        let line = analysis.lineIndex(at: offset)
         // Regions are in anchor order, and an outer region starts before the regions inside it.
-        return analysis.foldRegions.first { r in
-            guard isFolded(r) else { return false }
-            let end = NSMaxRange(r.hiddenRange)
-            return offset >= r.hiddenRange.location && (offset < end || (offset == end && end == analysis.length))
+        return analysis.foldRegions.first { isFolded($0) && $0.hiddenLines.contains(line) }
+    }
+
+    /// The folded region whose header lines hold `offset`'s line, if any (a visible position: its fold chip is on this line).
+    public func headerFold(containing offset: Int, in analysis: MarkdownAnalysis) -> FoldRegion? {
+        guard !anchors.isEmpty else { return nil }
+        let line = analysis.lineIndex(at: offset)
+        return analysis.foldRegions.first { isFolded($0) && $0.headerLines.contains(line) }
+    }
+
+    /// The outermost folded region whose hidden text ends exactly at `offset`, i.e. the caret sits at the start of the first
+    /// visible line after it (where Backspace would join that line to hidden text).
+    public func outermostFold(endingAt offset: Int, in analysis: MarkdownAnalysis) -> FoldRegion? {
+        guard !anchors.isEmpty else { return nil }
+        return analysis.foldRegions.first { isFolded($0) && NSMaxRange($0.hiddenRange) == offset }
+    }
+
+    /// Where the caret goes when a fold hides it (R13): the end of the header's last line, where the chip sits.
+    public func headerEnd(of region: FoldRegion, in analysis: MarkdownAnalysis) -> Int {
+        analysis.lines[region.headerLines.upperBound].contentEnd
+    }
+
+    /// The nearest position where the caret can be, in the direction of travel (R13, R14): `offset` itself when it is visible;
+    /// otherwise, going forward, the start of the first visible line after the outermost fold hiding it; going back, the end
+    /// of that fold's header. When the hidden text runs to the end of the document there is nothing visible after it, so going
+    /// forward ends on the header too (⌘↓ with a hidden end of document).
+    public func visibleOffset(from offset: Int, forward: Bool, in analysis: MarkdownAnalysis) -> Int {
+        var position = offset
+        for _ in 0...anchors.count {          // each pass steps over one more fold, so this ends
+            guard let hiding = foldHiding(offset: position, in: analysis) else { return position }
+            guard forward, hiding.hiddenLines.upperBound < analysis.lines.count - 1 else { return headerEnd(of: hiding, in: analysis) }
+            position = NSMaxRange(hiding.hiddenRange)
         }
+        return position
     }
 
     // MARK: Changing the state
