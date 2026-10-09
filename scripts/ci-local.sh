@@ -107,7 +107,8 @@ fi
   echo "--- test result ---"; grep -E "Executed [0-9]+ tests" test.log 2>/dev/null | tail -1
   echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
   echo "--- test log tail ---"; tail -4 test.log 2>/dev/null
-  echo "--- e2e report ---"; head -80 artifacts/e2e/selftest-report.txt 2>/dev/null
+  echo "--- e2e failures ---"; grep -E '^FAIL|CHECK\(S\) FAILED|ALL CHECKS PASSED' artifacts/e2e/selftest-report.txt 2>/dev/null | cut -c1-400
+  echo "--- e2e report (first 80 lines) ---"; head -80 artifacts/e2e/selftest-report.txt 2>/dev/null
   echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null
   if [ ${#FAILED[@]} -eq 0 ]; then echo "RESULT: ALL GREEN"; else echo "RESULT: FAILED -> ${FAILED[*]}"; fi
 } > artifacts/summary.txt
