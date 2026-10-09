@@ -702,9 +702,9 @@ enum SelfTest {
             var problems = await settled()
             geometry("start")
             check(problems.isEmpty, "README tables are lined up with the text at the start", detail: problems.joined(separator: "; "))
-            // The centred `<p align="center"><img …></p>` rows are HTML cards with their pictures, directly under their (collapsed) source.
+            // The centred `<p align="center"><img …></p>` rows (consecutive rows with no blank line between them are one HTML block) are HTML cards with their pictures, directly under their (collapsed) source.
             let htmlBlocks = coordinator.analysis.previewBlocks.filter { if case .html = $0.kind { return true } else { return false } }
-            check(htmlBlocks.count >= 3, "README HTML blocks become cards", detail: "\(htmlBlocks.count) blocks")
+            check(htmlBlocks.count >= 2, "README HTML blocks become cards", detail: "\(htmlBlocks.count) blocks")
             let htmlReady = await waitUntil(timeout: 40) { htmlBlocks.allSatisfy { (coordinator.overlay.reservedHeights[$0.firstLine] ?? 0) > 100 } }
             check(htmlReady, "README HTML cards render their pictures", detail: "\(htmlBlocks.map { Int(coordinator.overlay.reservedHeights[$0.firstLine] ?? 0) })")
             check(tv.subviews.compactMap { $0 as? DiagramView }.filter(\.isHTML).count == htmlBlocks.count, "one HTML card per README HTML block")
