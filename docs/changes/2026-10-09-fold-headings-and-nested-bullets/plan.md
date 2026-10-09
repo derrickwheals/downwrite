@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-09-fold-headings-and-nested-bullets
 intent: ./intent.md
 spec: ./spec.md
-status: approved
+status: in-progress
 approved: 2026-10-09
 branch: change/2026-10-09-fold-headings-and-nested-bullets
 ---
@@ -64,7 +64,8 @@ Nothing is deleted. `TextDiff.swift`, `TableOfContents.swift`, `TOCSidebar.swift
 
 Each step is a commit; tests come first within it. Steps 2 to 5 run entirely under `scripts/linux-test.sh`.
 
-- [ ] 1. **Spike the thin collapse (R5).** Commit `Tests/Fixtures/fold-demo.md` and a throwaway-then-permanent `Tests/DownwriteTests/FoldTests.swift` case that styles N lines of an `EditorHarness` with candidate font and line-height values (0.1, 0.01, 0.001) and measures the document height against N = 0. Record the numbers for 100 and 1,000 lines. Pick the thickest value with a residual of at most 1 pt per 1,000 lines and check that `DWLayoutManager`'s `lineRect.height > 1` filters still skip those lines. If none works, switch to the layout-delegate fallback. Define `MarkdownStyler.foldedLineHeight` (or the delegate) from the result and note it in Deviations if it differs from the spec's wording.
+- [x] 1. **Spike the thin collapse (R5).** Commit `Tests/Fixtures/fold-demo.md` and a throwaway-then-permanent `Tests/DownwriteTests/FoldTests.swift` case that styles N lines of an `EditorHarness` with candidate font and line-height values (0.1, 0.01, 0.001) and measures the document height against N = 0. Record the numbers for 100 and 1,000 lines. Pick the thickest value with a residual of at most 1 pt per 1,000 lines and check that `DWLayoutManager`'s `lineRect.height > 1` filters still skip those lines. If none works, switch to the layout-delegate fallback. Define `MarkdownStyler.foldedLineHeight` (or the delegate) from the result and note it in Deviations if it differs from the spec's wording.
+  - Measured in the real editor (residual for 100 / 1,000 hidden lines): line height 0.1 pt → 10 / 100 pt; 0.01 pt → 1 / 10 pt; **0.001 pt → 0.1 / 1 pt**; 0.0001 pt → 0.01 / 0.1 pt. The font size makes no difference (font 0.1 pt with line height 0.001 pt gives the same as font 0.001 pt). `MarkdownStyler.foldedLineHeight = 0.001`; every hidden fragment is under 1 pt, so the `lineRect.height > 1` filters skip them. No layout-delegate fallback needed.
 - [ ] 2. **Regions in the analyzer (R1, R2, R3).** Write `FoldingTests` for the Fixture F table and the extra cases first (see Proof), then add `FoldRegion`, the builder records and `foldRegions`. Includes headings only at top level, setext, items in quotes, first-child code fence, wrapped first paragraph, trailing newline.
 - [ ] 3. **`FoldState` core operations (R6, R11, R12, R15).** `isFolded`, `hiddenLineRanges`, `foldHiding`, `toggled`, `folding(atCaret:)` including the worked example on Fixture F, `unfolding(atCaret:)`, `foldingAll`, `unfoldingAll`, `folding(toLevel:)`, `revealing`.
 - [ ] 4. **Caret helpers (R13, R14, R16).** `visibleOffset(from:forward:in:)`, `headerEnd(of:)`, `headerFold(containing:)`, `outermostFold(endingAt:)`; end-of-document hidden case.

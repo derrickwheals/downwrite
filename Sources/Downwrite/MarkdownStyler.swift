@@ -17,6 +17,11 @@ final class MarkdownStyler {
     var palette: Palette
     private let hiddenFont = NSFont.systemFont(ofSize: 0.1)
 
+    /// Line height of the lines a fold hides. Only the line height decides how much room a collapsed line leaves (the font
+    /// size makes no difference), and the 0.1 pt used for collapsed sources leaves 0.1 pt per line — 100 pt for a
+    /// 1,000-line section. 0.001 pt leaves 1 pt per 1,000 lines, which is the limit of R5; `FoldTests` measure it in the editor.
+    static let foldedLineHeight: CGFloat = 0.001
+
     init(typography: Typography, palette: Palette) {
         self.typography = typography
         self.palette = palette
