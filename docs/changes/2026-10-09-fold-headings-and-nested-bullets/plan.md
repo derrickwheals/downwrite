@@ -1,0 +1,146 @@
+---
+type: plan
+id: 2026-10-09-fold-headings-and-nested-bullets
+intent: ./intent.md
+spec: ./spec.md
+status: approved
+approved: 2026-10-09
+branch: change/2026-10-09-fold-headings-and-nested-bullets
+---
+
+# Plan: Fold and unfold content under headings and nested bullets
+
+## Approach
+
+Fold regions are computed once per analysis in `DownwriteCore` (`MarkdownAnalysis.foldRegions`), and the whole fold state machine (`FoldState`: toggle, fold/unfold at the caret, all, to level, reveal, caret placement, mapping through edits) is pure Swift that is unit-tested on Linux, as the project rules require. The app target only maps that onto AppKit: the coordinator owns one `FoldState` per window and re-applies it on every `reanalyze()`; the styler gives hidden lines a collapse thinner than the existing 0.1 pt one; `DWLayoutManager` draws the chevron and chip and exposes their rects; the two overlays hide the views of blocks inside hidden lines; `EditorTextView` supplies the pointer, caret and delete guards. The folding code that touches the coordinator goes in a new `EditorFolding.swift` extension so `EditorView.swift` does not grow another 300 lines. The alternative of deleting or glyph-nulling hidden text is ruled out by `CLAUDE.md`, and it would also break copy, find and undo.
+
+Decisions the code exploration forced, beyond what the spec fixes:
+
+- **Thin collapse is measured first (step 1), not assumed.** The spec flags that 0.1 pt per line is 100 pt over 1,000 lines. Step 1 measures 0.01 and 0.001 pt in the real editor and picks the thicker one that meets R5. If no attribute value does, the fallback is the `NSLayoutManagerDelegate` method `shouldSetLineFragmentRect…` (the coordinator is already the layout delegate), which sets the fragment height of folded lines to 0 by reading a `.dwFolded` attribute. That would be recorded under Deviations.
+- **Edits are found by diffing, as the spec says.** `reanalyze()` keeps the previous text, runs `TextDiff.replacement(old, new)` only when at least one fold exists, and calls `FoldState.mapped`. This is the one place all edit paths meet: typing, undo, paste, Replace, the external reload and the debounced (over 400,000 characters) path. The cost is linear in the document and happens only while folds exist.
+- **Header end for the "runs past" rule excludes the line terminator.** In R18 an edit that starts at the header's first character and runs past the end of its lines drops the fold. If the terminator counted as inside the header, deleting a whole header line (`# A\n`) would keep an anchor that the next heading then inherits, which is the "fold transferred to different text" case R18 forbids. With the content end as the boundary, retyping the header's text keeps the fold and deleting the line drops it. A test covers both.
+- **`style(lines:)` computes `analysis.runs` once per run of consecutive lines.** Today it calls `runs(in:)` per line, and `runs` scans every span and marker, so toggling a section of a few thousand lines would be quadratic. Folding itself skips `runs` for hidden lines, but unfolding needs it.
+- **Chevron and chip are text attributes** (`.dwFold` on the header's first non-blank character, `.dwFoldChip` on the last character of the header's last line), set by the styler the way `.dwCheckbox` is, so the layout manager draws them from the same geometry that serves as the click target. "Covered by the selection" (R9) is computed by the styler and refreshed from `textViewDidChangeSelection`, like hidden markers. Hover is the only state not in attributes: it lives in the text view and invalidates the old and new header rects. Colours reuse roles whose contrast floors are already tested in `ThemeCatalogTests` and `VSCodeThemeTests` (chevron `marker`, chip `inlineCodeBackground` with `text`, covered chip the selection colour with `text`), so imported themes inherit R9's legibility and no palette role is added.
+- **Caret policy has one rule at one choke point.** `EditorTextView.doCommand(by:)` runs the command and then, for the movement selectors (`move…`, `page…`), moves a head that landed in hidden text to the nearest visible position in the direction of travel. Everything else that leaves the start of the selection in hidden text (Find, TOC, `#links`, undo and redo, paste, leaving the source view, edits) goes through `textViewDidChangeSelection` and the end of `reanalyze()`, which open the folds that hide it (R15). ↑/↓ keep the column by taking the caret's x and asking `characterIndexForInsertion(at:)` on the target line. A selection end may stay hidden (Select All, R17); a start never does.
+- **Fixture F lives in one file**, `Tests/Fixtures/fold-demo.md`, read by the Core tests, the app tests and the end-to-end step (via `#filePath` and a new `--selftest-fold=` argument), so the three cannot drift. A Core test fails if it ever gains a trailing newline.
+
+Two things to know before approving:
+
+1. **Replace All.** `NSTextFinder` very probably delivers it as one change, so the diff is one span from the first to the last match and any fold whose header lies strictly inside that span is dropped (R18's "edits before shift it, edits after leave it" holds for single replacements). Step 12 checks how it actually arrives. If it is one change, this stays a documented limitation unless you want per-edit tracking, which would mean recording ranges in `shouldChangeText` and carrying header ends inside `FoldState`.
+2. **A document that ends in a newline.** `SourceText` makes the empty final line a real line, so R1 puts it in the last section's hidden lines. TextKit draws that line as the layout manager's extra line fragment, which attributes cannot hide, so one empty line of room remains below a folded last section. The caret is still never left there (it is hidden by the rule, so Return opens the fold and ⌘↓ goes to the header). R5's measurements use text with no trailing newline, as Fixture F does.
+
+## Files that change
+
+Core (`DownwriteCore`, builds and tests on Linux):
+
+- `Sources/DownwriteCore/Analysis.swift` — `FoldRegion` (kind, `headerLines`, `hiddenLines`, `anchor`, `hiddenRange`) and `MarkdownAnalysis.foldRegions`.
+- `Sources/DownwriteCore/MarkdownAnalyzer.swift` — the builder records top-level headings (only `ctx.quoteDepth == 0 && ctx.listDepth == 0`, ATX and setext) and, for every list item, its first paragraph's lines and last line; `finish()` turns them into regions (sections by a level stack; a prefix count of non-blank lines for the "at least one non-blank hidden line" test) sorted by anchor. `analyzeTableCell` passes `foldRegions: []`.
+- `Sources/DownwriteCore/Folding.swift` (new) — `FoldState` and the caret helpers: `isFolded`, `hiddenLineRanges`, `foldHiding`, `toggled`, `folding(atCaret:)`, `unfolding(atCaret:)`, `foldingAll`, `unfoldingAll`, `folding(toLevel:)`, `revealing`, `mapped(through:from:to:)`, `visibleOffset(from:forward:)`, and small queries the editor needs for R16 (`headerFold(containing:)`, `outermostFold(endingAt:)`) and R13 (`headerEnd(of:)`).
+
+App (`Sources/Downwrite`, macOS only):
+
+- `MarkdownStyler.swift` — `PreviewState` gains `folded` (merged hidden line ranges with an O(log n) `contains`), `foldHeaders` (line to chevron/chip state) and `foldCovered`; `applyLine` collapses hidden lines with the thin style and sets the header attributes; `style(lines:)` batches consecutive lines.
+- `Typography.swift` — the `.dwFold` / `.dwFoldChip` attribute keys and a `FoldMark` value class next to `CheckboxMark`.
+- `DWLayoutManager.swift` — `foldChevronRect(forCharacterAt:)` and `foldChipRect(forCharacterAt:)`, hover line state, drawing in `drawCustomBackgrounds` before `super.drawBackground`.
+- `EditorFolding.swift` (new) — `extension EditorCoordinator`: applying fold state to styler and overlays, the fold commands, caret policy (`ensureSelectionVisible`, snapping, reveal), pointer hit-testing, hover.
+- `EditorView.swift` — stored `foldState` and the previous text, mapping in `reanalyze()`, the `PreviewState` and overlay hand-off, the source view (R21) and `setSourceMode` reveal, `textViewDidChangeSelection` coverage refresh, `revealHeading` and `scrollToHeading` reveal.
+- `EditorTextView.swift` — tracking area and hover, chevron and chip clicks first in `mouseDown`, `doCommand(by:)` post-processing, Return/Backspace/Delete guards (R16) beside the existing table guards, the `@objc` actions `dwFold`, `dwUnfold`, `dwFoldAll`, `dwUnfoldAll`, `dwFoldToLevel`.
+- `Previews.swift` — `DiagramOverlay` takes the set of blocks inside hidden lines: their views are hidden, left out of `reservedHeights`, skipped by `reposition` and `layoutProblems`, and their cards are kept (not re-rendered) so unfolding is instant.
+- `TableOverlay.swift` — grids inside hidden lines are `isHidden` (kept apart from the "Markdown source showing" meaning that `consumePendingFocus` relies on), a focused cell hands the keyboard back to the text view when its table is hidden, and the already-hidden-aware `reservedHeights`, `reposition` and `layoutProblems` need no further change.
+- `DownwriteApp.swift` — `Responder` entries and the `ViewCommands` items of R10 (Fold ⌥⌘←, Unfold ⌥⌘→, Fold All ⌥⌘⇧←, Unfold All ⌥⌘⇧→, Fold to Level ▸ Heading 1…6), disabled unless `sourceMode == false`.
+- `SelfTest.swift` — new step 6j, run before step 7 so step 8 still runs last: the spec's Verification steps 1 to 15 with real key and mouse events.
+- `scripts/ci-local.sh`, `.github/workflows/ci.yml` — pass `--selftest-fold=Tests/Fixtures/fold-demo.md` next to `--selftest-extra`.
+
+Tests and docs:
+
+- `Tests/Fixtures/fold-demo.md` (new) — Fixture F, no trailing newline.
+- `Tests/DownwriteCoreTests/FoldingTests.swift` (new).
+- `Tests/DownwriteTests/FoldTests.swift` (new); additions to `Tests/DownwriteTests/StylerTests.swift` and `DrawingTests.swift`.
+- `README.md` (feature list and shortcuts), `CLAUDE.md` (architecture rule for folding, in the style of the Table of contents and Source view rules, plus the thin-collapse constant and the new files).
+
+Nothing is deleted. `TextDiff.swift`, `TableOfContents.swift`, `TOCSidebar.swift`, `SourceText.swift` and `EditorScene` are read but not changed.
+
+## Order of work
+
+Each step is a commit; tests come first within it. Steps 2 to 5 run entirely under `scripts/linux-test.sh`.
+
+- [ ] 1. **Spike the thin collapse (R5).** Commit `Tests/Fixtures/fold-demo.md` and a throwaway-then-permanent `Tests/DownwriteTests/FoldTests.swift` case that styles N lines of an `EditorHarness` with candidate font and line-height values (0.1, 0.01, 0.001) and measures the document height against N = 0. Record the numbers for 100 and 1,000 lines. Pick the thickest value with a residual of at most 1 pt per 1,000 lines and check that `DWLayoutManager`'s `lineRect.height > 1` filters still skip those lines. If none works, switch to the layout-delegate fallback. Define `MarkdownStyler.foldedLineHeight` (or the delegate) from the result and note it in Deviations if it differs from the spec's wording.
+- [ ] 2. **Regions in the analyzer (R1, R2, R3).** Write `FoldingTests` for the Fixture F table and the extra cases first (see Proof), then add `FoldRegion`, the builder records and `foldRegions`. Includes headings only at top level, setext, items in quotes, first-child code fence, wrapped first paragraph, trailing newline.
+- [ ] 3. **`FoldState` core operations (R6, R11, R12, R15).** `isFolded`, `hiddenLineRanges`, `foldHiding`, `toggled`, `folding(atCaret:)` including the worked example on Fixture F, `unfolding(atCaret:)`, `foldingAll`, `unfoldingAll`, `folding(toLevel:)`, `revealing`.
+- [ ] 4. **Caret helpers (R13, R14, R16).** `visibleOffset(from:forward:in:)`, `headerEnd(of:)`, `headerFold(containing:)`, `outermostFold(endingAt:)`; end-of-document hidden case.
+- [ ] 5. **`mapped(through:from:to:)` (R18).** All rows of the rule: insertion at the header start with and without a trailing line break, edit before, edit inside, retyping the header text, deleting a whole header line, replace across a header, a line that stops being a heading, a changed level, an item that loses its content, and a randomized property test that anchors outside the edit still point at the same header text. Then `scripts/linux-test.sh` green: this is the Core gate.
+- [ ] 6. **Styler (R5, R6, R9 state).** `PreviewState` fold fields, thin collapse of hidden lines (no text, checkbox, pill, bar or card attributes remain), header attributes, `FoldMark`, batched `style(lines:)`. Tests in `StylerTests` / `FoldTests`; nothing is wired to the editor yet.
+- [ ] 7. **Coordinator pipeline and overlays (R4, R7, R20, R21).** `foldState`, previous text, mapping in `reanalyze()`, `PreviewState` and overlay hand-off, source view empties it and restores it, caret-hidden check at the end of `reanalyze()` (R15 for edits), table focus hand-back. Tests drive `EditorCoordinator` directly.
+- [ ] 8. **Drawing, hover and clicks (R8, R9).** `DWLayoutManager` rects and drawing, tracking area, invalidation of the margin plus line rect on hover change, chevron/chip clicks first in `mouseDown`, covered-chip refresh in `textViewDidChangeSelection`. Pixel tests in `DrawingTests`, in light and dark and for every built-in theme.
+- [ ] 9. **Commands (R10, R11, R12, R13).** `@objc` actions, `Responder`, the View menu items with shortcuts, caret move to header end and scroll into view. Re-check that `StandardKeyBinding.dict` has no binding for ⌥⌘←/→ (a search for `~@` entries found none while planning) and that no existing `keyboardShortcut` uses them.
+- [ ] 10. **Caret policy (R14, R15).** `doCommand(by:)` snapping for arrows with ⌥ and ⌘, Page Up/Down, ↑/↓ column; reveal in `textViewDidChangeSelection` for Find, TOC (`revealHeading`), `#links`, undo/redo, paste, leaving the source view.
+- [ ] 11. **Edit guards and selection (R16, R17, R19).** Return, Backspace, Delete and their word, line and paragraph variants; selection across folds, copy and cut with hidden text, undo.
+- [ ] 12. **Performance and Replace All (R23).** The 10,000-line, 500-region timing tests; fix whatever they find. Check how Replace All arrives (one `textDidChange` or several) and write the result into Deviations or the limitation note.
+- [ ] 13. **End-to-end step 6j and CI wiring.** Spec Verification 1 to 15 in `SelfTest`, plus light and dark screenshots of a folded document; `ci-local.sh` and `ci.yml` pass `--selftest-fold`.
+- [ ] 14. **Docs and final gate.** `README.md`, `CLAUDE.md`; run every command under Proof; fix anything left.
+
+## Risks
+
+- **Thin collapse does not meet R5 in the real editor** — step 1 measures before anything is built on it, with the layout-delegate fallback decided in the plan. `FoldTests` keeps the 1,000-line residual as a regression guard.
+- **The chevron lives in the left margin, outside the text container.** `NSTextView` asks the layout manager to draw only glyph ranges that intersect the dirty rect in container coordinates, so invalidating the margin alone might draw nothing. The hover invalidation covers the margin and the full line width, and a pixel test proves the chevron appears and disappears.
+- **Caret snapping can fight AppKit's own goal column or selection anchor.** Only the end that moved is adjusted, only for movement selectors, and the tests call `doCommand(by:)` the way key events do; the end-to-end step uses real key events through the menu bar and the text view. Known loss: the remembered vertical goal column is not kept across a fold on Shift-extension.
+- **Find reveals the fold after `NSTextFinder` has already scrolled.** The reveal happens inside the synchronous `setSelectedRange` callback, before `scrollRangeToVisible`; the end-to-end step runs a real Find through `Responder.find` and checks the match is visible. If it is not, scroll again after the reveal.
+- **Overlays race with folding.** Mermaid and HTML renders finish asynchronously and can land on a block that has since been hidden. `reposition`, `reservedHeights` and `layoutProblems` all consult the hidden set, and tests fold during an in-flight render. `TableOverlay` keeps its existing "source showing" meaning of `isHidden` separate.
+- **Quadratic restyling on big sections** — batched `style(lines:)` plus the R23 timing tests on a 10,000-line document.
+- **Edit mapping is approximate by construction.** A diff can place a repeated-text edit at an equivalent but different position. The rule only matters at a header's first character, and the cases that distinguish them are in the tests; the property test catches drift elsewhere. Replace All is covered in the Approach.
+- **A fold command while a table cell has the keyboard.** The first responder is the cell's own text view, so the action does not reach the editor; the command beeps. Folding inside grid cells is out of scope, and a test records the behaviour.
+- **Shortcut clashes** — ⌥⌘←/→ checked against `StandardKeyBinding.dict` and the app's shortcuts in step 9; the end-to-end step triggers them through the real menu bar.
+- **Fixture trailing newline creeping back** (editors add one) — a Core test fails.
+
+## Proof
+
+Tests to add or change:
+
+- `Tests/DownwriteCoreTests/FoldingTests.swift` (new) — Fixture F's regions equal the spec table exactly; setext, headings in quotes and items, numbered and task items, an item in a quote, an item whose first child is a code fence, a wrapped first paragraph, a `#` inside a fence, a document with no headings, a heading with only blank lines, the trailing-newline last line; every `FoldState` operation including the worked example (caret on line 13, repeated Fold); outermost and nested hiding; reveal; `visibleOffset`; mapping rows and the property test; a guard that the fixture file has no trailing newline.
+- `Tests/DownwriteTests/FoldTests.swift` (new) — the 1,000-line residual and the lines' lack of pills, bars, cards and checkboxes; folding leaves the text, the binding, the undo stack and the registration state alone; overlays hidden and no `layoutProblems`; a focused cell gives the keyboard back; commands and caret placement; arrows, Page keys and ⌘↓ (via `doCommand(by:)`); reveal on Find-style selection, TOC click, `#link`, undo, paste, leaving the source view; Return, Backspace and Delete guards; selection across a fold, copy including hidden text; typing and undo keeping folds; external reload keeping folds; source view round trip; independent state per window and no new `UserDefaults` key; TOC rows, active row and word count unchanged; timing for 10,000 lines and 500 regions.
+- `Tests/DownwriteTests/DrawingTests.swift` — pixel checks of the chevron (down open, right folded, hover only when open, always when folded), of the chip (position after the header's last character, hanging into the margin on a full line, selection colour when covered), and of the absence of ink where hidden lines were, in light and dark and for every built-in theme.
+- `Tests/DownwriteTests/StylerTests.swift` — the hidden-line style and header attributes.
+- `Sources/Downwrite/SelfTest.swift` (step 6j) — the real-app walkthrough.
+
+Must pass before the change is complete:
+
+```
+scripts/linux-test.sh
+swift test
+scripts/build-app.sh
+scripts/ci-local.sh --shots
+```
+
+`scripts/ci-local.sh --shots` must finish with a passing `artifacts/summary.txt`, which includes the new end-to-end step and the light and dark screenshots of a folded document.
+
+Requirement coverage:
+
+| Requirement | Proven by |
+|---|---|
+| R1 | `FoldingTests`: Fixture F headings, setext, headings in quotes/items, `#` in a fence, blank-only section, trailing newline, no headings |
+| R2 | `FoldingTests`: Fixture F items, numbered and task items, quote items, first-child fence, wrapped first paragraph |
+| R3 | `FoldingTests.testFixtureFRegionsMatchTheSpecTable` (exact equality, no more and no fewer) |
+| R4 | `FoldTests` text, binding, undo stack and registration unchanged; e2e step 6j: no edited mark, no Undo item, `shasum` identical after save |
+| R5 | `FoldTests` residual at 1,000 hidden lines and absence of pills, bars, cards, checkboxes; `DrawingTests` no ink in the hidden area; step 1 measurement |
+| R6 | `FoldingTests` nesting and `hiddenLineRanges`; `FoldTests` inner state survives outer open; chevron/chip absent on nested hidden headers |
+| R7 | `FoldTests` overlays hidden, no reserved height, `layoutProblems()` empty after fold and unfold, focused cell hands back to the text view with the caret at the header end |
+| R8 | `DrawingTests` chevron position, direction and hover; `FoldTests` click toggles without changing the selection and the target is at least 16 pt and clear of the text |
+| R9 | `DrawingTests` chip position, margin hang, covered colour, every built-in theme in light and dark; legibility from the existing `ThemeCatalogTests` and `VSCodeThemeTests` floors |
+| R10 | e2e step 6j: menu items present, shortcuts work through the real menu bar, disabled in the source view, beep when nothing to do (`FoldTests` covers the beep path) |
+| R11 | `FoldingTests` worked example and unfold; `FoldTests` commands through the actions |
+| R12 | `FoldingTests` all, none and to-level; `FoldTests` list items untouched by Fold to Level |
+| R13 | `FoldTests` caret at the header end of the outermost hiding fold and scrolled into view; selections with both ends visible untouched |
+| R14 | `FoldingTests.visibleOffset`; `FoldTests` arrows, ⌥ and ⌘ variants, Page keys, ⌘↓ at a hidden end, Shift extension; e2e real key events |
+| R15 | `FoldingTests.revealing`; `FoldTests` Find-style selection, TOC click, `#link`, undo, redo, paste, leaving the source view; e2e real Find |
+| R16 | `FoldTests` typing keeps the fold; Return opens the fold and produces the same text as without a fold; Backspace and forward Delete and their variants open the fold and delete nothing; e2e steps 9 to 11 |
+| R17 | `FoldTests` Select All and Shift selection, copy includes hidden text, cut and undo, chip colour; e2e step 12 |
+| R18 | `FoldingTests` every mapping row and the property test; `FoldTests` through typing, undo, paste, external reload, an edit in the source view |
+| R19 | `FoldTests` typing elsewhere changes no fold |
+| R20 | `FoldTests` a new harness starts unfolded, two windows are independent, no `UserDefaults` key added; e2e step 14 |
+| R21 | `FoldTests` source view round trip and disabled commands (extends `SourceViewTests`); e2e step 13 |
+| R22 | `FoldTests` TOC rows and active row, word count, checkbox click, external reload; the existing `TOCTests`, `TaskCheckboxTests`, `ExternalChangeTests`, `TableLayoutTests` stay green |
+| R23 | `FoldTests` timing (one fold under 0.5 s, Fold All and Unfold All under 2 s on 10,000 lines and 500 regions) and mapping scaling with the number of folds |
+
+## Deviations
+
+<Filled during build. One line per departure from this plan, added in the same commit as the code that departs.>
