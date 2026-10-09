@@ -73,10 +73,16 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// The source view: raw Markdown in a plain monospaced style, nothing hidden and no overlays (see `setSourceMode`).
     private(set) var sourceMode = false
 
+    /// Which headings and list items are folded in this window (see `EditorFolding.swift`): in memory only, one per window.
+    /// Change it with `setFoldState`, which also updates what is drawn.
+    var foldState = FoldState()
+    /// The text `analysis` was made from, so the folds can be carried through the next change by diffing (R18).
+    var analyzedText = ""
+
     private var settings: EditorSettings?
-    private var preview = PreviewState()
-    private var lastHidden = Set<Int>()
-    private var isStyling = false
+    var preview = PreviewState()
+    var lastHidden = Set<Int>()
+    var isStyling = false
     private var repositionScheduled = false
     private var tocPublishScheduled = false
     private var tableOfContents = TableOfContents(headings: [])
@@ -254,12 +260,26 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
 
     func reanalyze() {
         guard let tv = textView else { return }
-        analysis = MarkdownAnalyzer.analyze(tv.string)
+        let text = tv.string
+        let previous = analysis
+        analysis = MarkdownAnalyzer.analyze(text)
+        carryFolds(from: previous, previousText: analyzedText, to: text)
+        analyzedText = text
         tableOfContents = analysis.tableOfContents
         scheduleTOCPublish()
         if let first = sourceTableFirstLine, !analysis.tables.contains(where: { $0.isGrid && $0.firstLine == first }) {
             sourceTableFirstLine = nil
         }
+        // R15 for edits, undo, paste and leaving the source view; then the folds decide what is hidden (none in the source view).
+        revealSelectionIfHidden()
+        if sourceMode {
+            preview.folded = FoldedLines()
+            preview.foldHeaders = [:]
+        } else {
+            preview.setFolds(foldState, analysis: analysis, selection: tv.selectedRange())
+        }
+        overlay.setHiddenLines(preview.folded)
+        tableOverlay.setHiddenLines(preview.folded)
         overlay.baseURL = fileURL?.deletingLastPathComponent()
         overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark, style: htmlStyle)
         tableOverlay.sync()                       // (no grids in the source view: `gridBlocks` is empty then)
@@ -268,13 +288,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         restyleAll()
     }
 
-    private func combinedHeights() -> [Int: CGFloat] {
+    func combinedHeights() -> [Int: CGFloat] {
         overlay.reservedHeights.merging(tableOverlay.reservedHeights()) { a, _ in a }
     }
 
     /// Blocks whose source is hidden behind a card or grid: Mermaid/image previews while the caret is outside, and
     /// every grid table except the one being edited as Markdown. Keyed by first line.
-    private func collapsedBlocks(selection: NSRange) -> Set<Int> {
+    func collapsedBlocks(selection: NSRange) -> Set<Int> {
         var set = Set(analysis.previewBlocks.filter { !MarkdownAnalysis.isRevealed($0.reveal, by: selection) }.map(\.firstLine))
         for t in analysis.tables where t.isGrid && t.firstLine != sourceTableFirstLine { set.insert(t.firstLine) }
         return set
@@ -405,7 +425,11 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         }
     }
 
-    func textViewDidChangeSelection(_ notification: Notification) {
+    func textViewDidChangeSelection(_ notification: Notification) { selectionChanged() }
+
+    /// Everything that follows a change of selection: syntax markers show and hide, collapsed sources open and close, the
+    /// sidebar learns the active heading. (Also run by hand after the editor has moved the selection itself.)
+    func selectionChanged() {
         guard !isStyling, let tv = textView, let storage = tv.textStorage,
               analysis.length == storage.length, !tv.hasMarkedText() else { return }
         let sel = tv.selectedRange()

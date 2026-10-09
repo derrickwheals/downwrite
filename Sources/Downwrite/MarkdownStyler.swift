@@ -30,6 +30,24 @@ struct FoldedLines: Equatable {
         }
         return lo < ranges.count && ranges[lo].lowerBound <= line
     }
+
+    /// The lines hidden in exactly one of the two sets, as sorted ranges: what a fold change has to restyle. Each set is a
+    /// list of disjoint ranges, so every range edge is a point where membership flips; edges both sets share cancel out, and
+    /// what is left alternates between entering and leaving the difference.
+    func symmetricDifference(_ other: FoldedLines) -> [ClosedRange<Int>] {
+        var edges: [Int] = []
+        for r in ranges + other.ranges { edges.append(r.lowerBound); edges.append(r.upperBound + 1) }
+        edges.sort()
+        var flips: [Int] = []
+        var i = 0
+        while i < edges.count {
+            var j = i
+            while j < edges.count, edges[j] == edges[i] { j += 1 }
+            if (j - i) % 2 == 1 { flips.append(edges[i]) }
+            i = j
+        }
+        return stride(from: 0, to: flips.count - 1, by: 2).map { flips[$0]...(flips[$0 + 1] - 1) }
+    }
 }
 
 /// How one visible foldable header is drawn.

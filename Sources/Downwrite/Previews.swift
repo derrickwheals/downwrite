@@ -264,14 +264,23 @@ final class DiagramOverlay {
     var onReservedHeightsChanged: (() -> Void)?
     var baseURL: URL?
     private(set) var palette: Palette
+    /// Source lines hidden by folds. A card whose block is in them is hidden: it reserves no room, takes no input and is left
+    /// where it is, but is kept (and still renders), so it is there at once when the fold opens.
+    private(set) var hiddenLines = FoldedLines()
 
     init(textView: EditorTextView, palette: Palette) {
         self.textView = textView
         self.palette = palette
     }
 
-    var reservedHeights: [Int: CGFloat] { entries.mapValues(\.reserved) }
+    var reservedHeights: [Int: CGFloat] { entries.filter { !hiddenLines.contains($0.key) }.mapValues(\.reserved) }
     var diagramViews: [DiagramView] { entries.values.map(\.view) }
+
+    /// Shows and hides the cards to match the folds (call before `sync`, which also applies it to new cards).
+    func setHiddenLines(_ lines: FoldedLines) {
+        hiddenLines = lines
+        for (key, e) in entries where e.view.isHidden != lines.contains(key) { e.view.isHidden = lines.contains(key) }
+    }
 
     func setPalette(_ p: Palette) {
         palette = p
@@ -297,6 +306,7 @@ final class DiagramOverlay {
             var blockStyle: HTMLPageStyle?
             if case .html = block.kind { blockStyle = style }
             if var e = entries[block.firstLine] {
+                e.view.isHidden = hiddenLines.contains(block.firstLine)
                 if e.kind == block.kind && e.dark == dark && e.style == blockStyle { continue }
                 e.task?.cancel()
                 e.kind = block.kind; e.dark = dark; e.style = blockStyle
@@ -305,10 +315,12 @@ final class DiagramOverlay {
             } else if let moved = orphans.filter({ $0.value.kind == block.kind && $0.value.dark == dark && $0.value.style == blockStyle })
                         .min(by: { abs($0.key - block.firstLine) < abs($1.key - block.firstLine) }) {
                 orphans[moved.key] = nil
+                moved.value.view.isHidden = hiddenLines.contains(block.firstLine)
                 entries[block.firstLine] = moved.value
                 if moved.value.rendering { start(block.firstLine) }          // (its result would be filed under the old line)
             } else {
                 let v = DiagramView(frame: NSRect(x: 0, y: 0, width: availableWidth, height: 100))
+                v.isHidden = hiddenLines.contains(block.firstLine)
                 v.applyPalette(palette)
                 // (An HTML card shows nothing, and keeps no room, until it knows how tall it is.)
                 if blockStyle == nil { v.showLoading(palette: palette) }
@@ -421,7 +433,7 @@ final class DiagramOverlay {
         let total = tv.textStorage?.length ?? 0
         guard total > 0 else { return }
         for block in analysis.previewBlocks {
-            guard let e = entries[block.firstLine], block.lastLine < analysis.lines.count else { continue }
+            guard let e = entries[block.firstLine], block.lastLine < analysis.lines.count, !hiddenLines.contains(block.firstLine) else { continue }
             // HTML reflows with the column: after the sidebar opens or the window is resized, measure again.
             if case .html = e.kind, e.hasRendered, abs(e.renderedWidth - width) > 0.5 { start(block.firstLine) }
             let line = analysis.lines[block.lastLine]
@@ -450,7 +462,8 @@ final class DiagramOverlay {
         var out: [String] = []
         var previousBottom = -CGFloat.infinity
         for block in analysis.previewBlocks {
-            guard let e = entries[block.firstLine], e.hasRendered, block.lastLine < analysis.lines.count else { continue }
+            guard let e = entries[block.firstLine], e.hasRendered, block.lastLine < analysis.lines.count,
+                  !hiddenLines.contains(block.firstLine) else { continue }
             let line = analysis.lines[block.lastLine]
             lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(storage.length, NSMaxRange(line.range))))
             let glyph = lm.glyphIndexForCharacter(at: min(max(0, line.range.location), storage.length - 1))

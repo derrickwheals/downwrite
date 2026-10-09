@@ -257,6 +257,252 @@ final class FoldTests: XCTestCase {
         XCTAssertFalse(expected.isEqual(to: open.storage), "precondition: the folds change the look")
     }
 
+    func testFoldedLinesSymmetricDifference() {
+        func diff(_ a: [ClosedRange<Int>], _ b: [ClosedRange<Int>]) -> [ClosedRange<Int>] { FoldedLines(a).symmetricDifference(FoldedLines(b)) }
+        XCTAssertEqual(diff([], []), [])
+        XCTAssertEqual(diff([5...18], []), [5...18], "a fold opening or closing: its hidden lines")
+        XCTAssertEqual(diff([], [5...18]), [5...18])
+        XCTAssertEqual(diff([5...18], [5...18]), [])
+        XCTAssertEqual(diff([5...18], [5...12]), [13...18], "an inner part stays hidden")
+        XCTAssertEqual(diff([5...18], [20...31]), [5...18, 20...31])
+        XCTAssertEqual(diff([5...18, 20...31], [5...31]), [19...19], "two folds become one")
+        XCTAssertEqual(diff([1...35], [5...18]), [1...4, 19...35])
+        XCTAssertTrue(FoldedLines([3...4, 9...9]).contains(9))
+        XCTAssertFalse(FoldedLines([3...4, 9...9]).contains(5))
+        XCTAssertFalse(FoldedLines().contains(0))
+    }
+
+    // MARK: Coordinator and overlays (R4, R7, R15, R18, R20, R21)
+
+    private func fixtureHarness(file: StaticString = #filePath) async throws -> EditorHarness {
+        let h = EditorHarness(text: try Self.fixtureF(), size: NSSize(width: 900, height: 760))
+        h.select(0)
+        let ready = await waitUntil { (h.coordinator.tableOverlay.grids.first?.tableSize.width ?? 0) > 0 }
+        XCTAssertTrue(ready, "the table never became a grid")
+        return h
+    }
+
+    /// Waits for the asynchronous repositioning to settle and returns what is still inconsistent.
+    private func layoutProblems(_ h: EditorHarness) async -> [String] {
+        var found: [String] = []
+        _ = await waitUntil(timeout: 8) {
+            found = h.coordinator.tableOverlay.layoutProblems() + h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis)
+            return found.isEmpty
+        }
+        return found
+    }
+
+    /// The text of each folded region's header's first line.
+    private func foldedHeaders(_ h: EditorHarness) -> [String] {
+        let a = h.coordinator.analysis, ns = NSString(string: h.textView.string)
+        return a.foldRegions.filter(h.coordinator.foldState.isFolded).map { ns.substring(with: a.lines[$0.headerLines.lowerBound].contentRange) }
+    }
+
+    func testFoldingChangesOnlyWhatIsDrawn() async throws {
+        let h = try await fixtureHarness()
+        let text = try Self.fixtureF()
+        let um = try XCTUnwrap(h.textView.undoManager)
+        h.coordinator.setFoldState(folded(h, 5, 20, 26))
+        XCTAssertEqual(h.textView.string, text)
+        XCTAssertEqual(h.box.value, text, "the binding that feeds the file is untouched")
+        XCTAssertFalse(um.canUndo, "folding adds nothing to the undo history")
+        XCTAssertFalse(um.canRedo)
+        XCTAssertTrue(um.isUndoRegistrationEnabled)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes", "- Groceries"])
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1, "hidden")
+        h.coordinator.setFoldState(FoldState())
+        XCTAssertEqual(h.textView.string, text)
+        XCTAssertEqual(h.box.value, text)
+        XCTAssertFalse(um.canUndo)
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Plan text.")).pointSize, 10, "shown again")
+    }
+
+    func testUnfoldingRestoresExactlyTheLookOfADocumentThatWasNeverFolded() async throws {
+        let h = try await fixtureHarness()
+        let pristine = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 1, 5, 11, 20, 26, 28, 35))
+        XCTAssertFalse(NSAttributedString(attributedString: pristine.storage).isEqual(to: h.storage), "precondition: it changed")
+        h.coordinator.setFoldState(FoldState())
+        XCTAssertTrue(NSAttributedString(attributedString: pristine.storage).isEqual(to: h.storage))
+    }
+
+    func testAnInnerFoldKeepsItsStateWhileTheOuterOneIsFoldedAndOpened() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 1, 5))
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan")).pointSize, 1, "Plan hides inside Project")
+        XCTAssertGreaterThan(h.font(at: h.index(of: "# Project")).pointSize, 10)
+        h.coordinator.setFoldState(folded(h, 5))                         // Project opens
+        XCTAssertEqual((h.attrs(at: h.index(of: "Plan"))[.dwFold] as? FoldMark)?.folded, true, "Plan is still folded inside it")
+        XCTAssertNotNil(h.attrs(at: lineEnd(h, 5) - 1)[.dwFoldChip])
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1)
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Notes")).pointSize, 10, "Notes is open")
+    }
+
+    func testTablesAndDiagramsInsideAFoldAreHiddenReserveNothingAndComeBackInPlace() async throws {
+        let h = try await fixtureHarness()
+        let c = h.coordinator
+        XCTAssertEqual(c.tableOverlay.grids.count, 1)
+        XCTAssertEqual(c.overlay.diagramViews.count, 1, "the Mermaid block has a card")
+        let tableLine = 15, diagramLine = 21
+        XCTAssertNotNil(c.tableOverlay.reservedHeights()[tableLine])
+        let problemsBefore = await layoutProblems(h)
+        XCTAssertEqual(problemsBefore, [])
+
+        c.setFoldState(folded(h, 5, 20))                                 // Plan holds the table, Notes the diagram
+        XCTAssertTrue(c.tableOverlay.grids[0].isHidden)
+        XCTAssertTrue(c.overlay.diagramViews[0].isHidden)
+        XCTAssertNil(c.tableOverlay.reservedHeights()[tableLine], "no room is reserved for a hidden table")
+        XCTAssertNil(c.overlay.reservedHeights[diagramLine], "nor for a hidden diagram")
+        let hiddenProblems = await layoutProblems(h)
+        XCTAssertEqual(hiddenProblems, [], "hidden blocks are skipped")
+        XCTAssertEqual(h.paragraph(at: h.index(of: "| 1 | 2 |")).paragraphSpacing, 0, "the table's last line reserves no room")
+
+        c.setFoldState(FoldState())
+        XCTAssertFalse(c.tableOverlay.grids[0].isHidden)
+        XCTAssertFalse(c.overlay.diagramViews[0].isHidden)
+        XCTAssertNotNil(c.tableOverlay.reservedHeights()[tableLine])
+        let after = await layoutProblems(h)
+        XCTAssertEqual(after, [], "everything is back in place: \(after)")
+    }
+
+    func testAFocusedCellHandsTheKeyboardBackWhenItsTableIsHidden() async throws {
+        let h = try await fixtureHarness()
+        let grid = h.coordinator.tableOverlay.grids[0]
+        grid.focus(.init(row: 1, column: 0))
+        XCTAssertTrue(h.coordinator.tableOverlay.hasFocus)
+        h.coordinator.setFoldState(folded(h, 5))
+        XCTAssertFalse(h.coordinator.tableOverlay.hasFocus)
+        XCTAssertTrue(h.window.firstResponder === h.textView, "the text view has the keyboard again")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 5), length: 0), "with the caret at the end of the fold's header")
+    }
+
+    func testTheCaretMovesToTheHeaderOfTheOutermostFoldThatHidesIt() async throws {
+        let h = try await fixtureHarness()
+        h.select(h.index(of: "Write spec") + 3)
+        h.coordinator.setFoldState(folded(h, 5))
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 5), length: 0), "Plan hides line 11")
+        h.coordinator.setFoldState(folded(h, 5, 11))                     // (already hidden by Plan: nothing changes)
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 5), length: 0))
+        // A selection that starts in view is left alone, even if it ends in hidden text.
+        h.select(lineStart(h, 3), lineStart(h, 8) - lineStart(h, 3))
+        h.coordinator.setFoldState(folded(h, 20))
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineStart(h, 3), length: lineStart(h, 8) - lineStart(h, 3)))
+    }
+
+    func testTypingElsewhereKeepsTheFoldsOnTheirHeadersAndUndoDoesToo() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20, 26))
+        h.select(lineEnd(h, 3))
+        h.textView.insertText("!", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(h.textView.string.contains("Intro paragraph.!"))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes", "- Groceries"], "typing above shifts the folds, it does not change them")
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1)
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Empty")).pointSize, 10)
+        // A new first line pushes everything down.
+        h.select(0)
+        h.textView.insertText("New first line\n", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes", "- Groceries"])
+        h.textView.undoManager?.undo()
+        h.textView.undoManager?.undo()
+        XCTAssertEqual(h.textView.string, try Self.fixtureF())
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes", "- Groceries"], "undo maps the folds back")
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1)
+    }
+
+    func testReturnAtTheStartOfAFoldedHeaderPushesItDownWithItsFold() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        h.select(lineStart(h, 5))
+        h.textView.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"])
+        XCTAssertEqual(h.coordinator.analysis.foldRegions.first { h.coordinator.foldState.isFolded($0) }?.headerLines.lowerBound, 5, "one line lower")
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1)
+    }
+
+    func testAnExternalReloadKeepsTheFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5))
+        let reloaded = try Self.fixtureF() + "\ntail\n"
+        h.coordinator.update(text: reloaded, settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720))
+        XCTAssertEqual(h.textView.string, reloaded)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan"])
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1)
+        XCTAssertGreaterThan(h.font(at: h.index(of: "tail")).pointSize, 10)
+    }
+
+    func testAnEditThatLeavesTheCaretInHiddenTextOpensTheFoldsHidingIt() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.select(h.index(of: "Plan text.") + 2)                          // as an undo or a paste could leave it
+        h.coordinator.reanalyze()
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"], "only the fold that hid the caret opened")
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Plan text.")).pointSize, 10)
+        XCTAssertLessThan(h.font(at: h.index(of: "graph TD")).pointSize, 1)
+    }
+
+    func testTheSourceViewShowsEverythingAndKeepsTheFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.coordinator.setSourceMode(true)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes"], "the state is kept")
+        for needle in ["Plan text.", "graph TD", "## Notes"] {
+            XCTAssertGreaterThan(h.font(at: h.index(of: needle)).pointSize, 10, needle)
+            XCTAssertNil(h.attrs(at: h.index(of: needle))[.dwFold], needle)
+        }
+        for i in 0..<h.storage.length {
+            XCTAssertNil(h.attrs(at: i)[.dwFold]); XCTAssertNil(h.attrs(at: i)[.dwFoldChip])
+        }
+        h.coordinator.setSourceMode(false)
+        XCTAssertEqual(foldedHeaders(h), ["## Plan", "## Notes"])
+        XCTAssertLessThan(h.font(at: h.index(of: "Plan text.")).pointSize, 1, "folded again")
+        XCTAssertTrue(h.coordinator.tableOverlay.grids[0].isHidden)
+    }
+
+    func testLeavingTheSourceViewWithTheCaretInHiddenTextOpensThatFold() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.coordinator.setSourceMode(true)
+        h.select(h.index(of: "Plan text.") + 2)
+        h.coordinator.setSourceMode(false)
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"])
+        XCTAssertGreaterThan(h.font(at: h.index(of: "Plan text.")).pointSize, 10)
+    }
+
+    func testAnEditMadeInTheSourceViewMapsTheFolds() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 20))
+        h.coordinator.setSourceMode(true)
+        h.select(0)
+        h.textView.insertText("Inserted line\n", replacementRange: NSRange(location: NSNotFound, length: 0))
+        h.coordinator.setSourceMode(false)
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"])
+        XCTAssertLessThan(h.font(at: h.index(of: "graph TD")).pointSize, 1)
+    }
+
+    func testFoldStateBelongsToOneWindowAndIsNeverStored() async throws {
+        let defaultsBefore = Set(UserDefaults.standard.dictionaryRepresentation().keys)
+        let a = try await fixtureHarness(), b = try await fixtureHarness()
+        a.coordinator.setFoldState(folded(a, 5, 20))
+        XCTAssertEqual(foldedHeaders(a), ["## Plan", "## Notes"])
+        XCTAssertEqual(foldedHeaders(b), [], "another window is unaffected")
+        XCTAssertGreaterThan(b.font(at: b.index(of: "Plan text.")).pointSize, 10)
+        let fresh = try await fixtureHarness()
+        XCTAssertEqual(foldedHeaders(fresh), [], "every file opens fully unfolded")
+        a.coordinator.setFoldState(FoldState())
+        XCTAssertEqual(Set(UserDefaults.standard.dictionaryRepresentation().keys), defaultsBefore, "no setting or stored state is added")
+    }
+
+    func testUnfoldingAFoldRestylesOnlyWhatChanged() async throws {
+        let h = try await fixtureHarness()
+        // Mark a line outside the fold: if the coordinator restyled the whole document the mark would be overwritten.
+        let probe = h.index(of: "Intro")
+        h.storage.addAttribute(NSAttributedString.Key("test.probe"), value: 1, range: NSRange(location: probe, length: 5))
+        h.coordinator.setFoldState(folded(h, 5))
+        XCTAssertNotNil(h.attrs(at: probe)[NSAttributedString.Key("test.probe")], "folding Plan leaves unrelated lines alone")
+        h.coordinator.setFoldState(FoldState())
+        XCTAssertNotNil(h.attrs(at: probe)[NSAttributedString.Key("test.probe")], "so does unfolding it")
+    }
+
     func testUnfoldingRestoresTheOriginalLook() throws {
         let h = EditorHarness(text: try Self.fixtureF())
         h.select(0)
