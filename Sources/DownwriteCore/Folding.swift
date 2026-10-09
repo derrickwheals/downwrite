@@ -73,6 +73,56 @@ public struct FoldState: Equatable, Sendable {
         return position
     }
 
+    // MARK: Staying attached (R18)
+
+    /// The state after the text changed by `edit` (the single replacement that turns the old text into the new one, e.g.
+    /// `TextDiff.replacement`). A fold belongs to its header line: for an edit replacing `[s, e)` and a fold anchored at `a`,
+    ///
+    /// - `e <= a`: the header moved with the text above it, so the anchor shifts by the change in length. A pure insertion
+    ///   exactly at `a` is the exception: it shifts the anchor only if the inserted text ends in a line break (Return at the
+    ///   start of the header pushes it down, typing there does not);
+    /// - `a < s`: the edit is after the header's first character (inside the header, or below it), so the anchor stays;
+    /// - `s < a < e`: the edit replaces text from before the header into it, and the fold goes;
+    /// - `s == a < e`: the edit starts at the header's first character. It keeps the fold if it stays within the header's text
+    ///   (retyping it, changing its level) and drops it if it runs past the end of the header's last line (the line terminator
+    ///   counts as past), so deleting the header line never hands its fold to whatever line comes next.
+    ///
+    /// After shifting, a fold is kept only if the new analysis has a region at that offset: a line that stopped being a heading
+    /// or an item, or an item that lost its extra content, is no longer foldable.
+    public func mapped(through edit: TextEdit, from old: MarkdownAnalysis, to new: MarkdownAnalysis) -> FoldState {
+        guard !anchors.isEmpty else { return self }
+        let s = edit.range.location, e = NSMaxRange(edit.range)
+        let delta = edit.replacement.utf16.count - edit.range.length
+        let endsInLineBreak = edit.replacement.utf16.last.map { $0 == 10 || $0 == 13 } ?? false
+        var next = Set<Int>()
+        for a in anchors {
+            let target: Int
+            if e <= a {
+                target = (s == a && e == a && !endsInLineBreak) ? a : a + delta
+            } else if a < s {
+                target = a
+            } else if s < a {
+                continue
+            } else {
+                // s == a < e
+                guard let r = Self.region(anchored: a, in: old), e <= old.lines[r.headerLines.upperBound].contentEnd else { continue }
+                target = a
+            }
+            if Self.region(anchored: target, in: new) != nil { next.insert(target) }
+        }
+        return FoldState(anchors: next)
+    }
+
+    /// The region whose anchor is `anchor` (binary search: regions are sorted by anchor).
+    private static func region(anchored anchor: Int, in analysis: MarkdownAnalysis) -> FoldRegion? {
+        var lo = 0, hi = analysis.foldRegions.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if analysis.foldRegions[mid].anchor < anchor { lo = mid + 1 } else { hi = mid }
+        }
+        return lo < analysis.foldRegions.count && analysis.foldRegions[lo].anchor == anchor ? analysis.foldRegions[lo] : nil
+    }
+
     // MARK: Changing the state
 
     public func toggled(_ region: FoldRegion) -> FoldState {

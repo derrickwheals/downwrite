@@ -398,6 +398,237 @@ final class FoldingTests: XCTestCase {
         XCTAssertEqual(f.folded(f.state(20, 26).revealing(NSRange(location: f.offset(of: "Milk"), length: 4), in: f.a)), [])
     }
 
+    // MARK: Mapping through edits (R18)
+
+    private func edit(_ location: Int, _ length: Int, _ replacement: String) -> TextEdit {
+        TextEdit(range: NSRange(location: location, length: length), replacement: replacement,
+                 selection: NSRange(location: location + replacement.utf16.count, length: 0))
+    }
+
+    /// A pure insertion.
+    private func edit(_ location: Int, _ insertion: String) -> TextEdit { edit(location, 0, insertion) }
+
+    /// Applies `edit` to `text`, maps `state` through it, and returns the new text, analysis and state.
+    private func map(_ state: FoldState, _ text: String, _ edit: TextEdit) -> (text: String, a: MarkdownAnalysis, state: FoldState) {
+        let old = MarkdownAnalyzer.analyze(text)
+        let new = edit.apply(to: text)
+        let a = MarkdownAnalyzer.analyze(new)
+        return (new, a, state.mapped(through: edit, from: old, to: a))
+    }
+
+    /// 1-based first header lines of the folded regions, and the text of each header's first line.
+    private func headers(_ s: FoldState, _ a: MarkdownAnalysis, _ text: String) -> [String] {
+        let ns = NSString(string: text)
+        return a.foldRegions.filter(s.isFolded).map { "\($0.headerLines.lowerBound + 1): " + ns.substring(with: a.lines[$0.headerLines.lowerBound].contentRange) }
+    }
+
+    func testEditsBeforeAHeaderShiftItsFold() throws {
+        let f = try F()
+        let before = map(f.state(5, 20), f.text, edit(f.start(3), "New paragraph.\n\n"))
+        XCTAssertEqual(headers(before.state, before.a, before.text), ["7: ## Plan", "22: ## Notes"])
+        let del = map(f.state(5, 20), f.text, edit(f.start(3), f.start(4) - f.start(3), ""))
+        XCTAssertEqual(headers(del.state, del.a, del.text), ["4: ## Plan", "19: ## Notes"], "deleting the line above shifts it up")
+        // An edit that ends exactly where the header starts is before it.
+        let upTo = map(f.state(5), f.text, edit(f.start(4), f.start(5) - f.start(4), "Replaced.\n"))
+        XCTAssertEqual(headers(upTo.state, upTo.a, upTo.text), ["5: ## Plan"])
+        // Nested folds all move; the one before the edit stays.
+        let nested = map(f.state(1, 5, 9), f.text, edit(f.start(3), "Inserted.\n"))
+        XCTAssertEqual(headers(nested.state, nested.a, nested.text), ["1: # Project", "6: ## Plan", "10: ### Tasks"])
+    }
+
+    func testEditsAfterTheHeaderLeaveTheFoldAlone() throws {
+        let f = try F()
+        let body = map(f.state(5), f.text, edit(f.end(7), "!"))
+        XCTAssertEqual(headers(body.state, body.a, body.text), ["5: ## Plan"], "typing inside the section")
+        let atEnd = map(f.state(5), f.text, edit(f.end(5), " more"))
+        XCTAssertEqual(headers(atEnd.state, atEnd.a, atEnd.text), ["5: ## Plan more"], "typing at the end of the header")
+        let inside = map(f.state(5), f.text, edit(f.start(5) + 3, "The "))
+        XCTAssertEqual(headers(inside.state, inside.a, inside.text), ["5: ## The Plan"], "typing inside the header's text")
+        let later = map(f.state(5), f.text, edit(f.start(30), "More. "))
+        XCTAssertEqual(headers(later.state, later.a, later.text), ["5: ## Plan"], "an edit in a later section")
+    }
+
+    func testInsertionExactlyAtTheHeaderStart() throws {
+        let f = try F()
+        // Typing at the start of the header stays on the header...
+        let space = map(f.state(5), f.text, edit(f.start(5), " "))
+        XCTAssertEqual(headers(space.state, space.a, space.text), ["5:  ## Plan"], "still a heading, still folded")
+        // ...unless that stops it being a heading.
+        let letter = map(f.state(5), f.text, edit(f.start(5), "x"))
+        XCTAssertEqual(headers(letter.state, letter.a, letter.text), [], "`x## Plan` is a paragraph, so the fold goes")
+        // Return (a line break) at the very start pushes the header and its fold down.
+        let ret = map(f.state(5), f.text, edit(f.start(5), "\n"))
+        XCTAssertEqual(headers(ret.state, ret.a, ret.text), ["6: ## Plan"])
+        let crlf = map(f.state(5), f.text, edit(f.start(5), "\r\n"))
+        XCTAssertEqual(headers(crlf.state, crlf.a, crlf.text), ["6: ## Plan"], "CRLF is a line break too")
+        let pasted = map(f.state(5), f.text, edit(f.start(5), "A pasted line\n"))
+        XCTAssertEqual(headers(pasted.state, pasted.a, pasted.text), ["6: ## Plan"])
+        // Return at the end of the header leaves it where it is, with a new first hidden line.
+        let end = map(f.state(5), f.text, edit(f.end(5), "\n"))
+        XCTAssertEqual(headers(end.state, end.a, end.text), ["5: ## Plan"])
+        // An item header behaves the same way.
+        let item = map(f.state(26), f.text, edit(f.start(26), "\n"))
+        XCTAssertEqual(headers(item.state, item.a, item.text), ["27: - Groceries"])
+    }
+
+    func testUndoOfReturnAtTheHeaderStartMapsBack() throws {
+        let f = try F()
+        let down = map(f.state(5), f.text, edit(f.start(5), "\n"))
+        XCTAssertEqual(headers(down.state, down.a, down.text), ["6: ## Plan"])
+        let up = map(down.state, down.text, edit(f.start(5), 1, ""))
+        XCTAssertEqual(up.text, f.text)
+        XCTAssertEqual(up.state, f.state(5), "an edit that ends where the header starts moves it back")
+    }
+
+    func testRetypingTheHeaderKeepsTheFoldButReplacingItsLineDoesNot() throws {
+        let f = try F()
+        let retyped = map(f.state(5), f.text, edit(f.start(5), f.end(5) - f.start(5), "## Plan, revised"))
+        XCTAssertEqual(headers(retyped.state, retyped.a, retyped.text), ["5: ## Plan, revised"], "all of the header's text replaced")
+        let level = map(f.state(5), f.text, edit(f.start(5), 2, "###"))
+        XCTAssertEqual(headers(level.state, level.a, level.text), ["5: ### Plan"], "a changed level keeps the fold")
+        let deeper = map(f.state(5), f.text, edit(f.start(5) + 2, "#"))
+        XCTAssertEqual(headers(deeper.state, deeper.a, deeper.text), ["5: ### Plan"])
+        // The terminator is not part of the header: replacing it too runs past the header.
+        let withBreak = map(f.state(5), f.text, edit(f.start(5), f.end(5) + 1 - f.start(5), "## Plan, revised\n"))
+        XCTAssertEqual(headers(withBreak.state, withBreak.a, withBreak.text), [])
+        let deleted = map(f.state(5), f.text, edit(f.start(5), f.start(6) - f.start(5), ""))
+        XCTAssertEqual(headers(deleted.state, deleted.a, deleted.text), [], "a deleted header line")
+    }
+
+    func testAnEditRunningIntoTheHeaderRemovesTheFold() throws {
+        let f = try F()
+        // From the middle of the paragraph above into the heading, typed over.
+        let into = map(f.state(5), f.text, edit(f.end(3) - 4, f.start(5) + 4 - (f.end(3) - 4), "X"))
+        XCTAssertEqual(headers(into.state, into.a, into.text), [], "text before the header's first character to inside it")
+        // From the heading's first character past its end: selecting a heading and part of what follows, then typing.
+        let past = map(f.state(5), f.text, edit(f.start(5), f.start(7) + 3 - f.start(5), "Z"))
+        XCTAssertEqual(headers(past.state, past.a, past.text), [], "from the header's first character past its end")
+        // Other folds are unaffected by the same edit.
+        let other = map(f.state(5, 20), f.text, edit(f.start(5), f.start(7) + 3 - f.start(5), "Z"))
+        // `## Plan⏎⏎Pla` became `Z`: two lines fewer, so ## Notes moves from line 20 to 18.
+        XCTAssertEqual(headers(other.state, other.a, other.text), ["18: ## Notes"])
+    }
+
+    func testALineThatStopsBeingAHeadingOrLosesItsContentDropsItsFold() throws {
+        let f = try F()
+        let noHash = map(f.state(5), f.text, edit(f.start(5), 3, ""))
+        XCTAssertEqual(headers(noHash.state, noHash.a, noHash.text), [], "`## Plan` → `Plan`")
+        let noBullet = map(f.state(26), f.text, edit(f.start(26), 2, ""))
+        XCTAssertEqual(headers(noBullet.state, noBullet.a, noBullet.text), [], "an item that stops being an item")
+        let lost = map(f.state(11), f.text, edit(f.start(12), f.start(14) - f.start(12), ""))
+        XCTAssertEqual(headers(lost.state, lost.a, lost.text), [], "Write spec loses its nested items")
+        XCTAssertEqual(lost.a.foldRegions.contains { $0.headerLines.lowerBound == 10 }, false)
+        // Content deleted from a heading section.
+        let emptied = map(f.state(35), f.text, edit(f.start(36), f.text.utf16.count - f.start(36), ""))
+        XCTAssertEqual(headers(emptied.state, emptied.a, emptied.text), [], "## Last has nothing under it any more")
+        // Other folds survive the same edit.
+        let keep = map(f.state(5, 11), f.text, edit(f.start(12), f.start(14) - f.start(12), ""))
+        XCTAssertEqual(headers(keep.state, keep.a, keep.text), ["5: ## Plan"])
+    }
+
+    func testAFoldIsNeverTransferredToDifferentText() {
+        // Deleting the header line of `- a` makes its nested `  - b` the top-level item at the same offset, and it has content.
+        let text = "- a\n  - b\n    - c"
+        let old = MarkdownAnalyzer.analyze(text)
+        let state = FoldState().toggled(old.foldRegions[0])
+        let r = map(state, text, edit(0, 4, ""))
+        XCTAssertEqual(r.text, "  - b\n    - c")
+        XCTAssertTrue(r.a.foldRegions.contains { $0.anchor == 0 }, "precondition: a region now starts at the same offset")
+        XCTAssertEqual(r.state, FoldState(), "but the fold was on `- a`, which is gone")
+        // The same holds when the replacement itself is a header.
+        let swapped = map(state, text, edit(0, 4, "- z\n"))
+        XCTAssertEqual(swapped.state, FoldState(), "replacing the header line (terminator included) drops the fold")
+        // Retyping the text of the header, not its line, keeps it.
+        let retyped = map(state, text, edit(0, 3, "- z"))
+        XCTAssertEqual(retyped.state.anchors, [0])
+    }
+
+    func testStaleAnchorsAreDroppedAndAnEmptyStateStaysEmpty() throws {
+        let f = try F()
+        let stale = FoldState(anchors: [7, 99999])
+        XCTAssertEqual(map(stale, f.text, edit(0, "x")).state, FoldState())
+        XCTAssertEqual(map(FoldState(), f.text, edit(0, "x")).state, FoldState())
+        XCTAssertEqual(stale.mapped(through: edit(7, 2, "yy"), from: f.a, to: f.a), FoldState(), "an anchor at the edit start with no region")
+    }
+
+    func testEditsAtTheEndOfTheDocument() throws {
+        let f = try F()
+        let append = map(f.state(35), f.text, edit(f.text.utf16.count, "\nmore"))
+        XCTAssertEqual(headers(append.state, append.a, append.text), ["35: ## Last"])
+        let newSection = map(f.state(35), f.text, edit(f.text.utf16.count, "\n## Another\nbody"))
+        XCTAssertEqual(headers(newSection.state, newSection.a, newSection.text), ["35: ## Last"])
+    }
+
+    /// Whole-line inserts and deletes at random places in random documents: every fold either stays on its own header (shifted
+    /// by the length change when the edit is above it) or goes, and none ever lands on text it was not on.
+    func testRandomLineEditsNeverMoveAFoldToDifferentText() {
+        var rng = SplitMix64(state: 0xF01D)
+        var checkedFolds = 0, keptFolds = 0
+        for _ in 0..<600 {
+            var counter = 0
+            func unique(_ prefix: String) -> String { counter += 1; return "\(prefix) \(counter)" }
+            var lines: [String] = []
+            for _ in 0..<(8 + rng.next(23)) {
+                switch rng.next(8) {
+                case 0: lines.append("# " + unique("H1"))
+                case 1: lines.append("## " + unique("H2"))
+                case 2: lines.append("### " + unique("H3"))
+                case 3: lines.append("- " + unique("item"))
+                case 4: lines.append("  - " + unique("sub"))
+                case 5: lines.append("")
+                default: lines.append(unique("para"))
+                }
+            }
+            let text = lines.joined(separator: "\n") + (rng.next(2) == 0 ? "\n" : "")
+            let ns = NSString(string: text)
+            let old = MarkdownAnalyzer.analyze(text)
+            let folded = old.foldRegions.filter { _ in rng.next(2) == 0 }
+            guard !folded.isEmpty else { continue }
+            let state = folded.reduce(FoldState()) { $0.toggled($1) }
+
+            // One edit at a line boundary: insert a new unique line, or delete one whole line.
+            let lineIndex = rng.next(old.lines.count)
+            let lineRange = old.lines[lineIndex].range
+            let e: TextEdit
+            if rng.next(2) == 0 || lineRange.length == 0 {
+                e = edit(lineRange.location, unique("ins") + "\n")
+            } else {
+                e = edit(lineRange.location, lineRange.length, "")
+            }
+            let s = e.range.location, end = NSMaxRange(e.range)
+            let delta = e.replacement.utf16.count - e.range.length
+            let newText = e.apply(to: text)
+            let new = MarkdownAnalyzer.analyze(newText)
+            let mapped = state.mapped(through: e, from: old, to: new)
+            let newNS = NSString(string: newText)
+
+            // Safety: a surviving fold is on a real region whose first line is one of the originally folded headers' first lines.
+            let firstLines = Set(folded.map { ns.substring(with: old.lines[$0.headerLines.lowerBound].contentRange) })
+            for anchor in mapped.anchors {
+                let region = new.foldRegions.first { $0.anchor == anchor }
+                XCTAssertNotNil(region, "anchor \(anchor) is not a region\n\(text.debugDescription)\n\(e)")
+                if let region {
+                    let line = newNS.substring(with: new.lines[region.headerLines.lowerBound].contentRange)
+                    XCTAssertTrue(firstLines.contains(line), "fold moved onto \(line.debugDescription)\n\(text.debugDescription)\n\(e)")
+                }
+            }
+            // Completeness: a header the edit did not touch keeps its fold exactly when it is still a region.
+            for r in folded {
+                let headerEnd = NSMaxRange(old.lines[r.headerLines.upperBound].range)
+                let expected: Int
+                if end <= r.anchor { expected = r.anchor + delta }
+                else if s >= headerEnd { expected = r.anchor }
+                else { continue }                       // the edit touches the header's own lines
+                checkedFolds += 1
+                let stillRegion = new.foldRegions.contains { $0.anchor == expected }
+                XCTAssertEqual(mapped.anchors.contains(expected), stillRegion, "header at \(r.anchor), edit \(e)\n\(text.debugDescription)")
+                if stillRegion { keptFolds += 1 }
+            }
+        }
+        XCTAssertGreaterThan(checkedFolds, 500, "the generator exercises enough folds")
+        XCTAssertGreaterThan(keptFolds, 200)
+    }
+
     // MARK: Caret helpers (R13, R14, R16)
 
     func testHeaderEndIsTheEndOfTheHeadersLastLineContent() throws {
@@ -509,4 +740,20 @@ final class FoldingTests: XCTestCase {
     func testTableCellAnalysisHasNoFoldRegions() {
         XCTAssertTrue(MarkdownAnalyzer.analyzeTableCell("# not a heading\n- nor an item").foldRegions.isEmpty)
     }
+}
+
+/// Small deterministic generator so the randomized tests repeat exactly.
+private struct SplitMix64 {
+    var state: UInt64
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+
+    /// A value in `0..<bound`.
+    mutating func next(_ bound: Int) -> Int { Int(next() % UInt64(bound)) }
 }
