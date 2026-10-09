@@ -753,9 +753,9 @@ enum SelfTest {
             defaults.set(false, forKey: Prefs.showTOC)
         }
 
-        // 9. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift). It runs last, and alone:
-        // SwiftUI resolves ⌘/ and the other focused-value menu items against one window, so the earlier windows are closed first.
-        if let fixture = foldFixture { await foldWalkthrough(outDir: outDir, fixture: fixture) }
+        // 9. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift). It runs last, in this
+        // run's first window (the one SwiftUI resolves ⌘/ and the other focused-value menu items against), which it reloads with Fixture F.
+        if let fixture = foldFixture { await foldWalkthrough(outDir: outDir, fixture: fixture, reusing: tv) }
 
         finish(outDir)
     }

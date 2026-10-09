@@ -12,17 +12,29 @@ extension SelfTest {
     /// `--selftest-fold-only`: run only this step (for development; `--selftest-input` is still required but unused).
     static var foldOnly: Bool { CommandLine.arguments.contains("--selftest-fold-only") }
 
-    static func foldWalkthrough(outDir: URL, fixture: URL) async {
+    /// With `reusing`, the walkthrough runs in that (the run's first) editor window: Fixture F is written to its file and reloaded the way an
+    /// external change is (`revert`), so it is still a real, unedited document on disk. That window is the one SwiftUI resolves focused-value
+    /// menu items (⌘/, View ▸ Show Markdown Source) against; a second document window opened later never takes that focus in a scripted run.
+    /// Without it (`--selftest-fold-only`) the fixture opens in a window of its own.
+    static func foldWalkthrough(outDir: URL, fixture: URL, reusing existing: EditorTextView? = nil) async {
         func fail(_ what: String, _ detail: String = "") { check(false, "fold: " + what, detail: detail) }
-        let work = outDir.appendingPathComponent("fold-demo.md")
+        var work = outDir.appendingPathComponent("fold-demo.md")
+        if let url = existing?.window?.representedURL { work = url }
         try? FileManager.default.removeItem(at: work)
         guard (try? FileManager.default.copyItem(at: fixture, to: work)) != nil,
               let text = try? String(contentsOf: work, encoding: .utf8), let bytes = try? Data(contentsOf: work) else { return fail("the fixture can be copied") }
-        do { _ = try await NSDocumentController.shared.openDocument(withContentsOf: work, display: true) } catch { return fail("the fixture opens", "\(error)") }
-        guard let tv = await waitForEditor(file: "fold-demo.md"), let coordinator = tv.coordinator, let window = tv.window,
-              let document = NSDocumentController.shared.document(for: work) else { return fail("the fixture's editor appears") }
-        // Alone: SwiftUI resolves ⌘/ and the other focused-value menu items against one window, and with an earlier document window still open the
-        // shortcut can flip that window's source view instead of this one's (documents restored from an earlier session do the same).
+        let tv: EditorTextView
+        if let existing, let document = NSDocumentController.shared.document(for: work) {
+            do { try document.revert(toContentsOf: work, ofType: document.fileType ?? "") } catch { return fail("the window reloads the fixture", "\(error)") }
+            guard await waitUntil(timeout: 10, { existing.string == text }) else { return fail("the window shows the fixture", "\(existing.string.count) vs \(text.count) characters") }
+            tv = existing
+        } else {
+            do { _ = try await NSDocumentController.shared.openDocument(withContentsOf: work, display: true) } catch { return fail("the fixture opens", "\(error)") }
+            guard let opened = await waitForEditor(file: work.lastPathComponent) else { return fail("the fixture's editor appears") }
+            tv = opened
+        }
+        guard let coordinator = tv.coordinator, let window = tv.window, let document = NSDocumentController.shared.document(for: work) else { return fail("the fixture's editor appears") }
+        // Alone: any other document window (restored from an earlier session, say) would compete for focus.
         for other in NSApp.windows where other !== window && other.representedURL != nil {
             (other.windowController?.document as? NSDocument)?.updateChangeCount(.changeCleared)       // (no "save changes?" sheet)
             other.close()
@@ -260,7 +272,7 @@ extension SelfTest {
         _ = try? await NSDocumentController.shared.openDocument(withContentsOf: work, display: true)
         var reopened: EditorTextView?
         _ = await waitUntil(timeout: 10) {
-            reopened = editors().first { $0.window?.representedURL?.lastPathComponent == "fold-demo.md" && $0.coordinator !== coordinator }
+            reopened = editors().first { $0.window?.representedURL?.lastPathComponent == work.lastPathComponent && $0.coordinator !== coordinator }
             return reopened != nil
         }
         if let again = reopened, let c = again.coordinator {
