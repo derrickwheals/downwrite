@@ -73,9 +73,9 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md" > artifacts/e2e/stdout.txt 2>&1 &
+          dist/Downwrite.app/Contents/MacOS/Downwrite --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md" --selftest-fold="$PWD/Tests/Fixtures/fold-demo.md" > artifacts/e2e/stdout.txt 2>&1 &
           APP=$!
-          for i in $(seq 1 150); do kill -0 $APP 2>/dev/null || break; sleep 1; done
+          for i in $(seq 1 240); do kill -0 $APP 2>/dev/null || break; sleep 1; done
           kill $APP 2>/dev/null
           wait $APP; CODE=$?; echo "exit=$CODE"; echo "app exit status: $CODE (128+N means killed by signal N: 11 = SIGSEGV, 6 = SIGABRT, 9 = SIGKILL)" > artifacts/e2e/exit.txt
           cat artifacts/e2e/selftest-report.txt 2>/dev/null || { echo "no report; app output:"; tail -40 artifacts/e2e/stdout.txt; }

@@ -77,8 +77,9 @@ if [ ${#FAILED[@]} -eq 0 ] && [ "$E2E" = 1 ]; then
     echo "   Leave the Mac alone until it finishes. Starting in 5 seconds (Ctrl-C to cancel)..."
     sleep 5
   fi
-  run_limited 150 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite \
-    --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md"
+  run_limited 240 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite \
+    --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md" \
+    --selftest-fold="$PWD/Tests/Fixtures/fold-demo.md"
   CODE=$?
   echo "app exit status: $CODE (124 = timed out, 128+N = killed by signal N: 11 SIGSEGV, 6 SIGABRT)" | tee artifacts/e2e/exit.txt
   if [ $CODE -ge 128 ] && [ $CODE -ne 124 ]; then echo "crash reports: ~/Library/Logs/DiagnosticReports/Downwrite*.ips"; fi

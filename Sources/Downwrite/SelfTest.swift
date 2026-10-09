@@ -34,7 +34,7 @@ enum SelfTest {
     }
     private static var failures = 0
 
-    private static func check(_ ok: Bool, _ name: String, detail: String = "") {
+    static func check(_ ok: Bool, _ name: String, detail: String = "") {
         report.append((ok ? "PASS  " : "FAIL  ") + name + (detail.isEmpty ? "" : " — " + detail))
         if !ok { failures += 1 }
         flush()
@@ -44,6 +44,10 @@ enum SelfTest {
         guard let (outDir, input) = arguments else { return }
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         reportURL = outDir.appendingPathComponent("selftest-report.txt")
+        if foldOnly, let fixture = foldFixture {              // (development: just the folding walkthrough)
+            await foldWalkthrough(outDir: outDir, fixture: fixture, restoring: nil)
+            return finish(outDir)
+        }
         let work = outDir.appendingPathComponent("work.md")
         try? FileManager.default.removeItem(at: work)
         try? FileManager.default.copyItem(at: input, to: work)
@@ -665,6 +669,9 @@ enum SelfTest {
             tv.scrollToBeginningOfDocument(nil)
         }
 
+        // 6j. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift).
+        if let fixture = foldFixture { await foldWalkthrough(outDir: outDir, fixture: fixture, restoring: window) }
+
         // 7. Back to system theme leaves the app following macOS.
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
@@ -760,14 +767,14 @@ enum SelfTest {
         return r.location == NSNotFound ? 0 : min(r.location + plus, tv.string.utf16.count)
     }
 
-    private static func editors() -> [EditorTextView] {
+    static func editors() -> [EditorTextView] {
         func find(_ v: NSView) -> [EditorTextView] {
             (v as? EditorTextView).map { [$0] } ?? v.subviews.flatMap(find)
         }
         return NSApp.windows.compactMap(\.contentView).flatMap(find)
     }
 
-    private static func waitForEditor(file name: String) async -> EditorTextView? {
+    static func waitForEditor(file name: String) async -> EditorTextView? {
         var found: EditorTextView?
         _ = await waitUntil(timeout: 25) {
             found = editors().first { $0.window?.representedURL?.lastPathComponent == name }
@@ -776,7 +783,7 @@ enum SelfTest {
         return found
     }
 
-    private static func waitUntil(timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
+    static func waitUntil(timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
         let end = Date().addingTimeInterval(timeout)
         while Date() < end {
             if cond() { return true }
@@ -785,7 +792,7 @@ enum SelfTest {
         return cond()
     }
 
-    private static func pixels(of url: URL) -> NSBitmapImageRep? {
+    static func pixels(of url: URL) -> NSBitmapImageRep? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return NSBitmapImageRep(data: data)
     }
@@ -815,7 +822,7 @@ enum SelfTest {
         return count
     }
 
-    private static func capture(window: NSWindow, to url: URL) -> Bool {
+    static func capture(window: NSWindow, to url: URL) -> Bool {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
@@ -840,7 +847,7 @@ enum SelfTest {
         try? lines.joined(separator: "\n").write(to: dir.appendingPathComponent("menus.txt"), atomically: true, encoding: .utf8)
     }
 
-    private static func finish(_ outDir: URL) {
+    static func finish(_ outDir: URL) {
         report.append("")
         report.append(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")
         try? report.joined(separator: "\n").write(to: outDir.appendingPathComponent("selftest-report.txt"), atomically: true, encoding: .utf8)
