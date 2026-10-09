@@ -368,4 +368,32 @@ final class DrawingTests: XCTestCase {
         let strip = NSRect(x: h.textView.textContainerOrigin.x, y: plan.maxY + 12, width: 500, height: max(0, notes.minY - plan.maxY - 16))
         XCTAssertEqual(inkPoints(render(h), in: strip, h).count, 0, "nothing is drawn between the two headings")
     }
+
+    func testTheChipOnAFullLineHangsIntoTheRightMarginAndNeverCoversText() throws {
+        // Find a folded heading whose single line ends within a chip's width of the right edge of the text container.
+        var found: EditorHarness?
+        for n in 25...60 {
+            let h = try foldHarness(text: "## " + String(repeating: "w", count: n) + "\nbody text\n")
+            h.coordinator.setFoldState(folded(h, 1))
+            let lm = h.textView.layoutManager!
+            lm.ensureLayout(for: h.textView.textContainer!)
+            let lastChar = h.coordinator.analysis.lines[0].contentEnd - 1
+            let oneLine = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: lastChar), effectiveRange: nil).minY
+                == lm.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil).minY
+            let last = rect(of: NSRange(location: lastChar, length: 1), in: h).maxX - h.textView.textContainerOrigin.x
+            // (A chip is about 38 pt wide plus a gap: it hangs out whenever the text ends within that of the right edge.)
+            if oneLine, last > h.textView.textContainer!.size.width - 30, last <= h.textView.textContainer!.size.width - 6 { found = h; break }
+        }
+        let h = try XCTUnwrap(found, "a folded heading that fills its line")
+        let lastChar = h.coordinator.analysis.lines[0].contentEnd - 1
+        let container = h.textView.textContainer!.size.width, origin = h.textView.textContainerOrigin
+        let chip = lm(h).foldChipRect(forCharacterAt: lastChar)!
+        let text = rect(of: NSRange(location: lastChar, length: 1), in: h)
+        XCTAssertGreaterThan(chip.maxX, container, "the chip hangs past the text column")
+        XCTAssertGreaterThan(chip.minX + origin.x, text.maxX, "starting after the last character: it never covers text")
+        XCTAssertLessThan(chip.maxX + origin.x, h.textView.bounds.width, "and stays inside the view")
+        let p = h.coordinator.styler.palette
+        let sample = color(render(h), atViewPoint: NSPoint(x: container + origin.x + 6, y: chip.midY + origin.y), in: h)
+        XCTAssertLessThan(distance(sample, p.inlineCodeBackground.nsColor), distance(sample, p.background.nsColor) + 0.02, "its fill is painted out in the margin")
+    }
 }

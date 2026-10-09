@@ -420,6 +420,11 @@ final class EditorTextView: NSTextView {
                 return
             }
         }
+        // A click or drag is caret movement: where it leaves the start of the selection in folded text (the blank page below a
+        // document whose end is folded) it steps over the fold like the arrow keys, instead of opening it.
+        coordinator?.isMovingCaret = true
         super.mouseDown(with: event)
+        coordinator?.isMovingCaret = false
+        coordinator?.snapSelectionAfterMouse()
     }
 }

@@ -600,9 +600,6 @@ final class FoldTests: XCTestCase {
         for _ in 0..<4 {
             h.textView.dwFold(nil)
             seen.append(foldedHeaders(h))
-            let a = h.coordinator.analysis, state = h.coordinator.foldState
-            let outermost = a.foldRegions.filter { state.isFolded($0) }.min { $0.headerLines.upperBound > $1.headerLines.upperBound }!   // the newest, innermost-out
-            _ = outermost
             XCTAssertEqual(h.textView.selectedRange().length, 0)
         }
         XCTAssertEqual(seen[0], ["- [ ] Write spec"])
@@ -1051,6 +1048,52 @@ final class FoldTests: XCTestCase {
         // The change is one span, from the first match to the last: the folds whose headers lie inside it are dropped (R18),
         // those before it and after it stay.
         XCTAssertEqual(foldedHeaders(h), ["## Last"], "Plan and Notes lie between the first and last match; Last is after it")
+    }
+
+    func testClickingTheBlankPageBelowAFoldedEndStepsOverTheFold() async throws {
+        for trailingNewline in [false, true] {
+            let text = try Self.fixtureF() + (trailingNewline ? "\n" : "")
+            let h = EditorHarness(text: text, size: NSSize(width: 900, height: 700))
+            h.window.makeKeyAndOrderFront(nil)
+            h.coordinator.foldAll()
+            h.select(0)
+            click(h, atView: NSPoint(x: h.textView.textContainerOrigin.x + 40, y: h.textView.bounds.height - 6), release: true)
+            XCTAssertEqual(foldedHeaders(h).count, 8, "trailingNewline=\(trailingNewline): the click did not open the folds that hide the end")
+            XCTAssertFalse(h.coordinator.foldState.foldHiding(offset: h.textView.selectedRange().location, in: h.coordinator.analysis) != nil, "the caret is not in hidden text")
+            XCTAssertEqual(h.textView.selectedRange(), NSRange(location: h.coordinator.analysis.lines[0].contentEnd, length: 0), "it is on the one visible header")
+        }
+    }
+
+    func testAnEditThatLeavesTheCaretInHiddenTextOpensTheFoldThroughTheEditPath() async throws {
+        // (Unlike a plain selection change, this goes through typing, so only the check at the end of `reanalyze` can catch it.)
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 5, 20))
+        h.select(lineEnd(h, 5))
+        h.textView.insertText("\nmore\nlines", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"], "the caret ended up inside Plan's new first lines, so Plan opened")
+        XCTAssertFalse(h.coordinator.foldState.foldHiding(offset: h.textView.selectedRange().location, in: h.coordinator.analysis) != nil)
+        // Undo puts the text back and the caret at the end of the header, which is visible: nothing else changes.
+        h.textView.undoManager?.undo()
+        XCTAssertEqual(h.textView.string, try Self.fixtureF())
+        XCTAssertEqual(foldedHeaders(h), ["## Notes"])
+    }
+
+    func testTheContentsAndTheCheckboxesIgnoreFolds() async throws {
+        let h = try await fixtureHarness()
+        let before = h.coordinator.analysis.tableOfContents.rows.map(\.title)
+        h.coordinator.setFoldState(folded(h, 1, 5, 11))
+        XCTAssertEqual(h.coordinator.analysis.tableOfContents.rows.map(\.title), before, "every heading is still listed, folded or not")
+        XCTAssertEqual(h.coordinator.analysis.headingIndex(at: h.index(of: "Plan text.")), 1, "the active row is the heading whose section holds the caret")
+        XCTAssertEqual(h.textView.string, try Self.fixtureF(), "and the text, which the word count reads, is untouched")
+        // A folded task header keeps its checkbox, and clicking it ticks it without opening the fold or moving the caret.
+        h.coordinator.setFoldState(folded(h, 11))
+        h.select(lineEnd(h, 1))
+        let o = h.textView.textContainerOrigin
+        let box = (h.textView.layoutManager as! DWLayoutManager).checkboxRect(forCharacterAt: h.index(of: "- [ ] Write spec"))!
+        click(h, atView: NSPoint(x: box.midX + o.x, y: box.midY + o.y))
+        XCTAssertTrue(h.textView.string.contains("- [x] Write spec"))
+        XCTAssertEqual(foldedHeaders(h), ["- [x] Write spec"], "the item is still folded")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineEnd(h, 1), length: 0))
     }
 
     func testUnfoldingRestoresTheOriginalLook() throws {

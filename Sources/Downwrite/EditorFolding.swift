@@ -280,4 +280,16 @@ extension EditorCoordinator {
         }
         return true
     }
+
+    /// After a click or drag: a selection that starts in hidden text (only possible on the blank page below a document whose end
+    /// is folded) moves to the nearest visible position. A caret goes to the next visible line, or to the end of the header of the
+    /// fold hiding the end of the document; a drag keeps its far end.
+    func snapSelectionAfterMouse() {
+        guard !sourceMode, !foldState.isEmpty, let tv = textView, analysis.length == tv.textStorage?.length else { return }
+        let sel = tv.selectedRange()
+        guard foldState.foldHiding(offset: sel.location, in: analysis) != nil else { return }
+        let start = foldState.visibleOffset(from: sel.location, forward: true, in: analysis)
+        tv.setSelectedRange(sel.length == 0 || start < sel.location ? NSRange(location: start, length: 0)
+                                                                   : NSRange(location: start, length: max(0, NSMaxRange(sel) - start)))
+    }
 }
