@@ -21,6 +21,9 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
   <img src="docs/screenshots/window-light-diagram.png" width="60%" alt="A Mermaid diagram rendered inline">
 </p>
 <p align="center">
+  <img src="docs/screenshots/window-readme-html.png" width="60%" alt="HTML in a document, drawn in the editor: this README's own centred screenshot rows">
+</p>
+<p align="center">
   <img src="docs/screenshots/window-light-toc.png" width="48%" alt="The table of contents sidebar in light mode">
   <img src="docs/screenshots/window-dark-toc.png" width="48%" alt="The table of contents sidebar in dark mode">
 </p>
