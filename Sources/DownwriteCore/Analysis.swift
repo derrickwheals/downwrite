@@ -169,6 +169,28 @@ public struct HeadingInfo: Equatable, Sendable {
     public var plainTitle: String = ""
 }
 
+/// A heading or list item whose content can be hidden ("folded") behind its own first line(s). Line numbers are 0-based
+/// indices into `MarkdownAnalysis.lines`.
+public struct FoldRegion: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        case heading(level: Int)
+        case item
+    }
+    public var kind: Kind
+    /// Source lines that stay visible when folded. `headerLines.lowerBound` carries the chevron, `upperBound` the ⋯ chip.
+    /// A heading's header is the heading itself (both lines of a setext heading); an item's is its first paragraph, with
+    /// every line the paragraph wraps over, or just its first line when the item does not start with a paragraph.
+    public var headerLines: ClosedRange<Int>
+    /// Source lines that hide when folded. Never empty; at least one of them is not blank.
+    public var hiddenLines: ClosedRange<Int>
+    /// UTF-16 offset of the start of `headerLines.lowerBound`. This is the fold's identity: it is what `FoldState` stores and
+    /// what is mapped through edits.
+    public var anchor: Int
+    /// The hidden characters: from the start of `hiddenLines.lowerBound` through the end (terminator included) of
+    /// `hiddenLines.upperBound`.
+    public var hiddenRange: NSRange
+}
+
 public enum LineKind: Equatable, Sendable {
     case body
     case heading(Int)
@@ -218,6 +240,8 @@ public struct MarkdownAnalysis: Sendable {
     public let headings: [HeadingInfo]
     public let imageBlocks: [ImageBlock]
     public let htmlBlocks: [RawHTMLBlock]
+    /// Everything that can fold, in document order (ascending `anchor`, which is unique).
+    public let foldRegions: [FoldRegion]
 
     /// Mermaid diagrams, standalone images and HTML blocks in document order.
     public var previewBlocks: [PreviewBlock] {
