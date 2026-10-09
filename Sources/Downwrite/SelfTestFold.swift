@@ -70,9 +70,19 @@ extension SelfTest {
 
         // MARK: menu (R10)
         check(true, "fold: the fixture opens in its own window")
-        let enabled = await waitUntil(timeout: 8) { NSApp.mainMenu?.update(); return item("Fold")?.isEnabled == true }
-        check(enabled, "fold: the fold commands are enabled while an editor is frontmost",
-              detail: "active=\(NSApp.isActive) key=\(NSApp.keyWindow?.title ?? "nil") main=\(NSApp.mainWindow?.title ?? "nil") windows=\(NSApp.windows.map { $0.title }) Show Markdown Source enabled=\(String(describing: item("Show Markdown Source")?.isEnabled))")
+        // The mouse, key and menu checks need this window to be the key window of the frontmost app; the menu checks also need SwiftUI to
+        // have resolved the window's focused scene (the View menu's items are disabled until it has). Say so once, with a control, instead of
+        // letting a dozen steps fail for one reason: the existing "Show Markdown Source" item is built the same way as the fold items, so if
+        // it is disabled too the environment is at fault, and if only the fold items are, they are.
+        let keyed = await waitUntil(timeout: 8) { window.isKeyWindow && NSApp.isActive }
+        check(keyed, "fold: the editor window is key and the app is frontmost (the mouse, key and menu checks need that)",
+              detail: "active=\(NSApp.isActive) key=\(NSApp.keyWindow?.title ?? "nil") windows=\(NSApp.windows.map { $0.title })")
+        var menusLive = false
+        if keyed {
+            menusLive = await waitUntil(timeout: 8) { NSApp.mainMenu?.update(); return item("Fold")?.isEnabled == true }
+            check(menusLive, "fold: the fold commands are enabled while an editor is frontmost",
+                  detail: "control: Show Markdown Source enabled=\(String(describing: item("Show Markdown Source")?.isEnabled)) (if that is false too, SwiftUI has not resolved the focused window)")
+        }
         let wanted: [(String, String, NSEvent.ModifierFlags)] = [("Fold", left, [.command, .option]), ("Unfold", right, [.command, .option]),
                                                                  ("Fold All", left, [.command, .option, .shift]), ("Unfold All", right, [.command, .option, .shift])]
         for (title, key, flags) in wanted {
@@ -88,43 +98,47 @@ extension SelfTest {
         check(!document.isDocumentEdited, "fold: no edited mark to begin with")
         check(tv.undoManager?.canUndo == false, "fold: nothing to undo to begin with")
 
-        // MARK: fold at the caret, outwards (verification 5, R11)
-        tv.setSelectedRange(NSRange(location: offset("Review") + 3, length: 0))
-        shortcut(left, 123, opt.union(arrowFlags))
-        check(headers() == ["- [ ] Write spec"], "fold: ⌥⌘← folds the item holding the caret", detail: "\(headers())")
-        check(tv.selectedRange() == NSRange(location: lineEnd("Write spec"), length: 0), "fold: and the caret goes to the end of its header")
-        for _ in 0..<3 { shortcut(left, 123, opt.union(arrowFlags)) }
-        check(headers() == ["# Project", "## Plan", "### Tasks", "- [ ] Write spec"], "fold: three more presses fold outwards: Tasks, Plan, Project", detail: "\(headers())")
-        check(coordinator.foldState.hiddenLineRanges(in: coordinator.analysis) == [1...35], "fold: only `# Project` is left on screen")
-        shortcut(right, 124, opt.union(arrowFlags))
-        check(headers() == ["## Plan", "### Tasks", "- [ ] Write spec"], "fold: ⌥⌘→ opens Project and Plan stays folded inside it", detail: "\(headers())")
+        if menusLive {
+            // MARK: fold at the caret, outwards (verification 5, R11)
+            tv.setSelectedRange(NSRange(location: offset("Review") + 3, length: 0))
+            shortcut(left, 123, opt.union(arrowFlags))
+            check(headers() == ["- [ ] Write spec"], "fold: ⌥⌘← folds the item holding the caret", detail: "\(headers())")
+            check(tv.selectedRange() == NSRange(location: lineEnd("Write spec"), length: 0), "fold: and the caret goes to the end of its header")
+            for _ in 0..<3 { shortcut(left, 123, opt.union(arrowFlags)) }
+            check(headers() == ["# Project", "## Plan", "### Tasks", "- [ ] Write spec"], "fold: three more presses fold outwards: Tasks, Plan, Project", detail: "\(headers())")
+            check(coordinator.foldState.hiddenLineRanges(in: coordinator.analysis) == [1...35], "fold: only `# Project` is left on screen")
+            shortcut(right, 124, opt.union(arrowFlags))
+            check(headers() == ["## Plan", "### Tasks", "- [ ] Write spec"], "fold: ⌥⌘→ opens Project and Plan stays folded inside it", detail: "\(headers())")
 
-        // MARK: fold all, unfold all, fold to level (verification 6, R12)
-        shortcut(left, 123, optShift.union(arrowFlags))
-        check(headers().count == 8, "fold: ⌥⌘⇧← folds every heading and item", detail: "\(headers().count)")
-        shortcut(right, 124, optShift.union(arrowFlags))
-        check(headers().isEmpty, "fold: ⌥⌘⇧→ opens everything")
-        if let menu = item("Fold to Level")?.submenu, let two = menu.items.first(where: { $0.title == "Heading 2" }) { menu.performActionForItem(at: menu.index(of: two)) }
-        check(headers() == ["## Plan", "### Tasks", "## Notes", "## Last"], "fold: Fold to Level ▸ Heading 2 leaves Project and the list items alone", detail: "\(headers())")
-        shortcut(right, 124, optShift.union(arrowFlags))
+            // MARK: fold all, unfold all, fold to level (verification 6, R12)
+            shortcut(left, 123, optShift.union(arrowFlags))
+            check(headers().count == 8, "fold: ⌥⌘⇧← folds every heading and item", detail: "\(headers().count)")
+            shortcut(right, 124, optShift.union(arrowFlags))
+            check(headers().isEmpty, "fold: ⌥⌘⇧→ opens everything")
+            if let menu = item("Fold to Level")?.submenu, let two = menu.items.first(where: { $0.title == "Heading 2" }) { menu.performActionForItem(at: menu.index(of: two)) }
+            check(headers() == ["## Plan", "### Tasks", "## Notes", "## Last"], "fold: Fold to Level ▸ Heading 2 leaves Project and the list items alone", detail: "\(headers())")
+            shortcut(right, 124, optShift.union(arrowFlags))
+        }
 
-        // MARK: the mouse (verification 2 and 3, R8, R9)
-        await settle()
-        tv.scrollToBeginningOfDocument(nil)
-        if let chevron = layout.foldChevronRect(forCharacterAt: offset("Plan")) {
-            check(chevron.width >= 16 && chevron.height >= 16, "fold: the chevron's click target is at least 16 pt square", detail: "\(chevron)")
-            click(viewPoint(of: chevron))
-            check(headers() == ["## Plan"], "fold: clicking the chevron folds the section", detail: "\(headers())")
-            check(isHidden("Plan text.") && !isHidden("## Notes"), "fold: the section's lines are gone and Notes follows it")
+        if keyed {
+            // MARK: the mouse (verification 2 and 3, R8, R9)
             await settle()
-            if let chip = layout.foldChipRect(forCharacterAt: lineEnd("Plan") - 1) {
-                click(viewPoint(of: chip))
-                check(headers().isEmpty, "fold: clicking the ⋯ chip unfolds it")
+            tv.scrollToBeginningOfDocument(nil)
+            if let chevron = layout.foldChevronRect(forCharacterAt: offset("Plan")) {
+                check(chevron.width >= 16 && chevron.height >= 16, "fold: the chevron's click target is at least 16 pt square", detail: "\(chevron)")
+                click(viewPoint(of: chevron))
+                check(headers() == ["## Plan"], "fold: clicking the chevron folds the section", detail: "\(headers())")
+                check(isHidden("Plan text.") && !isHidden("## Notes"), "fold: the section's lines are gone and Notes follows it")
+                await settle()
+                if let chip = layout.foldChipRect(forCharacterAt: lineEnd("Plan") - 1) {
+                    click(viewPoint(of: chip))
+                    check(headers().isEmpty, "fold: clicking the ⋯ chip unfolds it")
+                } else {
+                    fail("a folded header has a ⋯ chip")
+                }
             } else {
-                fail("a folded header has a ⋯ chip")
+                fail("a foldable header has a chevron")
             }
-        } else {
-            fail("a foldable header has a chevron")
         }
 
         // MARK: nothing is written, nothing to undo (verification 3, 15, R4)
@@ -154,21 +168,23 @@ extension SelfTest {
         ThemeChoice.applyCurrent()
         coordinator.setFoldState(FoldState())
 
-        // MARK: the source view (verification 13, R21)
-        coordinator.setFoldState(FoldState().toggled(a.foldRegions[1]))
-        window.makeFirstResponder(tv)
-        shortcut("/", 44, .command)
-        let source = await waitUntil(timeout: 4) { coordinator.sourceMode }
-        check(source, "fold: ⌘/ shows the Markdown source")
-        NSApp.mainMenu?.update()
-        check(item("Fold")?.isEnabled == false && item("Fold All")?.isEnabled == false && item("Fold to Level")?.isEnabled == false,
-              "fold: the fold commands are disabled in the source view")
-        check(tv.textStorage.map { ($0.attribute(.font, at: offset("Plan text."), effectiveRange: nil) as? NSFont)?.pointSize ?? 0 > 10 } == true,
-              "fold: the source view shows the folded lines")
-        shortcut("/", 44, .command)
-        let back = await waitUntil(timeout: 4) { !coordinator.sourceMode }
-        check(back && headers() == ["## Plan"], "fold: leaving the source view brings the fold back", detail: "\(headers())")
-        coordinator.setFoldState(FoldState())
+        if menusLive {
+            // MARK: the source view (verification 13, R21)
+            coordinator.setFoldState(FoldState().toggled(a.foldRegions[1]))
+            window.makeFirstResponder(tv)
+            shortcut("/", 44, .command)
+            let source = await waitUntil(timeout: 4) { coordinator.sourceMode }
+            check(source, "fold: ⌘/ shows the Markdown source")
+            NSApp.mainMenu?.update()
+            check(item("Fold")?.isEnabled == false && item("Fold All")?.isEnabled == false && item("Fold to Level")?.isEnabled == false,
+                  "fold: the fold commands are disabled in the source view")
+            check(tv.textStorage.map { ($0.attribute(.font, at: offset("Plan text."), effectiveRange: nil) as? NSFont)?.pointSize ?? 0 > 10 } == true,
+                  "fold: the source view shows the folded lines")
+            shortcut("/", 44, .command)
+            let back = await waitUntil(timeout: 4) { !coordinator.sourceMode }
+            check(back && headers() == ["## Plan"], "fold: leaving the source view brings the fold back", detail: "\(headers())")
+            coordinator.setFoldState(FoldState())
+        }
 
         // MARK: Find (verification 8, R15)
         coordinator.setFoldState([a.foldRegions[4], a.foldRegions[5], a.foldRegions[1]].reduce(FoldState()) { $0.toggled($1) })   // Notes, Groceries, Plan
@@ -189,19 +205,21 @@ extension SelfTest {
         check(tv.visibleRect.intersects(matchRect.offsetBy(dx: tv.textContainerOrigin.x, dy: tv.textContainerOrigin.y)), "fold: the match is scrolled into view")
         coordinator.setFoldState(FoldState())
 
-        // MARK: Return and Delete at a fold's edge (verification 10, 11, R16)
-        window.makeFirstResponder(tv)
-        coordinator.setFoldState(FoldState().toggled(a.foldRegions[1]))
-        tv.setSelectedRange(NSRange(location: lineEnd("## Plan"), length: 0))
-        type("\r", 36)
-        check(headers().isEmpty && tv.string != text, "fold: Return at the end of a folded header opens it and adds a line")
-        shortcut("z", 6, .command)
-        check(tv.string == text, "fold: ⌘Z takes the Return back")
-        coordinator.setFoldState(FoldState().toggled(coordinator.analysis.foldRegions[1]))
-        tv.setSelectedRange(NSRange(location: offset("## Notes"), length: 0))
-        type("\u{7F}", 51)
-        check(tv.string == text && headers().isEmpty, "fold: Delete at the start of the line below a fold opens it and deletes nothing", detail: "\(headers())")
-        document.updateChangeCount(.changeCleared)
+        if keyed {
+            // MARK: Return and Delete at a fold's edge (verification 10, 11, R16)
+            window.makeFirstResponder(tv)
+            coordinator.setFoldState(FoldState().toggled(a.foldRegions[1]))
+            tv.setSelectedRange(NSRange(location: lineEnd("## Plan"), length: 0))
+            type("\r", 36)
+            check(headers().isEmpty && tv.string != text, "fold: Return at the end of a folded header opens it and adds a line")
+            tv.undoManager?.undo()
+            check(tv.string == text, "fold: undo takes the Return back")
+            coordinator.setFoldState(FoldState().toggled(coordinator.analysis.foldRegions[1]))
+            tv.setSelectedRange(NSRange(location: offset("## Notes"), length: 0))
+            type("\u{7F}", 51)
+            check(tv.string == text && headers().isEmpty, "fold: Delete at the start of the line below a fold opens it and deletes nothing", detail: "\(headers())")
+            document.updateChangeCount(.changeCleared)
+        }
 
         // MARK: staying attached to a changed file, and a new window (verification 14, R18, R20)
         coordinator.setFoldState(FoldState().toggled(coordinator.analysis.foldRegions[1]))

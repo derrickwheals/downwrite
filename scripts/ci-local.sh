@@ -77,7 +77,9 @@ if [ ${#FAILED[@]} -eq 0 ] && [ "$E2E" = 1 ]; then
     echo "   Leave the Mac alone until it finishes. Starting in 5 seconds (Ctrl-C to cancel)..."
     sleep 5
   fi
-  run_limited 240 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite \
+  # -ApplePersistenceIgnoreState YES: do not reopen the windows of an earlier session (a real or earlier test run's `work.md`, a document you
+  # had open) for this launch, nothing is saved either. Otherwise the self-test can pick up a stale window of the same name.
+  run_limited 240 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite -ApplePersistenceIgnoreState YES \
     --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md" \
     --selftest-fold="$PWD/Tests/Fixtures/fold-demo.md"
   CODE=$?
