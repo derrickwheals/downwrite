@@ -245,3 +245,393 @@ final class PrintRendererTests: XCTestCase {
         XCTAssertEqual(width, 0, "a file: image is not loaded by the print web view")
     }
 }
+
+
+/// The controller: phases, the preparing flag, the text it works from, failure and the left-out sheet (R2 to R5, R15, R16, R24 to R26).
+@MainActor
+final class DocumentOutputControllerTests: XCTestCase {
+    /// A controller wired to recorders instead of panels.
+    @MainActor final class Rig {
+        let controller = DocumentOutputController()
+        var text = "# Title\n\nBody text.\n"
+        var fileURL: URL?
+        var displayName = "Untitled"
+        var events: [String] = []
+        var destination: URL?
+        var asked: [(kind: DocumentOutputController.Kind, name: String, directory: URL?)] = []
+        var errors: [(String, String)] = []
+        var sheets: [[String]] = []
+        var diagramCalls: [String] = []
+        var window: NSWindow?
+
+        init() {
+            controller.snapshot = { [unowned self] in .init(text: text, fileURL: fileURL, displayName: displayName) }
+            controller.hostWindow = { [unowned self] in window }
+            controller.chooseDestination = { [unowned self] kind, name, directory in
+                events.append("panel:\(kind)")
+                asked.append((kind, name, directory))
+                return destination
+            }
+            controller.presentError = { [unowned self] title, message in events.append("error"); errors.append((title, message)) }
+            controller.presentOmissions = { [unowned self] lines in events.append("sheet"); sheets.append(lines) }
+            controller.renderDiagram = { [unowned self] source in
+                diagramCalls.append(source)
+                return .success("<svg xmlns=\"http://www.w3.org/2000/svg\" id=\"dwm\(diagramCalls.count)\" width=\"40\" height=\"20\" viewBox=\"0 0 40 20\"><rect width=\"40\" height=\"20\"/></svg>")
+            }
+            controller.diagramTimeout = 2
+        }
+
+        /// Waits until the command that was started has finished.
+        func finish() async { _ = await waitUntil(timeout: 20) { !controller.isPreparing } }
+    }
+
+    private func temporaryFolder() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dw-ctl-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
+    // MARK: R3: the text the editor holds
+
+    func testTheOutputIsMadeFromTheTextAsItIsAndNotFromTheFileOnDisk() async throws {
+        let dir = try temporaryFolder()
+        let file = dir.appendingPathComponent("notes.md")
+        try "# From disk\n\nDISK TEXT\n".write(to: file, atomically: true, encoding: .utf8)
+        let rig = Rig()
+        rig.fileURL = file
+        rig.displayName = "notes.md"
+        rig.text = "# Unsaved edit\n\nUNSAVED TEXT\n"
+        let made = try await rig.controller.makeHTML()
+        let html = try XCTUnwrap(made)
+        XCTAssertTrue(html.html.contains("UNSAVED TEXT"))
+        XCTAssertFalse(html.html.contains("DISK TEXT"))
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "# From disk\n\nDISK TEXT\n", "the file on disk is untouched")
+    }
+
+    func testAnUntitledDocumentIsOutputAsItStands() async throws {
+        let rig = Rig()
+        rig.text = "Just typed.\n"
+        let made = try await rig.controller.makeHTML()
+        let html = try XCTUnwrap(made)
+        XCTAssertTrue(html.html.contains("<p>Just typed.</p>"))
+        XCTAssertTrue(html.html.contains("<title>Untitled</title>"))
+    }
+
+    func testAnEditMadeAfterTheCommandWasChosenIsNotInTheFile() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("out.html")
+        rig.text = "BEFORE\n"
+        rig.controller.exportHTML()
+        rig.text = "AFTER\n"        // typed while it prepares
+        await rig.finish()
+        let written = try String(contentsOf: dir.appendingPathComponent("out.html"), encoding: .utf8)
+        XCTAssertTrue(written.contains("BEFORE"))
+        XCTAssertFalse(written.contains("AFTER"))
+    }
+
+    // MARK: R25: phases and the preparing flag
+
+    func testThePanelComesOnlyAfterPreparingAndTheFlagIsHeldUntilTheEnd() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("a.html")
+        rig.text = "```mermaid\ngraph TD\n```\n"
+        var flagWhenAsked: Bool?
+        rig.controller.chooseDestination = { [unowned rig] kind, name, directory in
+            flagWhenAsked = rig.controller.isPreparing
+            rig.events.append("panel")
+            return rig.destination
+        }
+        XCTAssertFalse(rig.controller.isPreparing)
+        rig.controller.exportHTML()
+        XCTAssertTrue(rig.controller.isPreparing, "disabled from the moment it is chosen")
+        await rig.finish()
+        XCTAssertEqual(rig.diagramCalls.count, 1, "the diagram was rendered before the panel")
+        XCTAssertEqual(flagWhenAsked, true)
+        XCTAssertFalse(rig.controller.isPreparing)
+        XCTAssertEqual(rig.events, ["panel"])
+    }
+
+    func testASecondCommandIsRefusedWhilePreparing() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("a.html")
+        rig.controller.exportHTML()
+        rig.controller.exportHTML()
+        rig.controller.exportPDF()
+        rig.controller.printDocument()
+        await rig.finish()
+        XCTAssertEqual(rig.events, ["panel:html"], "one command ran")
+        XCTAssertEqual(rig.asked.count, 1)
+    }
+
+    func testAnotherCommandCanStartOnceTheFirstHasFinished() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("a.html")
+        rig.controller.exportHTML()
+        await rig.finish()
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.asked.count, 2)
+    }
+
+    func testControllersAreIndependentPerWindow() async throws {
+        let a = Rig(), b = Rig()
+        a.controller.exportHTML()
+        XCTAssertTrue(a.controller.isPreparing)
+        XCTAssertFalse(b.controller.isPreparing, "another window is unaffected")
+        await a.finish()
+    }
+
+    func testClosingTheWindowWhilePreparingDropsTheWork() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("never.html")
+        rig.controller.exportHTML()
+        rig.controller.markWindowClosed()
+        await rig.finish()
+        XCTAssertEqual(rig.events, [], "no panel, no error, no sheet")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("never.html").path))
+    }
+
+    // MARK: R24: the save panel
+
+    func testTheSavePanelIsAskedForTheRightNameTypeAndFolder() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.fileURL = dir.appendingPathComponent("My Notes.md")
+        rig.displayName = "My Notes.md"
+        rig.destination = dir.appendingPathComponent("o.html")
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.asked.first?.kind, .html)
+        XCTAssertEqual(rig.asked.first?.name, "My Notes.html")
+        XCTAssertEqual(rig.asked.first?.directory?.standardizedFileURL.path, dir.standardizedFileURL.path)
+    }
+
+    func testAnUntitledDocumentIsCalledUntitledAndHasNoFolder() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("o.html")
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.asked.first?.name, "Untitled.html")
+        XCTAssertNil(rig.asked.first?.directory)
+    }
+
+    func testCancellingTheSavePanelWritesNothingAndShowsNothing() async throws {
+        let rig = Rig()
+        rig.destination = nil
+        rig.text = "![gone](missing.png)\n"
+        rig.fileURL = URL(fileURLWithPath: "/tmp/x/doc.md")
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.events, ["panel:html"])
+        XCTAssertEqual(rig.sheets.count, 0, "no sheet when the person cancelled")
+    }
+
+    // MARK: R26: failure
+
+    func testAnUnwritableDestinationGivesAnAlertAndLeavesNoFile() async throws {
+        let rig = Rig()
+        rig.destination = URL(fileURLWithPath: "/nonexistent-dir-\(UUID().uuidString)/out.html")
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.errors.count, 1)
+        XCTAssertEqual(rig.errors.first?.0, "Couldn't export")
+        XCTAssertFalse((rig.errors.first?.1 ?? "").isEmpty, "the system's reason is shown")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rig.destination!.path))
+        XCTAssertEqual(rig.sheets.count, 0)
+    }
+
+    func testAFailedWriteLeavesAnExistingFileAlone() async throws {
+        let dir = try temporaryFolder()
+        let existing = dir.appendingPathComponent("keep.html")
+        try "ORIGINAL".write(to: existing, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
+        let rig = Rig()
+        rig.destination = existing
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.errors.first?.0, "Couldn't export")
+        XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "ORIGINAL")
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertEqual(leftovers, ["keep.html"], "no partial file beside it")
+    }
+
+    // MARK: R16: the sheet
+
+    func testTheSheetListsWhatWasLeftOutAfterTheFileIsWritten() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.fileURL = dir.appendingPathComponent("doc.md")
+        rig.destination = dir.appendingPathComponent("out.html")
+        rig.text = "![a](missing.png) ![b](http://example.com/a.png) ![c](https://example.com/c.png)\n"
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.events, ["panel:html", "sheet"], "the sheet comes after the panel, once")
+        XCTAssertEqual(rig.sheets, [["missing.png (file not found)", "http://example.com/a.png (http images are not allowed)"]])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("out.html").path))
+    }
+
+    func testNoSheetWhenNothingWasLeftOut() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.destination = dir.appendingPathComponent("out.html")
+        rig.text = "![c](https://example.com/c.png)\n"
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertEqual(rig.events, ["panel:html"])
+    }
+
+    // MARK: R15: diagrams and the time limit
+
+    func testADiagramThatFailsIsANoteAndTheExportSucceeds() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.controller.renderDiagram = { _ in .failure(.failed("Parse error on line 2")) }
+        rig.text = "```mermaid\ngraph TD\n  A --> ((\n```\n"
+        rig.destination = dir.appendingPathComponent("o.html")
+        rig.controller.exportHTML()
+        await rig.finish()
+        let html = try String(contentsOf: rig.destination!, encoding: .utf8)
+        XCTAssertTrue(html.contains("Diagram could not be rendered: Parse error on line 2"))
+        XCTAssertTrue(html.contains("A --&gt; (("))
+        XCTAssertEqual(rig.errors.count, 0)
+    }
+
+    func testARendererThatNeverAnswersTimesOutAndTheRestAreNotAttempted() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        var calls = 0
+        rig.controller.renderDiagram = { _ in
+            calls += 1
+            try? await Task.sleep(nanoseconds: 3_600_000_000_000)   // an hour: it never returns in this test
+            return .success("<svg/>")
+        }
+        rig.controller.diagramTimeout = 0.4
+        rig.text = "```mermaid\nA\n```\n\n```mermaid\nB\n```\n\n```mermaid\nC\n```\n"
+        rig.destination = dir.appendingPathComponent("o.html")
+        let started = Date()
+        rig.controller.exportHTML()
+        await rig.finish()
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "it did not wait for the stuck renderer")
+        XCTAssertEqual(calls, 1, "after the first timeout the others are not attempted")
+        let html = try String(contentsOf: rig.destination!, encoding: .utf8)
+        XCTAssertTrue(html.contains("Diagram could not be rendered: timed out"))
+        XCTAssertEqual(html.components(separatedBy: "Diagram could not be rendered: renderer not responding").count - 1, 2)
+        XCTAssertTrue(html.contains("<pre><code>B</code></pre>") && html.contains("<pre><code>C</code></pre>"))
+    }
+
+    // MARK: R4, R5: the editor is not involved
+
+    func testOutputIsByteIdenticalWhateverTheWindowLooksLikeAndTheDocumentIsNotTouched() async throws {
+        let text = "# Title\n\n## Section\n\nBody with **bold** and ==mark==.\n\n- [x] done\n- [ ] todo\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        let plain = EditorHarness(text: text, dark: false)
+        let styled = EditorHarness(text: text, dark: true)
+        let mocha = EditorSettings(font: .avenirNext, size: 21, lineHeight: 1.8, width: 560, spellCheck: true, lightTheme: ThemeCatalog.defaultLightID, darkTheme: "catppuccin-mocha")
+        styled.coordinator.update(text: text, settings: mocha)
+        styled.coordinator.setSourceMode(true)
+        styled.coordinator.foldAll()
+        styled.select(3, 4)
+
+        func make(_ h: EditorHarness) async throws -> String {
+            let rig = Rig()
+            rig.controller.snapshot = { .init(text: h.textView.string, fileURL: nil, displayName: "doc.md") }
+            let made = try await rig.controller.makeHTML()
+            return try XCTUnwrap(made).html
+        }
+        let before = (string: styled.textView.string, selection: styled.textView.selectedRange(), canUndo: styled.textView.undoManager?.canUndo,
+                      folds: styled.coordinator.foldState, source: styled.coordinator.sourceMode)
+        let a = try await make(plain)
+        let b = try await make(styled)
+        XCTAssertEqual(a, b, "byte for byte")
+        XCTAssertEqual(styled.textView.string, before.string)
+        XCTAssertEqual(styled.textView.selectedRange(), before.selection)
+        XCTAssertEqual(styled.textView.undoManager?.canUndo, before.canUndo)
+        XCTAssertEqual(styled.coordinator.foldState, before.folds)
+        XCTAssertEqual(styled.coordinator.sourceMode, before.source)
+        XCTAssertEqual(styled.box.value, text)
+    }
+
+    // MARK: The three real outputs through the controller
+
+    func testExportAsPDFThroughTheControllerWritesAValidFile() async throws {
+        let dir = try temporaryFolder()
+        let rig = Rig()
+        rig.window = PrintRendererTests.hostWindow()
+        defer { rig.window?.close() }
+        rig.displayName = "doc.md"
+        rig.text = "# Title\n\nSome text in a PDF.\n"
+        rig.destination = dir.appendingPathComponent("doc.pdf")
+        rig.controller.exportPDF()
+        await rig.finish()
+        XCTAssertEqual(rig.events, ["panel:pdf"])
+        XCTAssertEqual(rig.asked.first?.name, "doc.pdf")
+        XCTAssertTrue(try Data(contentsOf: rig.destination!).starts(with: Data("%PDF-".utf8)))
+        XCTAssertEqual(rig.errors.count, 0)
+    }
+
+    func testAnUnwritablePDFDestinationGivesAnAlertAndLeavesNoFile() async throws {
+        let rig = Rig()
+        rig.window = PrintRendererTests.hostWindow()
+        defer { rig.window?.close() }
+        rig.destination = URL(fileURLWithPath: "/nonexistent-dir-\(UUID().uuidString)/out.pdf")
+        rig.controller.exportPDF()
+        await rig.finish()
+        XCTAssertEqual(rig.errors.first?.0, "Couldn't export")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rig.destination!.path))
+    }
+
+    func testPrintShowsThePanelOnceAndTheSheetOnlyIfThePrintWentThrough() async throws {
+        for succeeds in [true, false] {
+            let rig = Rig()
+            rig.window = PrintRendererTests.hostWindow()
+            defer { rig.window?.close() }
+            rig.fileURL = URL(fileURLWithPath: "/tmp/nowhere/doc.md")
+            rig.text = "![x](missing.png)\n"
+            var panels = 0
+            rig.controller.runPrintPanel = { _, _, _ in panels += 1; return succeeds }
+            rig.controller.printDocument()
+            await rig.finish()
+            XCTAssertEqual(panels, 1)
+            XCTAssertEqual(rig.sheets.count, succeeds ? 1 : 0, succeeds ? "sent: the sheet shows" : "cancelled: nothing shows")
+            XCTAssertEqual(rig.errors.count, 0)
+        }
+    }
+
+    func testTheHTMLFileLoadsInAFreshWebViewWithEveryImageAndDiagram() async throws {
+        let folder = try PrintRendererTests.makeFixtureFolder()
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let rig = Rig()
+        rig.controller.renderDiagram = { source in await MermaidService.shared.render(source, dark: false) }
+        rig.controller.diagramTimeout = 30
+        rig.fileURL = folder.appendingPathComponent("export-demo.md")
+        rig.displayName = "export-demo.md"
+        rig.text = try String(contentsOf: folder.appendingPathComponent("export-demo.md"), encoding: .utf8)
+        let out = folder.appendingPathComponent("export-demo.html")
+        let omissions = try await rig.controller.writeHTML(to: out)
+        XCTAssertEqual(Set(omissions.map(\.source)), ["missing.png", "big.png", "http://example.com/a.png"], "exactly the three images Fixture P cannot include")
+        XCTAssertEqual(omissions.first { $0.source == "big.png" }?.reason, .tooLarge)
+
+        let html = try String(contentsOf: out, encoding: .utf8)
+        for forbidden in ["<script", "onerror", "javascript:", "Secret front matter"] { XCTAssertFalse(html.lowercased().contains(forbidden.lowercased()), forbidden) }
+        XCTAssertTrue(html.hasPrefix("<!doctype html>\n<html>\n<head>\n<meta http-equiv=\"Content-Security-Policy\""))
+
+        // A new web view with no base URL, the way a browser on another Mac would open it: nothing refers to this Mac.
+        let loader = PrintRenderer()
+        try await loader.load(html)
+        let script = "JSON.stringify({embedded: Array.from(document.images).filter(i => i.src.startsWith('data:')).map(i => i.naturalWidth), diagrams: document.querySelectorAll('.dw-diagram svg').length, notes: document.querySelectorAll('.dw-note').length})"
+        let reply = try await loader.webView.evaluateJavaScript(script) as? String
+        let result = try XCTUnwrap(reply).data(using: .utf8).flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let embedded = try XCTUnwrap(result?["embedded"] as? [Int])
+        XCTAssertEqual(embedded.count, 4, "local.png (three times) and local.svg, all as data URIs")
+        XCTAssertTrue(embedded.allSatisfy { $0 > 0 }, "every embedded image decodes: \(embedded)")
+        XCTAssertEqual(result?["diagrams"] as? Int, 2, "the two good diagrams are inline SVG")
+        XCTAssertEqual(result?["notes"] as? Int, 1, "the broken one is a note above its source")
+    }
+}
