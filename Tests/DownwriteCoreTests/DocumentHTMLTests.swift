@@ -307,9 +307,9 @@ final class DocumentHTMLTests: XCTestCase {
 
     func testASuffixNeverCollidesWithAHeadingThatIsLiterallyCalledThat() {
         let html = body("# Foo\n\na\n\n# Foo\n\nb\n\n# Foo 1\n\nc\n")
-        XCTAssertTrue(html.contains("id=\"foo\""))
-        XCTAssertTrue(html.contains("id=\"foo-1\""))
-        XCTAssertTrue(html.contains("id=\"foo-1-1\""))
+        XCTAssertTrue(html.contains("<h1 id=\"foo\">Foo</h1>"))
+        XCTAssertTrue(html.contains("<h1 id=\"foo-2\">Foo</h1>"), "the repeat steps over foo-1, which the heading \"Foo 1\" owns")
+        XCTAssertTrue(html.contains("<h1 id=\"foo-1\">Foo 1</h1>"), "so #foo-1 goes where the editor sends it")
     }
 
     func testAFragmentLinkAndItsHeadingAgree() {
@@ -550,6 +550,25 @@ final class DocumentHTMLTests: XCTestCase {
             // R11.
             XCTAssertTrue(html.contains("[^1]") && html.contains("$x^2$") && html.contains("$$"))
             XCTAssertEqual(p.title, "Fixture P with bold and a link")
+        }
+    }
+
+    // MARK: Review findings (verifier): raw HTML after a heading, footnotes before a rule
+
+    func testAHeadingIsKeptWithABalancedRawHTMLBlockButNotWithOneThatOpensATag() {
+        XCTAssertEqual(body("# T\n\n<p align=\"center\">centred</p>\n"), "<div class=\"keep\">\n<h1 id=\"t\">T</h1>\n<p align=\"center\">centred</p>\n</div>\n")
+        XCTAssertEqual(body("# T\n\n<img src=\"a.png\">\n"), "<div class=\"keep\">\n<h1 id=\"t\">T</h1>\n<img src=\"a.png\">\n</div>\n")
+        XCTAssertFalse(body("# T\n\n<details>\n<summary>S</summary>\n\nx\n\n</details>\n").contains("class=\"keep\""), "it opens a tag that closes in a later block")
+        XCTAssertFalse(body("# T\n\n</div>\n").contains("class=\"keep\""), "it closes one that opened earlier")
+    }
+
+    func testAFootnoteDefinitionBeforeARuleOrUnderlineStaysAParagraphAndMakesNoHeading() {
+        for underline in ["---", "===", "-----"] {
+            let html = body("# One\n\nA note[^1]\n\n[^1]: https://example.com/footnote\n\(underline)\n\n## Two\n\n[jump](#two)\n")
+            XCTAssertEqual(html.components(separatedBy: "<h2").count - 1, 1, "only the real heading: \(html)")
+            XCTAssertTrue(html.contains("<h2 id=\"two\">Two</h2>"), html)
+            XCTAssertTrue(html.contains("[^1]: <a href=\"https://example.com/footnote\">"), html)
+            XCTAssertEqual(html.contains("<hr />"), underline.hasPrefix("-"), "the editor shows a rule after the definition: \(html)")
         }
     }
 }

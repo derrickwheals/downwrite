@@ -61,7 +61,24 @@ final class PrintRenderer: NSObject, WKNavigationDelegate {
             }
         }
         if !ok { throw RenderError.loadFailed(loadError ?? "unknown error") }
+        // A remote image that failed (or that is still unanswered after the time limit) is its alt text (R25), not a broken-image icon. Only
+        // images that are not embedded are looked at: a `data:` image is always meant to be there, whatever size the engine reports for it.
+        _ = try? await webView.evaluateJavaScript(Self.swapBrokenImages)
     }
+
+    private static let swapBrokenImages = """
+    (function () {
+      document.querySelectorAll('img').forEach(function (i) {
+        var src = i.currentSrc || i.getAttribute('src') || '';
+        if (src.indexOf('data:') === 0) return;
+        if (i.complete && i.naturalWidth > 0) return;
+        var s = document.createElement('span');
+        s.className = 'dw-missing';
+        s.textContent = i.getAttribute('alt') || (src.split('?')[0].split('#')[0].split('/').pop() || 'image');
+        i.replaceWith(s);
+      });
+    })()
+    """
 
     private func finishLoad(_ ok: Bool) {
         guard let waiter else { return }

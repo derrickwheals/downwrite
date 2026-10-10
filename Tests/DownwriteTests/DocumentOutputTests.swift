@@ -238,6 +238,63 @@ final class PrintRendererTests: XCTestCase {
         XCTAssertTrue(operation.view?.knowsPageRange(&range) == true)
     }
 
+    // MARK: R19, R15: a figure taller than a page is scaled to fit one, in either orientation
+
+    func testATallImageAndATallDiagramStayOnOnePageInPortraitAndLandscape() async throws {
+        let size = NSSize(width: 400, height: 1400)
+        let image = NSImage(size: size)
+        image.lockFocus(); NSColor(srgbRed: 0, green: 0.2, blue: 1, alpha: 1).setFill(); NSRect(origin: .zero, size: size).fill(); image.unlockFocus()
+        let png = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation))?.representation(using: .png, properties: [:]))
+        let tallSVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" viewBox=\"0 0 300 1500\" style=\"max-width:300px\"><rect width=\"300\" height=\"1500\" fill=\"#dd0000\"/></svg>"
+        let p = DocumentHTML.prepare("before\n\n![tall](data:image/png;base64,\(png.base64EncodedString()))\n\n```mermaid\nA\n```\n\nafter\n", options: .init(target: .print, documentName: "tall.md"))
+        let html = DocumentHTML.assemble(p, images: [p.imageSources[0]: .keep], diagrams: [.svg(tallSVG)]).html
+
+        func pagesWithInk(_ doc: PDFDocument, _ isInk: (NSColor) -> Bool) -> Int {
+            var pages = 0
+            for i in 0..<doc.pageCount {
+                guard let rep = NSBitmapImageRep(data: doc.page(at: i)?.thumbnail(of: NSSize(width: 200, height: 280), for: .mediaBox).tiffRepresentation ?? Data()) else { continue }
+                let found = (0..<rep.pixelsHigh).contains { y in stride(from: 0, to: rep.pixelsWide, by: 2).contains { x in rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB).map(isInk) ?? false } }
+                if found { pages += 1 }
+            }
+            return pages
+        }
+        defer { NSPrintInfo.shared.orientation = .portrait }
+        for orientation in [NSPrintInfo.PaperOrientation.portrait, .landscape] {
+            NSPrintInfo.shared.orientation = orientation
+            let renderer = PrintRenderer()
+            try await renderer.load(html)
+            let window = Self.hostWindow()
+            defer { window.close() }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("dw-tall-\(UUID().uuidString).pdf")
+            defer { try? FileManager.default.removeItem(at: url) }
+            try await renderer.writePDF(to: url, in: window, jobTitle: "tall")
+            let doc = try XCTUnwrap(PDFDocument(url: url))
+            let name = orientation == .portrait ? "portrait" : "landscape"
+            XCTAssertEqual(pagesWithInk(doc) { $0.blueComponent - $0.redComponent > 0.4 }, 1, "the tall image is cut across pages in \(name)")
+            XCTAssertEqual(pagesWithInk(doc) { $0.redComponent - $0.blueComponent > 0.4 }, 1, "the tall diagram is cut across pages in \(name)")
+        }
+    }
+
+    // MARK: R25: an image that cannot be loaded is its alt text
+
+    func testAnImageThatFailsToLoadBecomesItsAltText() async throws {
+        let renderer = PrintRenderer()
+        try await renderer.load("<!doctype html><p>text</p><img id=\"a\" src=\"https://no-such-host.invalid/logo.png\" alt=\"remote logo\"><img src=\"https://no-such-host.invalid/x/photo.png?w=1\">")
+        let reply = try await renderer.webView.evaluateJavaScript("JSON.stringify({images: document.images.length, notes: Array.from(document.querySelectorAll('.dw-missing')).map(e => e.textContent)})") as? String
+        let result = try XCTUnwrap(reply).data(using: .utf8).flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        XCTAssertEqual(result?["images"] as? Int, 0, "no broken-image icons")
+        XCTAssertEqual(result?["notes"] as? [String], ["remote logo", "photo.png"], "the alt text, or the file name without one")
+    }
+
+    func testAnEmbeddedImageIsNeverSwappedForText() async throws {
+        let renderer = PrintRenderer()
+        // An SVG with no intrinsic size reports a natural width of 0 in some engines; it is still a good image.
+        let svg = "data:image/svg+xml;base64," + Data("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>".utf8).base64EncodedString()
+        try await renderer.load("<!doctype html><img src=\"\(svg)\" alt=\"icon\">")
+        let count = try await renderer.webView.evaluateJavaScript("document.images.length") as? Int
+        XCTAssertEqual(count, 1)
+    }
+
     // MARK: R28: the web view is locked down
 
     func testAScriptInThePageDoesNotRun() async throws {
@@ -264,9 +321,11 @@ final class PrintRendererTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         try Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")!.write(to: dir.appendingPathComponent("s.png"))
         let renderer = PrintRenderer()
-        try await renderer.load("<!doctype html><img id=\"i\" src=\"file://\(dir.path)/s.png\"><p>x</p>")
-        let width = try await renderer.webView.evaluateJavaScript("document.getElementById('i').naturalWidth") as? Int
-        XCTAssertEqual(width, 0, "a file: image is not loaded by the print web view")
+        try await renderer.load("<!doctype html><img src=\"file://\(dir.path)/s.png\" alt=\"secret picture\"><p>x</p>")
+        let reply = try await renderer.webView.evaluateJavaScript("JSON.stringify({images: document.images.length, notes: Array.from(document.querySelectorAll('.dw-missing')).map(e => e.textContent)})") as? String
+        let result = try XCTUnwrap(reply).data(using: .utf8).flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        XCTAssertEqual(result?["images"] as? Int, 0, "a file: image is not loaded by the print web view")
+        XCTAssertEqual(result?["notes"] as? [String], ["secret picture"], "it is its alt text instead")
     }
 }
 

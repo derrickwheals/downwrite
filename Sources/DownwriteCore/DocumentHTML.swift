@@ -70,10 +70,18 @@ public enum DocumentHTML {
     static func protectFootnoteDefinitions(_ text: String) -> String {
         guard text.contains("[^") else { return text }
         var fence: (character: Character, length: Int)?
-        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var out: [String] = []
+        out.reserveCapacity(lines.count + 4)
+        func isUnderline(_ line: String) -> Bool {
+            let stripped = line.drop(while: { $0 == " " })
+            guard line.count - stripped.count <= 3, let c = stripped.first, c == "=" || c == "-" else { return false }
+            return stripped.allSatisfy { $0 == c || $0 == " " || $0 == "\t" || $0 == "\r" }
+        }
         for i in lines.indices {
-            let stripped = lines[i].drop(while: { $0 == " " })
-            let indent = lines[i].count - stripped.count
+            var line = lines[i]
+            let stripped = line.drop(while: { $0 == " " })
+            let indent = line.count - stripped.count
             if indent <= 3, let c = stripped.first, c == "`" || c == "~" {
                 let run = stripped.prefix(while: { $0 == c }).count
                 if run >= 3 {
@@ -82,15 +90,22 @@ public enum DocumentHTML {
                     } else {
                         fence = (c, run)
                     }
+                    out.append(line)
                     continue
                 }
             }
+            var protected = false
             if fence == nil, indent <= 3, stripped.hasPrefix("[^"), let close = stripped.firstIndex(of: "]"),
                stripped[stripped.index(after: close)...].hasPrefix(":"), !stripped[stripped.index(stripped.startIndex, offsetBy: 2)..<close].contains(where: { $0.isWhitespace }) {
-                lines[i] = String(lines[i].prefix(indent)) + "\\" + stripped
+                line = String(line.prefix(indent)) + "\\" + stripped
+                protected = true
             }
+            out.append(line)
+            // cmark used to take the definition line away, leaving a `---` or `===` under it a rule or a paragraph; as text it would become the
+            // underline of a heading, so a blank line keeps it what the editor shows.
+            if protected, i + 1 < lines.count, isUnderline(lines[i + 1]) { out.append("") }
         }
-        return lines.joined(separator: "\n")
+        return out.joined(separator: "\n")
     }
 }
 

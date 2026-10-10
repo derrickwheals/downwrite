@@ -67,8 +67,9 @@ final class HeadingAnchorTests: XCTestCase {
     }
 
     func testASuffixNeverCollidesWithALiteralSlug() {
-        // "Foo", "Foo", "Foo 1": the second heading takes foo-1, so the third (whose own slug is foo-1) moves on.
-        XCTAssertEqual(HeadingAnchor.unique(["foo", "foo", "foo-1"]), ["foo", "foo-1", "foo-1-1"])
+        // "Foo", "Foo", "Foo 1": the heading called "Foo 1" keeps foo-1 (the editor sends #foo-1 there), so the repeat takes foo-2.
+        XCTAssertEqual(HeadingAnchor.unique(["foo", "foo", "foo-1"]), ["foo", "foo-2", "foo-1"])
+        XCTAssertEqual(HeadingAnchor.unique(["one", "one", "one-1", "one-2"]), ["one", "one-3", "one-1", "one-2"])
         // "Foo 1" first: the later duplicates of "Foo" skip the taken foo-1.
         XCTAssertEqual(HeadingAnchor.unique(["foo-1", "foo", "foo"]), ["foo-1", "foo", "foo-2"])
     }

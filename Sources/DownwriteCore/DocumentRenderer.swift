@@ -66,13 +66,38 @@ final class DocumentRenderer {
             guard kids[i] is Heading else { block(kids[i]); i += 1; continue }
             var j = i
             while j < kids.count, kids[j] is Heading { j += 1 }
-            let end = (j < kids.count && !(kids[j] is HTMLBlock)) ? j + 1 : j
+            let end = (j < kids.count && Self.mayJoinAHeading(kids[j])) ? j + 1 : j
             let wrap = end - i > 1
             if wrap { html += "<div class=\"keep\">\n" }
             for k in i..<end { block(kids[k]) }
             if wrap { html += "</div>\n"; endBlock() }
             i = end
         }
+    }
+
+    /// Whether a block can be wrapped together with the heading before it: anything but raw HTML that is not self-contained (a `<details>`
+    /// that closes three blocks later would be closed early by the wrapper).
+    private static func mayJoinAHeading(_ node: Markup) -> Bool {
+        guard let html = node as? HTMLBlock else { return true }
+        return isBalanced(html.rawHTML)
+    }
+
+    /// Every tag the HTML opens it also closes, in order. `script` and `style` count as closed (the tokeniser skips their content).
+    static func isBalanced(_ html: String) -> Bool {
+        let voids: Set<String> = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr", "script", "style"]
+        var open: [String] = []
+        var matched = true
+        HTMLTokenizer(html).run { token in
+            switch token {
+            case .start(let tag):
+                let name = tag.name.lowercased()
+                if !tag.selfClosing && !voids.contains(name) { open.append(name) }
+            case .end(let name):
+                if open.last == name.lowercased() { open.removeLast() } else if !voids.contains(name.lowercased()) { matched = false }
+            case .text: break
+            }
+        }
+        return matched && open.isEmpty
     }
 
     private func block(_ node: Markup) {

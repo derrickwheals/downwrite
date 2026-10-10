@@ -192,7 +192,8 @@ final class PrintStyleTests: XCTestCase {
     func testCodeWrapsOnPaperAndImagesFitAPage() {
         XCTAssertEqual(declarations("pre", in: print)["white-space"], "pre-wrap")
         XCTAssertEqual(declarations("pre", in: print)["overflow-wrap"], "anywhere")
-        XCTAssertEqual(declarations("img", in: print)["max-height"], "23cm")
+        XCTAssertEqual(declarations("img", in: print)["max-height"], "15cm", "small enough for a landscape page too: WebKit does not follow the print panel's orientation in CSS")
+        XCTAssertEqual(declarations(".dw-diagram svg", in: print)["max-height"], "15cm")
         XCTAssertEqual(declarations("img", in: print)["max-width"], "100%")
         XCTAssertEqual(declarations(".dw-table", in: print)["overflow"], "visible")
     }

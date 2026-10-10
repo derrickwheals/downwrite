@@ -110,7 +110,7 @@ extension EditorScene {
     fileprivate func configureOutput(for window: NSWindow?) {
         output.attach(window: window)
         let text = $document
-        output.snapshot = {
+        output.snapshot = { [weak window] in
             let nsDocument = window.flatMap { NSDocumentController.shared.document(for: $0) }
             let url = nsDocument?.fileURL
             return DocumentOutputController.Snapshot(text: text.wrappedValue.text, fileURL: url, displayName: url == nil ? "Untitled" : (nsDocument?.displayName ?? "Untitled"))

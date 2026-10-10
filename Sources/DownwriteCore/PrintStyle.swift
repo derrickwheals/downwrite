@@ -57,7 +57,9 @@ public enum PrintStyle {
             "h1,h2,h3,h4,h5,h6{break-after:avoid;page-break-after:avoid}",
             ".keep,tr,li.task,blockquote,.dw-diagram,img{break-inside:avoid;page-break-inside:avoid}",
             "p,li,pre{orphans:2;widows:2}",
-            "img{max-height:23cm}",
+            // 15 cm is a page's height on the smallest page the print panel offers (A4 on its side): WebKit ignores the orientation in CSS
+            // (`vh` and `@media (orientation)` do not follow the page), and a taller figure would be cut instead of scaled to fit.
+            "img,.dw-diagram svg{max-height:15cm}",
         ]
         if isPrint {
             rules += paper

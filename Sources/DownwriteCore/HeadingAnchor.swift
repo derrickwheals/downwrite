@@ -12,16 +12,18 @@ public enum HeadingAnchor {
     }
 
     /// The `id` for each heading, from the headings' slugs in document order. The first heading with a slug keeps it (the editor resolves
-    /// a fragment to the first match); a later heading that would repeat an id takes `-1`, `-2` … after it, skipping any id already taken
-    /// (so a heading titled "Foo 1" and a second "Foo" never share `foo-1`). A heading with an empty slug has no id and takes no part.
+    /// a fragment to the first match); a later heading that would repeat an id takes `-1`, `-2` … after it. A suffix never lands on a slug
+    /// that some heading in the document has by its own title, so a heading called "Foo 1" keeps `foo-1` and `#foo-1` goes where the editor
+    /// sends it, whatever order the headings come in. A heading with an empty slug has no id and takes no part.
     public static func unique(_ slugs: [String]) -> [String?] {
+        let natural = Set(slugs.filter { !$0.isEmpty })
         var used = Set<String>()
         var nextSuffix: [String: Int] = [:]
         return slugs.map { slug in
             guard !slug.isEmpty else { return nil }
             if used.insert(slug).inserted { return slug }
             var n = nextSuffix[slug, default: 1]
-            while used.contains("\(slug)-\(n)") { n += 1 }
+            while natural.contains("\(slug)-\(n)") || used.contains("\(slug)-\(n)") { n += 1 }
             let id = "\(slug)-\(n)"
             used.insert(id)
             nextSuffix[slug] = n + 1
