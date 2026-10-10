@@ -194,14 +194,7 @@ private struct Builder {
     /// YAML front matter (`---` … `---` at the very top) is blanked out before parsing so cmark does not
     /// see a thematic break / setext heading, while line numbers stay intact.
     private mutating func maskFrontMatter() -> String {
-        guard src.lineCount > 2, content(0) == "---" || content(0).hasPrefix("---") && content(0).dropFirst(3).allSatisfy({ $0 == " " }) else {
-            return original
-        }
-        var close: Int?
-        for i in 1..<src.lineCount where content(i) == "---" || content(i) == "..." {
-            close = i; break
-        }
-        guard let end = close else { return original }
+        guard let end = FrontMatter.endLine(in: src) else { return original }
         var units = src.units
         for l in 0...end {
             for p in src.lineStarts[l]..<src.lineContentEnds[l] { units[p] = 32 }
@@ -693,14 +686,9 @@ private struct Builder {
 
     // MARK: Extensions (highlight, footnotes, math)
 
-    private static let highlightRE = try! NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==")
     private static let footnoteRE = try! NSRegularExpression(pattern: "\\[\\^[^\\]\\s]+\\]:?")
     private static let mathInlineRE = try! NSRegularExpression(pattern: "(?<![\\\\$])\\$(?![\\s$])([^$\\n]+?)(?<![\\s\\\\])\\$(?![\\d$])")
     private static let mathBlockRE = try! NSRegularExpression(pattern: "\\$\\$(.+?)\\$\\$", options: [.dotMatchesLineSeparators])
-
-    /// Bare URLs (GFM "autolink literals"), which the bundled cmark build does not produce on its own.
-    private static let bareURLRE = try! NSRegularExpression(
-        pattern: "(?<![\\w/@(\\[])(?:https?://|www\\.)[^\\s<>\\[\\]]*[^\\s<>\\[\\].,;:!?'\"”’)\\]*_~]")
 
     private mutating func extensions(in container: NSRange, protected: [NSRange]) {
         var units = Array(src.units[container.location..<NSMaxRange(container)])
@@ -712,20 +700,20 @@ private struct Builder {
         let whole = NSRange(location: 0, length: s.utf16.count)
         func shift(_ r: NSRange) -> NSRange { NSRange(location: r.location + container.location, length: r.length) }
 
-        for m in Self.highlightRE.matches(in: s, range: whole) {
+        for m in InlineExtensions.highlight.matches(in: s, range: whole) {
             let r = shift(m.range)
             addSpan(r, .highlight)
             addMarker(NSRange(location: r.location, length: 2), reveal: r)
             addMarker(NSRange(location: NSMaxRange(r) - 2, length: 2), reveal: r)
         }
-        for m in Self.bareURLRE.matches(in: s, range: whole) {
+        for m in InlineExtensions.bareURL.matches(in: s, range: whole) {
             let r = shift(m.range)
             let overlapsLink = links.contains { NSIntersectionRange($0.range, r).length > 0 }
             let inProtected = protected.contains { NSIntersectionRange($0, r).length > 0 }
             guard !overlapsLink, !inProtected else { continue }
             let text = src.string(r)
             addSpan(r, .link)
-            links.append(LinkSpan(range: r, textRange: r, destination: text.hasPrefix("www.") ? "https://" + text : text))
+            links.append(LinkSpan(range: r, textRange: r, destination: InlineExtensions.destination(forBareURL: text)))
         }
         for m in Self.footnoteRE.matches(in: s, range: whole) { addSpan(shift(m.range), .footnote) }
         for m in Self.mathBlockRE.matches(in: s, range: whole) { addSpan(shift(m.range), .math) }

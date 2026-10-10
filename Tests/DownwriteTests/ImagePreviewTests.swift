@@ -58,4 +58,110 @@ final class ImagePreviewTests: XCTestCase {
         XCTAssertTrue(h.coordinator.analysis.previewBlocks.isEmpty)
         XCTAssertEqual(h.textView.subviews.compactMap { $0 as? DiagramView }.count, 0)
     }
+
+    // MARK: ImageLoader.embed: why a file is not embedded (export and print, R14)
+
+    private func scratchFolder() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dw-embed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
+    func testEmbedReturnsTheDataURIAndTheFileSize() throws {
+        let dir = try makeFolder(withImageNamed: "pic.png", size: NSSize(width: 20, height: 20))
+        let url = dir.appendingPathComponent("pic.png")
+        let size = try XCTUnwrap(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        guard case .image(let uri, let bytes) = ImageLoader.embed(at: url) else { return XCTFail("not embedded") }
+        XCTAssertTrue(uri.hasPrefix("data:image/png;base64,"))
+        XCTAssertEqual(bytes, size)
+        XCTAssertEqual(ImageLoader.dataURI(at: url), uri, "the editor's cards get the same bytes as before")
+    }
+
+    func testEmbedHandlesAnSVGAndAnUpperCaseExtension() throws {
+        let dir = try scratchFolder()
+        try "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>".write(to: dir.appendingPathComponent("a.svg"), atomically: true, encoding: .utf8)
+        guard case .image(let uri, _) = ImageLoader.embed(at: dir.appendingPathComponent("a.svg")) else { return XCTFail("svg not embedded") }
+        XCTAssertTrue(uri.hasPrefix("data:image/svg+xml;base64,"), uri)
+        let png = try makeFolder(withImageNamed: "SHOUT.PNG", size: NSSize(width: 8, height: 8))
+        guard case .image(let upper, _) = ImageLoader.embed(at: png.appendingPathComponent("SHOUT.PNG")) else { return XCTFail("upper-case extension") }
+        XCTAssertTrue(upper.hasPrefix("data:image/png;base64,"))
+    }
+
+    func testEmbedSaysWhyAFileIsNotUsed() throws {
+        let dir = try scratchFolder()
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("missing.png")), .notFound)
+        try "words".write(to: dir.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("notes.txt")), .notAnImage)
+        try "x".write(to: dir.appendingPathComponent("noextension"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("noextension")), .notAnImage)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("folder.png"), withIntermediateDirectories: false)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("folder.png")), .notAnImage, "a folder is not an image even if it is named like one")
+        XCTAssertNil(ImageLoader.dataURI(at: dir.appendingPathComponent("notes.txt")))
+    }
+
+    /// A real PNG followed by zero bytes up to `count` bytes in all: decoders ignore what follows the image.
+    private func png(paddedTo count: Int, named name: String, in dir: URL) throws -> URL {
+        let source = try makeFolder(withImageNamed: "seed.png", size: NSSize(width: 8, height: 8)).appendingPathComponent("seed.png")
+        var data = try Data(contentsOf: source)
+        XCTAssertLessThanOrEqual(data.count, count)
+        data.append(Data(count: count - data.count))
+        let url = dir.appendingPathComponent(name)
+        try data.write(to: url)
+        return url
+    }
+
+    func testTheEightMegabyteLimitIsExactlyEightMillionBytes() throws {
+        let dir = try scratchFolder()
+        let atLimit = try png(paddedTo: 8_000_000, named: "at.png", in: dir), over = try png(paddedTo: 8_000_001, named: "over.png", in: dir)
+        guard case .image(_, let bytes) = ImageLoader.embed(at: atLimit) else { return XCTFail("8,000,000 bytes should be embedded") }
+        XCTAssertEqual(bytes, 8_000_000)
+        XCTAssertEqual(ImageLoader.embed(at: over), .tooLarge)
+        XCTAssertNil(ImageLoader.dataURI(at: over))
+    }
+
+    func testABigFileThatIsNotAnImageIsNotAnImageFirst() throws {
+        let dir = try scratchFolder()
+        try Data(count: 9_000_000).write(to: dir.appendingPathComponent("huge.bin"))
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("huge.bin")), .notAnImage)
+    }
+
+    // MARK: A name is not proof: the bytes are checked (review finding 1)
+
+    func testAFileNamedLikeAnImageButHoldingSomethingElseIsNotEmbedded() throws {
+        let dir = try scratchFolder()
+        try "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n".write(to: dir.appendingPathComponent("banner.png"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("banner.png")), .notAnImage)
+        try "just words".write(to: dir.appendingPathComponent("fake.svg"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("fake.svg")), .notAnImage)
+        try Data().write(to: dir.appendingPathComponent("empty.jpg"))
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("empty.jpg")), .notAnImage)
+    }
+
+    func testALinkNamedLikeAnImageThatLeadsToASecretIsNotEmbedded() throws {
+        let dir = try scratchFolder()
+        let secret = dir.appendingPathComponent("id_ed25519")
+        try "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n".write(to: secret, atomically: true, encoding: .utf8)
+        let link = dir.appendingPathComponent("banner.png")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: secret)
+        XCTAssertEqual(ImageLoader.embed(at: link), .notAnImage)
+        XCTAssertNil(ImageLoader.dataURI(at: link))
+    }
+
+    func testALinkToARealImageIsStillEmbeddedAndTheLimitIsTheTargets() throws {
+        let dir = try scratchFolder()
+        let real = try makeFolder(withImageNamed: "real.png", size: NSSize(width: 12, height: 12)).appendingPathComponent("real.png")
+        let link = dir.appendingPathComponent("link.png")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        guard case .image(let uri, let bytes) = ImageLoader.embed(at: link) else { return XCTFail("a link to an image should be embedded") }
+        XCTAssertTrue(uri.hasPrefix("data:image/png;base64,"))
+        XCTAssertEqual(bytes, try XCTUnwrap(try real.resourceValues(forKeys: [.fileSizeKey]).fileSize))
+        let big = try png(paddedTo: 8_000_001, named: "big.png", in: dir)
+        let bigLink = dir.appendingPathComponent("biglink.png")
+        try FileManager.default.createSymbolicLink(at: bigLink, withDestinationURL: big)
+        XCTAssertEqual(ImageLoader.embed(at: bigLink), .tooLarge, "the size of the file the link leads to counts, not the link's")
+        let dangling = dir.appendingPathComponent("dangling.png")
+        try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: dir.appendingPathComponent("gone.png"))
+        XCTAssertEqual(ImageLoader.embed(at: dangling), .notFound)
+    }
 }

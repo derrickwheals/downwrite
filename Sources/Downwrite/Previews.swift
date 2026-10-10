@@ -227,12 +227,35 @@ enum ImageLoader {
     /// The largest image file that is embedded into an HTML card.
     static let maxEmbeddedBytes = 8_000_000
 
+    /// The image file at `url` as a `data:` URI with its size, or why it cannot be embedded: it is missing or unreadable, it is not an image
+    /// type WebKit shows (a folder, a text file, a file whose bytes are not that image), or it is larger than ``maxEmbeddedBytes``. The type
+    /// is checked before the size. The name only says what a file claims to be: a link named `banner.png` can lead anywhere, and the bytes
+    /// of an exported file travel, so the bytes are checked too (the size is the target's, not the link's).
+    static func embed(at url: URL) -> DocumentHTML.LocalImage {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return .notFound }
+        guard !isDirectory.boolValue, let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
+              let mime = type.preferredMIMEType else { return .notAnImage }
+        let file = url.resolvingSymlinksInPath()
+        guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { return .notFound }
+        guard size <= maxEmbeddedBytes else { return .tooLarge }
+        guard let data = try? Data(contentsOf: file) else { return .notFound }
+        guard looksLikeAnImage(data, of: type) else { return .notAnImage }
+        return .image(dataURI: "data:\(mime);base64,\(data.base64EncodedString())", byteCount: data.count)
+    }
+
+    /// Whether `data` really is an image of `type`: an SVG has to contain an `<svg` element near its start, anything else has to be
+    /// something the system's image decoder opens.
+    private static func looksLikeAnImage(_ data: Data, of type: UTType) -> Bool {
+        if type.conforms(to: .svg) { return String(decoding: data.prefix(4096), as: UTF8.self).lowercased().contains("<svg") }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
+        return CGImageSourceGetCount(source) > 0
+    }
+
     /// The image file at `url` as a `data:` URI, or `nil` if it is missing, too big or not an image type WebKit shows.
     static func dataURI(at url: URL) -> String? {
-        guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image), let mime = type.preferredMIMEType,
-              let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxEmbeddedBytes,
-              let data = try? Data(contentsOf: url) else { return nil }
-        return "data:\(mime);base64,\(data.base64EncodedString())"
+        if case .image(let uri, _) = embed(at: url) { return uri }
+        return nil
     }
 }
 

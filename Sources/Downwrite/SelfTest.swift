@@ -79,6 +79,10 @@ enum SelfTest {
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         dumpMenus(outDir)
+        if exportOnly, let fixture = exportFixture {           // (development: just the print and export walkthrough)
+            await exportWalkthrough(outDir: outDir, fixture: fixture, reusing: tv)
+            return finish(outDir)
+        }
         check(NSApp.mainMenu?.items.contains { $0.title == "Format" } == true, "Format menu is installed")
         let viewMenu = NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu
         check(viewMenu?.items.contains { $0.title.hasSuffix("Table of Contents") } == true, "View menu has the Table of Contents toggle")
@@ -673,6 +677,10 @@ enum SelfTest {
         UserDefaults.standard.set(ThemeChoice.system.rawValue, forKey: Prefs.theme)
         ThemeChoice.applyCurrent()
         check(NSApp.appearance == nil, "system theme clears the appearance override")
+
+        // 7b. Print and export, end to end (SelfTestExport.swift). It runs in this run's first window (the one SwiftUI resolves the File menu's
+        // focused-object items against) and before step 8, which replaces the document.
+        if let fixture = exportFixture { await exportWalkthrough(outDir: outDir, fixture: fixture, reusing: tv) }
 
         // 8. Regression (runs last because it replaces the document): with a wide table (the README's keyboard shortcuts) the grid must stay lined up with the text
         // and keep the right reserved height while the sidebar opens and closes, however fast.
