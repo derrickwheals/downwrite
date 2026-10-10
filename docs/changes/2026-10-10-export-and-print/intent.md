@@ -6,7 +6,7 @@ track: feature
 status: accepted
 raised: 2026-10-10
 accepted: 2026-10-10
-merged:
+merged: 2026-10-10
 backlog: "DW-001 (docs/ROADMAP.md#dw-001--export-and-print)"
 ---
 
