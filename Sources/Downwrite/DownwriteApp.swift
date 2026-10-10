@@ -16,6 +16,7 @@ struct DownwriteApp: App {
             FormatCommands()
             ViewCommands()
             WindowCommands()
+            OutputCommands()
             AppCommands()
         }
 
@@ -40,6 +41,8 @@ struct EditorScene: View {
     @AppStorage(Prefs.darkTheme) private var darkTheme = ThemeCatalog.defaultDarkID
     @AppStorage(Prefs.showTOC) private var showTOC = false
     @StateObject private var toc = TOCModel()
+    /// Print…, Export as PDF… and Export as HTML… for this window (see `DocumentOutput.swift`).
+    @StateObject private var output = DocumentOutputController()
     @ObservedObject private var themeStore = ThemeStore.shared
     /// The source view is per window and starts off.
     @State private var sourceMode = false
@@ -66,9 +69,11 @@ struct EditorScene: View {
                     .inspectorColumnWidth(min: 200, ideal: 250, max: 380)
             }
             .frame(minWidth: 420, minHeight: 320)
+            .focusedSceneObject(output)
             .focusedSceneValue(\.sourceMode, $sourceMode)
             .focusedSceneValue(\.keepOnTop, $keepOnTop)
             .background(WindowLevelSetter(floating: keepOnTop))
+            .background(WindowReader { window in configureOutput(for: window) })
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Toggle(isOn: $sourceMode) {
@@ -96,6 +101,20 @@ struct EditorScene: View {
                     .accessibilityIdentifier("toc-toggle")
                 }
             }
+    }
+}
+
+extension EditorScene {
+    /// Tells the output controller which window it serves and how to read the document: the text as the editor holds it (not the file on
+    /// disk), and the file the window is for *now* (an untitled document that is saved gets its folder from then on).
+    fileprivate func configureOutput(for window: NSWindow?) {
+        output.attach(window: window)
+        let text = $document
+        output.snapshot = {
+            let nsDocument = window.flatMap { NSDocumentController.shared.document(for: $0) }
+            let url = nsDocument?.fileURL
+            return DocumentOutputController.Snapshot(text: text.wrappedValue.text, fileURL: url, displayName: url == nil ? "Untitled" : (nsDocument?.displayName ?? "Untitled"))
+        }
     }
 }
 
@@ -271,6 +290,25 @@ struct ViewCommands: Commands {
             Button("Bigger Text") { fontSize = min(fontSize + 1, 36) }.keyboardShortcut("=", modifiers: .command)
             Button("Smaller Text") { fontSize = max(fontSize - 1, 11) }.keyboardShortcut("-", modifiers: .command)
             Button("Actual Size") { fontSize = 17 }.keyboardShortcut("0", modifiers: [.command, .option])
+        }
+    }
+}
+
+/// File ▸ Print…, Export as PDF… and Export as HTML…, together where Print belongs. They act on the frontmost document window and are
+/// disabled when there is none (only Settings open) and while that window is preparing an output (R1, R2).
+struct OutputCommands: Commands {
+    @FocusedObject private var output: DocumentOutputController?
+
+    var body: some Commands {
+        CommandGroup(replacing: .printItem) {
+            let unavailable = output == nil || output?.isPreparing == true
+            Button("Print…") { output?.printDocument() }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(unavailable)
+            Button("Export as PDF…") { output?.exportPDF() }
+                .disabled(unavailable)
+            Button("Export as HTML…") { output?.exportHTML() }
+                .disabled(unavailable)
         }
     }
 }

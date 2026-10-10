@@ -634,4 +634,98 @@ final class DocumentOutputControllerTests: XCTestCase {
         XCTAssertEqual(result?["diagrams"] as? Int, 2, "the two good diagrams are inline SVG")
         XCTAssertEqual(result?["notes"] as? Int, 1, "the broken one is a note above its source")
     }
+
+    // MARK: R27: the window stays responsive while preparing
+
+    func testPreparingALargeDocumentNeverStallsTheMainThreadForLong() async throws {
+        let folder = try temporaryFolder()
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Fixtures")
+        for n in 0..<20 { try FileManager.default.copyItem(at: fixtures.appendingPathComponent("local.png"), to: folder.appendingPathComponent("pic\(n).png")) }
+        var lines: [String] = []
+        for i in 0..<930 {
+            lines += ["## Section \(i % 50)", "",
+                      "A paragraph with **bold**, *italic*, `code`, a [link](https://example.com/\(i)), ==highlight== and https://example.org/page\(i) in it. "
+                          + String(repeating: "Some more words to make the line a realistic length. ", count: 10), "",
+                      "- item one", "  - nested [ ] text", "- [x] done task", "1. first", "2. second", "",
+                      "> quote with ==mark== text", "", "| a | b |", "|---|--:|", "| 1 | `x` |", "",
+                      "```swift", "let x = \(i) // </pre><script>", "```", "", i < 20 ? "![img](pic\(i).png)" : "", ""]
+        }
+        lines += ["```mermaid", "graph TD", "  A --> B", "```", "", "```mermaid", "graph TD", "  B --> C", "```", "", "```mermaid", "graph TD", "  C --> D", "```"]
+        XCTAssertGreaterThanOrEqual(lines.count, 20_000)
+
+        let rig = Rig()
+        rig.fileURL = folder.appendingPathComponent("big.md")
+        rig.displayName = "big.md"
+        rig.text = lines.joined(separator: "\n")
+        rig.destination = folder.appendingPathComponent("big.html")
+        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" id=\"dwm\" viewBox=\"0 0 400 300\">" + String(repeating: "<rect x=\"1\" y=\"1\" width=\"30\" height=\"20\"/>", count: 600) + "</svg>"
+        rig.controller.renderDiagram = { _ in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return .success(svg)
+        }
+
+        var running = true
+        var longestStall = 0.0
+        let heartbeat = Task { @MainActor in
+            var last = Date()
+            while running {
+                try? await Task.sleep(nanoseconds: 5_000_000)
+                let now = Date()
+                longestStall = max(longestStall, now.timeIntervalSince(last) - 0.005)
+                last = now
+            }
+        }
+        let started = Date()
+        rig.controller.exportHTML()
+        await rig.finish()
+        running = false
+        await heartbeat.value
+        let took = Date().timeIntervalSince(started)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rig.destination!.path), "the file was written")
+        XCTAssertEqual(rig.errors.count, 0)
+        print("MAIN-THREAD STALL while preparing \(lines.count) lines: longest \(Int(longestStall * 1000)) ms, whole export \(String(format: "%.2f", took)) s")
+        XCTAssertLessThan(longestStall, 0.25, "the main thread was blocked for \(longestStall) s")
+    }
+
+    /// The same large document through the paginated path: loading the page into the web view is part of preparing; the printing that
+    /// follows is reported but is not what R27 limits.
+    func testPreparingALargeDocumentForPDFNeverStallsTheMainThreadForLong() async throws {
+        let folder = try temporaryFolder()
+        var lines: [String] = []
+        for i in 0..<930 {
+            lines += ["## Section \(i % 50)", "",
+                      "A paragraph with **bold**, *italic*, `code`, a [link](https://example.com/\(i)), ==highlight== and https://example.org/page\(i) in it. "
+                          + String(repeating: "Some more words to make the line a realistic length. ", count: 10), "",
+                      "- item one", "  - nested [ ] text", "- [x] done task", "1. first", "2. second", "",
+                      "> quote with ==mark== text", "", "| a | b |", "|---|--:|", "| 1 | `x` |", "",
+                      "```swift", "let x = \(i) // </pre><script>", "```", "", ""]
+        }
+        let rig = Rig()
+        rig.window = PrintRendererTests.hostWindow()
+        defer { rig.window?.close() }
+        rig.text = lines.joined(separator: "\n")
+        rig.destination = folder.appendingPathComponent("big.pdf")
+        var running = true
+        var longestStall = 0.0
+        var stallAtPanel = -1.0
+        let heartbeat = Task { @MainActor in
+            var last = Date()
+            while running {
+                try? await Task.sleep(nanoseconds: 5_000_000)
+                let now = Date()
+                longestStall = max(longestStall, now.timeIntervalSince(last) - 0.005)
+                last = now
+            }
+        }
+        rig.controller.chooseDestination = { [unowned rig] _, _, _ in stallAtPanel = longestStall; return rig.destination }
+        let started = Date()
+        rig.controller.exportPDF()
+        await rig.finish()
+        running = false
+        await heartbeat.value
+        print("MAIN-THREAD STALL (PDF) \(lines.count) lines: while preparing \(Int(stallAtPanel * 1000)) ms, while printing \(Int(longestStall * 1000)) ms, whole export \(String(format: "%.2f", Date().timeIntervalSince(started))) s")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rig.destination!.path), "errors: \(rig.errors)")
+        XCTAssertGreaterThanOrEqual(stallAtPanel, 0, "the panel was reached")
+        XCTAssertLessThan(stallAtPanel, 0.25, "preparing blocked the main thread for \(stallAtPanel) s")
+    }
 }
