@@ -42,4 +42,4 @@ These are things neither the reviewer nor the author could settle without the ru
 
 ## Fed back to CLAUDE.md
 
-None added yet. One line is proposed and awaits the user's decision: "Guards on editing commands are decided by what AppKit does, not by the spec's wording: the word deletes (⌥⌫, ⌥⌦) skip punctuation and line breaks and ⌃⌫ is its own selector, so probe a plain `NSTextView` first, guard every variant, and test each one."
+One line, added with the user's agreement under "Things Claude gets wrong here": "Guards on editing commands are decided by what AppKit does, not by the spec's wording: the word deletes (⌥⌫, ⌥⌦) skip punctuation and line breaks and ⌃⌫ is its own selector, so probe a plain `NSTextView` first, guard every variant, and test each one."

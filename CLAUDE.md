@@ -102,3 +102,4 @@ Commands:
 ### Things Claude gets wrong here
 
 <!-- Add one line per recurring mistake found in review. Keep this list short; remove entries once they stop recurring. -->
+- Guards on editing commands are decided by what AppKit does, not by the spec's wording: the word deletes (⌥⌫, ⌥⌦) skip punctuation and line breaks and ⌃⌫ is its own selector, so probe a plain `NSTextView` first, guard every variant, and test each one.
