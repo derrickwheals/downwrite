@@ -45,7 +45,7 @@ public enum MarkdownAnalyzer {
             .map { LinkSpan(range: moved($0.range), textRange: moved($0.textRange), destination: $0.destination) }
         let line = LineStyle(range: NSRange(location: 0, length: units.count), contentEnd: units.count)
         return MarkdownAnalysis(length: units.count, spans: spans, markers: markers, lines: [line], links: links, images: [],
-                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [])
+                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [], foldRegions: [])
     }
 }
 
@@ -69,6 +69,10 @@ private struct Builder {
     var tables: [TableBlock] = []
     var headings: [HeadingInfo] = []
     var htmlBlocks: [RawHTMLBlock] = []
+    /// Top-level headings in document order, with every line each one occupies (`finish` turns them into fold regions).
+    var foldHeadings: [(level: Int, lines: ClosedRange<Int>)] = []
+    /// List items with content after their first paragraph: the header lines (the paragraph) and the item's last line.
+    var foldItems: [(header: ClosedRange<Int>, last: Int)] = []
     /// Analysing a single table cell: inline markers keep their real reveal ranges instead of staying visible.
     var cellMode = false
 
@@ -105,8 +109,51 @@ private struct Builder {
         return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
             taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks,
-            htmlBlocks: htmlBlocks
+            htmlBlocks: htmlBlocks, foldRegions: cellMode ? [] : foldRegions()
         )
+    }
+
+    /// The regions that can fold. A top-level heading hides everything up to the next top-level heading of the same or a
+    /// higher level (or the end of the document); an item hides what follows its first paragraph. A region needs at least
+    /// one non-blank hidden line. Two items that start on the same line (`- - a`) share an anchor, which is a fold's identity,
+    /// so only the outer one is kept.
+    private func foldRegions() -> [FoldRegion] {
+        guard !foldHeadings.isEmpty || !foldItems.isEmpty else { return [] }
+        // nonBlank[i] = number of non-blank lines before line i, so "any content in a..b" is two lookups.
+        var nonBlank = [Int](repeating: 0, count: lines.count + 1)
+        for i in lines.indices {
+            var blank = true
+            var p = src.lineStarts[i]
+            while blank, p < src.lineContentEnds[i] { blank = src.isSpaceOrTab(p); p += 1 }
+            nonBlank[i + 1] = nonBlank[i] + (blank ? 0 : 1)
+        }
+        var out: [FoldRegion] = []
+        func add(_ kind: FoldRegion.Kind, header: ClosedRange<Int>, through last: Int) {
+            guard header.upperBound < last, nonBlank[last + 1] - nonBlank[header.upperBound + 1] > 0 else { return }
+            let hidden = (header.upperBound + 1)...last
+            let first = lines[hidden.lowerBound].range, end = lines[hidden.upperBound].range
+            out.append(FoldRegion(kind: kind, headerLines: header, hiddenLines: hidden, anchor: lines[header.lowerBound].range.location,
+                                  hiddenRange: NSRange(location: first.location, length: NSMaxRange(end) - first.location)))
+        }
+
+        // Sections: a stack of open headings with strictly rising levels; a heading closes every open one that is as shallow or deeper.
+        var open: [Int] = []
+        for (i, h) in foldHeadings.enumerated() {
+            while let top = open.last, foldHeadings[top].level >= h.level {
+                add(.heading(level: foldHeadings[top].level), header: foldHeadings[top].lines, through: h.lines.lowerBound - 1)
+                open.removeLast()
+            }
+            open.append(i)
+        }
+        for top in open.reversed() {
+            add(.heading(level: foldHeadings[top].level), header: foldHeadings[top].lines, through: lines.count - 1)
+        }
+        for item in foldItems { add(.item, header: item.header, through: item.last) }
+
+        out.sort { $0.anchor != $1.anchor ? $0.anchor < $1.anchor : $0.hiddenRange.length > $1.hiddenRange.length }
+        var unique: [FoldRegion] = []
+        for r in out where unique.last?.anchor != r.anchor { unique.append(r) }
+        return unique
     }
 
     /// Fills in `HeadingInfo.plainTitle`: each heading line minus the marker ranges that fall on it.
@@ -261,6 +308,29 @@ private struct Builder {
         let titleRange = NSRange(location: src.lineStarts[l0], length: src.lineContentEnds[l0] - src.lineStarts[l0])
         let title = src.string(titleRange).replacingOccurrences(of: "^\\s*#{1,6}\\s*|\\s+#+\\s*$", with: "", options: .regularExpression)
         headings.append(HeadingInfo(level: h.level, title: title, range: titleRange))
+        // Only top-level headings fold; one inside a quote or a list item neither folds nor ends the enclosing section.
+        if ctx.quoteDepth == 0, ctx.listDepth == 0 { foldHeadings.append((h.level, headingLines(ls))) }
+    }
+
+    /// The lines a heading really occupies. For a setext heading directly followed by text, cmark's range runs over that next
+    /// line as well, so its last line is taken to be the first line that is nothing but `=` or `-`.
+    private func headingLines(_ ls: ClosedRange<Int>) -> ClosedRange<Int> {
+        let first = firstNonSpace(line: ls.lowerBound)
+        guard ls.count > 1, !(first < src.lineContentEnds[ls.lowerBound] && src.units[first] == 35) else { return ls }
+        for l in (ls.lowerBound + 1)...ls.upperBound where isSetextUnderline(l) { return ls.lowerBound...l }
+        return ls
+    }
+
+    private func isSetextUnderline(_ l: Int) -> Bool {
+        var p = src.lineStarts[l]
+        let end = src.lineContentEnds[l]
+        var indent = 0
+        while p < end, src.units[p] == 32, indent < 3 { p += 1; indent += 1 }
+        guard p < end, src.units[p] == 61 || src.units[p] == 45 else { return false }
+        let c = src.units[p]
+        while p < end, src.units[p] == c { p += 1 }
+        while p < end, src.isSpaceOrTab(p) { p += 1 }
+        return p == end
     }
 
     private mutating func paragraph(_ p: Paragraph, _ ctx: Context) {
@@ -366,6 +436,10 @@ private struct Builder {
         guard let r = range(of: li) else { for c in li.children { walk(c, ctx) }; return }
         let ls = lineSpan(r)
         let l0 = ls.lowerBound
+        // The header of a fold is the item's first paragraph (every line it wraps over); the rest of the item hides.
+        var headerLast = l0
+        if let first = li.child(at: 0) as? Paragraph, let pr = range(of: first) { headerLast = min(max(l0, lineSpan(pr).upperBound), ls.upperBound) }
+        if ls.upperBound > headerLast { foldItems.append((l0...headerLast, ls.upperBound)) }
         let start = src.lineStarts[l0], end = src.lineContentEnds[l0]
         var p = start
         while p < end && src.isSpaceOrTab(p) { p += 1 }

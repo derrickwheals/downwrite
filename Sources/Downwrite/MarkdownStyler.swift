@@ -7,6 +7,71 @@ struct PreviewState {
     var heights: [Int: CGFloat] = [:]
     /// Preview blocks whose source is collapsed (caret outside), keyed by first line.
     var collapsed: Set<Int> = []
+    /// Source lines hidden by folds.
+    var folded = FoldedLines()
+    /// The foldable headers that are on screen (not hidden by another fold), keyed by *every* line of the header: the chevron
+    /// goes on its first line and the chip on its last.
+    var foldHeaders: [Int: FoldHeader] = [:]
+}
+
+/// Source lines hidden by folds, as sorted, merged ranges, so "is this line hidden?" is a binary search.
+struct FoldedLines: Equatable {
+    private(set) var ranges: [ClosedRange<Int>] = []
+
+    init(_ ranges: [ClosedRange<Int>] = []) { self.ranges = ranges }
+
+    var isEmpty: Bool { ranges.isEmpty }
+
+    func contains(_ line: Int) -> Bool {
+        var lo = 0, hi = ranges.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if ranges[mid].upperBound < line { lo = mid + 1 } else { hi = mid }
+        }
+        return lo < ranges.count && ranges[lo].lowerBound <= line
+    }
+
+    /// The lines hidden in exactly one of the two sets, as sorted ranges: what a fold change has to restyle. Each set is a
+    /// list of disjoint ranges, so every range edge is a point where membership flips; edges both sets share cancel out, and
+    /// what is left alternates between entering and leaving the difference.
+    func symmetricDifference(_ other: FoldedLines) -> [ClosedRange<Int>] {
+        var edges: [Int] = []
+        for r in ranges + other.ranges { edges.append(r.lowerBound); edges.append(r.upperBound + 1) }
+        edges.sort()
+        var flips: [Int] = []
+        var i = 0
+        while i < edges.count {
+            var j = i
+            while j < edges.count, edges[j] == edges[i] { j += 1 }
+            if (j - i) % 2 == 1 { flips.append(edges[i]) }
+            i = j
+        }
+        return stride(from: 0, to: flips.count - 1, by: 2).map { flips[$0]...(flips[$0 + 1] - 1) }
+    }
+}
+
+/// How one visible foldable header is drawn.
+struct FoldHeader: Equatable {
+    var firstLine: Int
+    var lastLine: Int
+    var folded: Bool
+    /// The selection covers some of the hidden text (the chip shows it).
+    var covered: Bool
+}
+
+extension PreviewState {
+    /// Takes the folds into account: which lines are hidden and which headers show a chevron (and a chip). A foldable header
+    /// that another fold hides shows neither.
+    mutating func setFolds(_ state: FoldState, analysis: MarkdownAnalysis, selection: NSRange) {
+        folded = FoldedLines(state.hiddenLineRanges(in: analysis))
+        foldHeaders = [:]
+        for region in analysis.foldRegions where !folded.contains(region.headerLines.lowerBound) {
+            let isFolded = state.isFolded(region)
+            let header = FoldHeader(firstLine: region.headerLines.lowerBound, lastLine: region.headerLines.upperBound, folded: isFolded,
+                                    covered: isFolded && NSIntersectionRange(selection, region.hiddenRange).length > 0)
+            for line in region.headerLines { foldHeaders[line] = header }
+        }
+    }
 }
 
 /// Applies a `MarkdownAnalysis` to an `NSTextStorage` as attributes. All hiding of Markdown syntax happens here:
@@ -16,6 +81,11 @@ final class MarkdownStyler {
     let typography: Typography
     var palette: Palette
     private let hiddenFont = NSFont.systemFont(ofSize: 0.1)
+
+    /// Line height of the lines a fold hides. Only the line height decides how much room a collapsed line leaves (the font
+    /// size makes no difference), and the 0.1 pt used for collapsed sources leaves 0.1 pt per line — 100 pt for a
+    /// 1,000-line section. 0.001 pt leaves 1 pt per 1,000 lines, which is the limit of R5; `FoldTests` measure it in the editor.
+    static let foldedLineHeight: CGFloat = 0.001
 
     init(typography: Typography, palette: Palette) {
         self.typography = typography
@@ -44,17 +114,66 @@ final class MarkdownStyler {
         storage.endEditing()
     }
 
-    /// Re-styles only the given lines (used when the caret moves and markers show/hide).
+    /// Re-styles only the given lines (used when the caret moves and markers show/hide, and when a fold opens or closes).
+    /// Consecutive lines are styled together: `runs` scans every span and marker, so doing it per line would make a section of
+    /// a few thousand lines quadratic. Lines that a fold hides need no runs at all, and when many separate visible lines are
+    /// restyled at once (Fold All leaves a header per section) one `runs` computation serves them all.
     func style(lines: Set<Int>, storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, preview: PreviewState) {
         guard !lines.isEmpty, storage.length > 0 else { return }
+        let sorted = lines.sorted().filter { $0 < analysis.lines.count }
+        var shared: [StyleRun]?
+        let visible = sorted.filter { !preview.folded.contains($0) }
+        if visible.count > 8, let first = visible.first, let last = visible.last {
+            let from = analysis.lines[first].range.location, to = min(storage.length, NSMaxRange(analysis.lines[last].range))
+            if to > from { shared = analysis.runs(in: NSRange(location: from, length: to - from), selection: selection) }
+        }
         storage.beginEditing()
-        for index in lines.sorted() where index < analysis.lines.count {
-            let line = analysis.lines[index]
-            guard line.range.length > 0, NSMaxRange(line.range) <= storage.length else { continue }
-            let runs = analysis.runs(in: line.range, selection: selection)
-            applyLine(index, analysis: analysis, runs: runs[...], storage: storage, preview: preview, selection: selection)
+        var i = 0
+        while i < sorted.count {
+            let hidden = preview.folded.contains(sorted[i])
+            var j = i
+            while j + 1 < sorted.count, sorted[j + 1] == sorted[j] + 1, preview.folded.contains(sorted[j + 1]) == hidden { j += 1 }
+            styleGroup(sorted[i...j], hidden: hidden, shared: shared, storage: storage, analysis: analysis, selection: selection, preview: preview)
+            i = j + 1
         }
         storage.endEditing()
+    }
+
+    /// Consecutive lines that are all hidden by folds, or all visible; the visible ones share one `runs` computation.
+    private func styleGroup(_ group: ArraySlice<Int>, hidden: Bool, shared: [StyleRun]?, storage: NSTextStorage, analysis: MarkdownAnalysis,
+                            selection: NSRange, preview: PreviewState) {
+        // Every hidden line gets the same look, so a stretch of them is set in one go (with one shared paragraph style).
+        if hidden, let first = group.first, let last = group.last {
+            let from = analysis.lines[first].range.location
+            let to = min(storage.length, NSMaxRange(analysis.lines[last].range))
+            if to > from { storage.setAttributes(collapsedAttributes(), range: NSRange(location: from, length: to - from)) }
+            return
+        }
+        var runs: [StyleRun] = shared ?? []
+        if shared == nil, let first = group.first, let last = group.last {
+            let from = analysis.lines[first].range.location
+            let to = min(storage.length, NSMaxRange(analysis.lines[last].range))
+            if to > from { runs = analysis.runs(in: NSRange(location: from, length: to - from), selection: selection) }
+        }
+        // Runs are sorted and do not overlap: find the first one that reaches this group (a binary search in the shared list).
+        var cursor = 0
+        if shared != nil, let first = group.first {
+            let start = analysis.lines[first].range.location
+            var lo = 0, hi = runs.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if NSMaxRange(runs[mid].range) <= start { lo = mid + 1 } else { hi = mid }
+            }
+            cursor = lo
+        }
+        for index in group {
+            let line = analysis.lines[index]
+            guard line.range.length > 0, NSMaxRange(line.range) <= storage.length else { continue }
+            while cursor < runs.count, NSMaxRange(runs[cursor].range) <= line.range.location { cursor += 1 }
+            var end = cursor
+            while end < runs.count, runs[end].range.location < NSMaxRange(line.range) { end += 1 }
+            applyLine(index, analysis: analysis, runs: runs[cursor..<end], storage: storage, preview: preview, selection: selection)
+        }
     }
 
     // MARK: Table cells
@@ -131,6 +250,11 @@ final class MarkdownStyler {
                            storage: NSTextStorage, preview: PreviewState, selection: NSRange) {
         let line = analysis.lines[index]
         let r = line.range
+        // A line a fold hides shows nothing (no text, checkbox, pill, bar or card) and takes next to no room.
+        if preview.folded.contains(index) {
+            storage.setAttributes(collapsedAttributes(), range: r)
+            return
+        }
         // A bulleted task whose `- [ ] ` source is hidden is drawn as a checkbox instead.
         let task = hiddenTask(onLine: index, analysis: analysis, runs: runs)
         var look = lineLook(line, index: index, analysis: analysis, storage: storage, preview: preview, hiddenTask: task)
@@ -187,6 +311,51 @@ final class MarkdownStyler {
             default: break
             }
         }
+
+        if let header = preview.foldHeaders[index] {
+            applyFoldMarks(header, line: line, index: index, runs: runs, storage: storage, task: task)
+        }
+    }
+
+    /// The look of a line a fold hides: no ink, and a line height so small it takes next to no room.
+    private func collapsedAttributes() -> [NSAttributedString.Key: Any] {
+        let p = NSMutableParagraphStyle()
+        p.minimumLineHeight = Self.foldedLineHeight
+        p.maximumLineHeight = Self.foldedLineHeight
+        return [.font: hiddenFont, .foregroundColor: NSColor.clear, .paragraphStyle: p]
+    }
+
+    /// The chevron goes on the header's first visible character and the chip on the last character of its last line.
+    private func applyFoldMarks(_ header: FoldHeader, line: LineStyle, index: Int, runs: ArraySlice<StyleRun>,
+                                storage: NSTextStorage, task: TaskBox?) {
+        let mark = FoldMark(folded: header.folded, covered: header.covered, chevron: palette.marker.nsColor,
+                            chipFill: (header.covered ? palette.selection : palette.inlineCodeBackground).nsColor, chipInk: palette.text.nsColor)
+        if index == header.firstLine, let at = firstVisibleCharacter(of: line, runs: runs, storage: storage, task: task) {
+            storage.addAttribute(.dwFold, value: mark, range: NSRange(location: at, length: 1))
+        }
+        if header.folded, index == header.lastLine, line.contentEnd > line.range.location {
+            storage.addAttribute(.dwFoldChip, value: mark, range: NSRange(location: line.contentEnd - 1, length: 1))
+        }
+    }
+
+    /// The first character of the line that shows: past the indentation and past hidden syntax (`## `), except that a hidden
+    /// `- [ ] ` task prefix shows its checkbox on its first character.
+    private func firstVisibleCharacter(of line: LineStyle, runs: ArraySlice<StyleRun>, storage: NSTextStorage, task: TaskBox?) -> Int? {
+        let content = line.contentRange
+        guard content.length > 0 else { return nil }
+        if let prefix = task?.prefix, prefix.length > 0 { return prefix.location }
+        let string = storage.mutableString
+        var p = content.location
+        while p < NSMaxRange(content) {
+            if let run = runs.first(where: { NSLocationInRange(p, $0.range) }), run.flags.contains(.hidden) {
+                p = NSMaxRange(run.range)
+                continue
+            }
+            let c = string.character(at: p)
+            if c == 32 || c == 9 { p += 1; continue }
+            return p
+        }
+        return content.location
     }
 
     /// Hidden characters are ~zero-size, so a line that holds nothing else (an empty task item, an empty heading, a bare `>`)

@@ -7,6 +7,12 @@ final class FormatCommandBox: NSObject {
     init(_ command: FormatCommand) { self.command = command }
 }
 
+/// Carries the level of a Fold to Level command through the responder chain.
+final class FoldLevelBox: NSObject {
+    let level: Int
+    init(_ level: Int) { self.level = level }
+}
+
 /// The Markdown editing surface: a TextKit 1 `NSTextView` with Markdown-aware commands, smart Return/Tab,
 /// clickable task boxes and a centred readable column.
 final class EditorTextView: NSTextView {
@@ -150,6 +156,12 @@ final class EditorTextView: NSTextView {
         "Start writing…".draw(at: NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y), withAttributes: attrs)
     }
 
+    /// Fold chevrons and chips are drawn here, before the text: they reach into the margins, outside the layout manager's clip.
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        (layoutManager as? DWLayoutManager)?.drawFoldControls(in: rect, origin: textContainerOrigin)
+    }
+
     override func didChangeText() {
         super.didChangeText()
         if !isApplyingGridEdit { gridTypingKey = nil }
@@ -228,29 +240,59 @@ final class EditorTextView: NSTextView {
         overlay.perform(box.command, atOffset: selectedRange().location)
     }
 
+    // Folding (View menu): the commands live on the coordinator, which owns the fold state.
+    @objc func dwFold(_ sender: Any?) { coordinator?.foldAtCaret() }
+    @objc func dwUnfold(_ sender: Any?) { coordinator?.unfoldAtCaret() }
+    @objc func dwFoldAll(_ sender: Any?) { coordinator?.foldAll() }
+    @objc func dwUnfoldAll(_ sender: Any?) { coordinator?.unfoldAll() }
+    @objc func dwFoldToLevel(_ sender: Any?) {
+        guard let box = sender as? FoldLevelBox else { return }
+        coordinator?.fold(toLevel: box.level)
+    }
+
     @objc func dwIndent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: false)) }
     @objc func dwOutdent(_ sender: Any?) { apply(ListEditing.indent(in: string, selection: selectedRange(), outdent: true)) }
 
+    // MARK: Caret movement over folds (R14)
+
+    /// Arrow keys (with ⌥ and ⌘), Page Up/Down and their Shift forms: run the command, then, if the end that moved landed in
+    /// folded text, step it to the nearest visible position in the direction of travel.
+    override func doCommand(by selector: Selector) {
+        guard let coordinator, coordinator.isCaretMovement(selector), !hasMarkedText() else { super.doCommand(by: selector); return }
+        let before = selectedRange()
+        coordinator.isMovingCaret = true
+        super.doCommand(by: selector)
+        coordinator.snapCaretOverFolds(from: before, after: selector)
+        coordinator.isMovingCaret = false
+    }
+
     // MARK: Smart keys
 
-    /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source.
+    /// Backspace / forward-delete next to a grid table go into the table instead of merging text with its hidden source, and next
+    /// to a fold they open it instead of joining a visible line to hidden text.
     override func deleteBackward(_ sender: Any?) {
-        if guardTableDelete(backwards: true) { return }
+        if guardDelete(backwards: true) { return }
         super.deleteBackward(sender)
     }
 
     override func deleteForward(_ sender: Any?) {
-        if guardTableDelete(backwards: false) { return }
+        if guardDelete(backwards: false) { return }
         super.deleteForward(sender)
     }
 
-    // Word and line deletes would eat the hidden newline next to a table just the same.
-    override func deleteWordBackward(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteWordBackward(sender) } }
-    override func deleteToBeginningOfLine(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
-    override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
-    override func deleteWordForward(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteWordForward(sender) } }
-    override func deleteToEndOfLine(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
-    override func deleteToEndOfParagraph(_ sender: Any?) { if !guardTableDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
+    // Word and line deletes would eat the hidden newline next to a table (or a fold) just the same.
+    override func deleteWordBackward(_ sender: Any?) { if !guardDelete(backwards: true, byWord: true) { super.deleteWordBackward(sender) } }
+    override func deleteToBeginningOfLine(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
+    override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
+    override func deleteBackwardByDecomposingPreviousCharacter(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteBackwardByDecomposingPreviousCharacter(sender) } }
+    override func deleteWordForward(_ sender: Any?) { if !guardDelete(backwards: false, byWord: true) { super.deleteWordForward(sender) } }
+    override func deleteToEndOfLine(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
+    override func deleteToEndOfParagraph(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
+
+    /// `byWord`: the word delete skips punctuation and line breaks, so it can reach hidden text from further than the line's edge.
+    private func guardDelete(backwards: Bool, byWord: Bool = false) -> Bool {
+        coordinator?.openFoldInsteadOfDeleting(backwards: backwards, byWord: byWord) == true || guardTableDelete(backwards: backwards)
+    }
 
     private func guardTableDelete(backwards: Bool) -> Bool {
         guard !hasMarkedText(), selectedRange().length == 0 else { return false }
@@ -258,6 +300,7 @@ final class EditorTextView: NSTextView {
     }
 
     override func insertNewline(_ sender: Any?) {
+        coordinator?.openFoldBeforeReturn()
         if !hasMarkedText(), let edit = FenceEditing.returnEdit(in: string, selection: selectedRange()) {
             // Return on a freshly opened fence steps into its empty body; nothing is inserted.
             setSelectedRange(edit.selection)
@@ -332,8 +375,39 @@ final class EditorTextView: NSTextView {
         return rect.insetBy(dx: -4, dy: -3).contains(point) ? box : nil
     }
 
+    // MARK: Fold controls
+
+    private var foldTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = foldTrackingArea { removeTrackingArea(area) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        foldTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        coordinator?.pointerMoved(to: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        coordinator?.pointerLeft()
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A click on a chevron or a ⋯ chip folds or unfolds without touching the selection.
+        if let header = coordinator?.foldControl(at: point) {
+            if event.clickCount == 1 {
+                if window?.firstResponder !== self { window?.makeFirstResponder(self) }
+                coordinator?.toggleFold(headerLine: header.firstLine)
+            }
+            return
+        }
         if coordinator?.tableOverlay?.focusNearestCell(atTextViewPoint: point) == true { return }
         if let analysis = coordinator?.analysis, let lm = layoutManager, let tc = textContainer {
             let index = characterIndexForInsertion(at: point)
@@ -348,6 +422,11 @@ final class EditorTextView: NSTextView {
                 return
             }
         }
+        // A click or drag is caret movement: where it leaves the start of the selection in folded text (the blank page below a
+        // document whose end is folded) it steps over the fold like the arrow keys, instead of opening it.
+        coordinator?.isMovingCaret = true
         super.mouseDown(with: event)
+        coordinator?.isMovingCaret = false
+        coordinator?.snapSelectionAfterMouse()
     }
 }

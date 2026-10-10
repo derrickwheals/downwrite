@@ -77,8 +77,11 @@ if [ ${#FAILED[@]} -eq 0 ] && [ "$E2E" = 1 ]; then
     echo "   Leave the Mac alone until it finishes. Starting in 5 seconds (Ctrl-C to cancel)..."
     sleep 5
   fi
-  run_limited 150 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite \
-    --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md"
+  # -ApplePersistenceIgnoreState YES: do not reopen the windows of an earlier session (a real or earlier test run's `work.md`, a document you
+  # had open) for this launch, nothing is saved either. Otherwise the self-test can pick up a stale window of the same name.
+  run_limited 240 artifacts/e2e/stdout.txt dist/Downwrite.app/Contents/MacOS/Downwrite -ApplePersistenceIgnoreState YES \
+    --selftest-out="$PWD/artifacts/e2e" --selftest-input="$PWD/Sources/Downwrite/Resources/Welcome.md" --selftest-extra="$PWD/README.md" \
+    --selftest-fold="$PWD/Tests/Fixtures/fold-demo.md"
   CODE=$?
   echo "app exit status: $CODE (124 = timed out, 128+N = killed by signal N: 11 SIGSEGV, 6 SIGABRT)" | tee artifacts/e2e/exit.txt
   if [ $CODE -ge 128 ] && [ $CODE -ne 124 ]; then echo "crash reports: ~/Library/Logs/DiagnosticReports/Downwrite*.ips"; fi
@@ -104,7 +107,8 @@ fi
   echo "--- test result ---"; grep -E "Executed [0-9]+ tests" test.log 2>/dev/null | tail -1
   echo "--- test failures ---"; grep -E "error:|Fatal|Crash" test.log 2>/dev/null | sort -u | head -40
   echo "--- test log tail ---"; tail -4 test.log 2>/dev/null
-  echo "--- e2e report ---"; head -80 artifacts/e2e/selftest-report.txt 2>/dev/null
+  echo "--- e2e failures ---"; grep -E '^FAIL|CHECK\(S\) FAILED|ALL CHECKS PASSED' artifacts/e2e/selftest-report.txt 2>/dev/null | cut -c1-400
+  echo "--- e2e report (first 80 lines) ---"; head -80 artifacts/e2e/selftest-report.txt 2>/dev/null
   echo "--- e2e app output (tail) ---"; tail -15 artifacts/e2e/stdout.txt 2>/dev/null
   if [ ${#FAILED[@]} -eq 0 ]; then echo "RESULT: ALL GREEN"; else echo "RESULT: FAILED -> ${FAILED[*]}"; fi
 } > artifacts/summary.txt

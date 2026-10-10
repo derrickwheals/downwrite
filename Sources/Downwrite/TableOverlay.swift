@@ -15,6 +15,9 @@ final class TableOverlay {
     private var pendingFocus: (order: Int, position: TableCellPosition, selection: NSRange?)?
     private var lastSignature: StyleSignature?
     private var handOffScheduled = false
+    /// Source lines hidden by folds. A grid whose table is in them is hidden like one whose Markdown is showing, but it is not
+    /// that: nothing is shown in its place.
+    private(set) var hiddenLines = FoldedLines()
 
     init(coordinator: EditorCoordinator, textView: EditorTextView) {
         self.coordinator = coordinator
@@ -35,6 +38,11 @@ final class TableOverlay {
 
     /// True while the keyboard focus is inside any grid.
     var hasFocus: Bool { grids.contains { $0.hasFocus } }
+
+    /// First source line of the table whose grid has the keyboard, if one does.
+    var focusedTableFirstLine: Int? {
+        gridBlocks.enumerated().first { $0.offset < grids.count && grids[$0.offset].hasFocus }?.element.firstLine
+    }
 
     // MARK: Sync
 
@@ -64,7 +72,7 @@ final class TableOverlay {
                 created = true
             }
             grid.order = k
-            grid.isHidden = block.firstLine == coordinator.sourceTableFirstLine
+            grid.isHidden = block.firstLine == coordinator.sourceTableFirstLine || hiddenLines.contains(block.firstLine)
             // Typing elsewhere re-analyses the document on every keystroke: leave untouched tables alone.
             let width = availableWidth
             if grid.model != model || restyle || created {
@@ -76,6 +84,17 @@ final class TableOverlay {
         }
         highlightSelection()
         consumePendingFocus()
+    }
+
+    /// Hides and shows the grids to match the folds. A cell that has the keyboard when its table goes gives it back.
+    func setHiddenLines(_ lines: FoldedLines) {
+        hiddenLines = lines
+        let blocks = gridBlocks
+        for (k, block) in blocks.enumerated() where k < grids.count {
+            let hidden = block.firstLine == coordinator.sourceTableFirstLine || lines.contains(block.firstLine)
+            if hidden, grids[k].hasFocus { textView?.window?.makeFirstResponder(textView) }
+            if grids[k].isHidden != hidden { grids[k].isHidden = hidden }
+        }
     }
 
     func setPalette() {
@@ -198,13 +217,13 @@ final class TableOverlay {
         }
         pendingFocus = nil
         let grid = grids[pending.order]
-        if grid.isHidden {
+        let blocks = gridBlocks
+        if pending.order < blocks.count, blocks[pending.order].firstLine == coordinator.sourceTableFirstLine {
             // Markdown source is showing: put the caret in the same cell of the source.
-            let blocks = gridBlocks
-            if pending.order < blocks.count, let r = blocks[pending.order].range(of: pending.position) {
+            if let r = blocks[pending.order].range(of: pending.position) {
                 textView?.setSelectedRange(NSRange(location: r.location, length: 0))
             }
-        } else {
+        } else if !grid.isHidden {
             grid.focus(pending.position, selection: pending.selection)
         }
     }
