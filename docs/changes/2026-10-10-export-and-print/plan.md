@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-10-export-and-print
 intent: ./intent.md
 spec: ./spec.md
-status: in-progress
+status: done
 approved: 2026-10-10
 branch: change/2026-10-10-export-and-print
 ---
@@ -103,6 +103,8 @@ Preparing a document of about 20,000 lines with 20 images and 3 diagrams (R27), 
 The login session was locked for the whole build (`CGSSessionScreenIsLocked`), so the app never became active and SwiftUI never resolved a focused scene object. The end-to-end run (`SelfTestExport.swift`, run from an isolated copy of the app) passes everything that does not depend on that: the File menu's order and ⌘P, the HTML and PDF written through the controller (13 pages, system paper, selectable text), the print operation's paper and margins, the unwritable-destination alert with no file left, the document, undo, file hash, caret and folds unchanged, and a main-thread stall of 5 ms for a 20,205-line document. It fails, as the existing focus-dependent steps (⌘B, ⌘/, screenshots …) fail in the same session, on: *the three items are enabled with a document window frontmost* and *and enabled again afterwards* (*disabled while preparing* and *disabled with only Settings frontmost* pass here only because the items are never enabled, so they prove nothing until the items can be enabled). Those three checks, and walk-through B.7 (the print panel itself), need a normal desktop session: CI's `macos-26` job or the person approving the build.
 
 ## Open: the menu does not switch off while preparing or with only Settings frontmost (R2)
+
+Status is `done` with this item deliberately left open: the owner chose to go to review as the branch stands (2026-10-10), so the review and the PR must carry R2 as a known open item, not as met. A second command while preparing is already refused by the controller (unit-tested); only the greyed-out look is missing.
 
 Found at the end of the build, once the display was unlocked and the end-to-end run could take focus (full run: 216 pass, 5 fail). With a document window frontmost the three items enable and re-enable correctly (*enabled with a document window frontmost* and *and enabled again afterwards* pass). Two checks in `SelfTestExport.swift` fail for real: *the items are disabled while a preparation is under way* and *the items are disabled with only Settings frontmost*; the items stay enabled. The other three failures (the Appearance settings tab is 633 pt tall against a 620 pt limit, and the two theme-library clean-up checks) fail identically on `main` and are not part of this change. The main-thread stall in the full run was 2 ms.
 
