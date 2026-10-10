@@ -382,25 +382,40 @@ final class DocumentOutputControllerTests: XCTestCase {
         var diagramCalls: [String] = []
         var window: NSWindow?
 
+        // The controller's work can outlive a test that failed or timed out, so the seams hold the rig weakly: a late callback does
+        // nothing, where `unowned` would crash the whole test process and hide every test after it.
         init() {
-            controller.snapshot = { [unowned self] in .init(text: text, fileURL: fileURL, displayName: displayName) }
-            controller.hostWindow = { [unowned self] in window }
-            controller.chooseDestination = { [unowned self] kind, name, directory in
+            controller.snapshot = { [weak self] in
+                self.map { .init(text: $0.text, fileURL: $0.fileURL, displayName: $0.displayName) } ?? .init(text: "", fileURL: nil, displayName: "Untitled")
+            }
+            controller.hostWindow = { [weak self] in self?.window }
+            controller.chooseDestination = { [weak self] kind, name, directory in
+                guard let self else { return nil }
                 events.append("panel:\(kind)")
                 asked.append((kind, name, directory))
                 return destination
             }
-            controller.presentError = { [unowned self] title, message in events.append("error"); errors.append((title, message)) }
-            controller.presentOmissions = { [unowned self] lines in events.append("sheet"); sheets.append(lines) }
-            controller.renderDiagram = { [unowned self] source in
+            controller.presentError = { [weak self] title, message in
+                guard let self else { return }
+                events.append("error"); errors.append((title, message))
+            }
+            controller.presentOmissions = { [weak self] lines in
+                guard let self else { return }
+                events.append("sheet"); sheets.append(lines)
+            }
+            controller.renderDiagram = { [weak self] source in
+                guard let self else { return .success("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"/>") }
                 diagramCalls.append(source)
                 return .success("<svg xmlns=\"http://www.w3.org/2000/svg\" id=\"dwm\(diagramCalls.count)\" width=\"40\" height=\"20\" viewBox=\"0 0 40 20\"><rect width=\"40\" height=\"20\"/></svg>")
             }
             controller.diagramTimeout = 2
         }
 
-        /// Waits until the command that was started has finished.
-        func finish() async { _ = await waitUntil(timeout: 20) { !controller.isPreparing } }
+        /// Waits until the command that was started has finished, and fails the test (rather than letting it go on) if it has not.
+        func finish(timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line) async {
+            let done = await waitUntil(timeout: timeout) { !controller.isPreparing }
+            if !done { XCTFail("the command was still preparing after \(Int(timeout)) s", file: file, line: line) }
+        }
     }
 
     private func temporaryFolder() throws -> URL {
@@ -457,10 +472,10 @@ final class DocumentOutputControllerTests: XCTestCase {
         rig.destination = dir.appendingPathComponent("a.html")
         rig.text = "```mermaid\ngraph TD\n```\n"
         var flagWhenAsked: Bool?
-        rig.controller.chooseDestination = { [unowned rig] kind, name, directory in
-            flagWhenAsked = rig.controller.isPreparing
-            rig.events.append("panel")
-            return rig.destination
+        rig.controller.chooseDestination = { [weak rig] kind, name, directory in
+            flagWhenAsked = rig?.controller.isPreparing
+            rig?.events.append("panel")
+            return rig?.destination
         }
         XCTAssertFalse(rig.controller.isPreparing)
         rig.controller.exportHTML()
@@ -795,7 +810,7 @@ final class DocumentOutputControllerTests: XCTestCase {
         }
         let started = Date()
         rig.controller.exportHTML()
-        await rig.finish()
+        await rig.finish(timeout: 120)
         running = false
         await heartbeat.value
         let took = Date().timeIntervalSince(started)
@@ -835,10 +850,10 @@ final class DocumentOutputControllerTests: XCTestCase {
                 last = now
             }
         }
-        rig.controller.chooseDestination = { [unowned rig] _, _, _ in stallAtPanel = longestStall; return rig.destination }
+        rig.controller.chooseDestination = { [weak rig] _, _, _ in stallAtPanel = longestStall; return rig?.destination }
         let started = Date()
         rig.controller.exportPDF()
-        await rig.finish()
+        await rig.finish(timeout: 120)
         running = false
         await heartbeat.value
         print("MAIN-THREAD STALL (PDF) \(lines.count) lines: while preparing \(Int(stallAtPanel * 1000)) ms, while printing \(Int(longestStall * 1000)) ms, whole export \(String(format: "%.2f", Date().timeIntervalSince(started))) s")
