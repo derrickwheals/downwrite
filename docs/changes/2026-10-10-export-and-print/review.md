@@ -47,4 +47,5 @@ R2 (the three File items do not grey out while a preparation is under way or wit
 
 ## Fed back to CLAUDE.md
 
-Proposed, not added (the owner decides): see the review hand-off message.
+- A file's name is not proof of its type: when bytes leave the machine (export), check the bytes and the symlink target as well as the extension (`ImageLoader.embed`).
+- CSS `max-height` with `height:auto` squashes an element that has its own width: add `object-fit: contain` and measure the shape in a real PDF, not in the CSS.
