@@ -14,14 +14,14 @@ public enum PrintStyle {
             "body{margin:0;background:#ffffff;color:\(p.text.css);font-family:\(sansSerif);font-size:\(isPrint ? "11pt" : "16px");line-height:1.5;"
                 + "overflow-wrap:break-word;-webkit-print-color-adjust:exact;print-color-adjust:exact}",
             isPrint ? "main{display:block;max-width:none;margin:0;padding:0}" : "main{display:block;max-width:46em;margin:0 auto;padding:24px}",
-            "main>:first-child{margin-top:0}main>:last-child{margin-bottom:0}",
+            "main>:first-child,main>.keep:first-child>:first-child{margin-top:0}main>:last-child{margin-bottom:0}",
 
             "h1,h2,h3,h4,h5,h6{line-height:1.25;font-weight:650;margin:1.4em 0 .5em}",
             "h1{font-size:2em}h2{font-size:1.55em}h3{font-size:1.3em}h4{font-size:1.15em}h5{font-size:1em}h6{font-size:.9em}",
             "p,ul,ol,dl,pre,blockquote,details,.dw-table,.dw-diagram{margin:0 0 .8em}",
             "ul,ol{padding-left:1.6em}li{margin:.15em 0}li>ul,li>ol,li>p:last-child{margin-bottom:0}",
             "summary{font-weight:600}",
-            "a{color:\(p.link.css);text-decoration:underline}",
+            "a[href]{color:\(p.link.css);text-decoration:underline}",
             "mark{background:\(p.highlightBackground.css);color:inherit;border-radius:3px;padding:0 .1em}",
             "blockquote{border-left:3px solid \(p.quoteBar.css);padding:0 0 0 1em}",
             "hr{border:0;border-top:1px solid \(p.rule.css);margin:1.4em 0}",

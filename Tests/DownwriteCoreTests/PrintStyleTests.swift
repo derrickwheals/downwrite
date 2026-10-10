@@ -111,7 +111,8 @@ final class PrintStyleTests: XCTestCase {
     func testHighlightLinkQuoteAndRuleUseThePaletteToo() {
         for css in [screen, print] {
             XCTAssertEqual(declarations("mark", in: css)["background"], light.highlightBackground.css)
-            XCTAssertEqual(hexColor(declarations("a", in: css)["color"]), light.link)
+            XCTAssertEqual(hexColor(declarations("a[href]", in: css)["color"]), light.link)
+            XCTAssertNil(declarations("a", in: css)["color"], "an anchor without an href (its link was refused) does not look like a link")
             XCTAssertTrue(declarations("blockquote", in: css)["border-left"]?.contains(light.quoteBar.css) == true)
             XCTAssertTrue(declarations("hr", in: css)["border-top"]?.contains(light.rule.css) == true)
         }
