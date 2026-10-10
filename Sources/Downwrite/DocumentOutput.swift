@@ -50,6 +50,10 @@ final class DocumentOutputController: ObservableObject {
     var presentError: @MainActor (_ title: String, _ message: String) -> Void = { _, _ in }
     var presentOmissions: @MainActor (_ lines: [String]) -> Void = { _ in }
 
+    /// Which controller serves which window, for the end-to-end run (SwiftUI owns the controller; the window is what a script can find).
+    private static let registry = NSMapTable<NSWindow, DocumentOutputController>(keyOptions: .weakMemory, valueOptions: .weakMemory)
+    static func controller(for window: NSWindow) -> DocumentOutputController? { registry.object(forKey: window) }
+
     private weak var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
     private(set) var windowClosed = false
@@ -68,6 +72,7 @@ final class DocumentOutputController: ObservableObject {
         windowClosed = false
         hostWindow = { [weak self] in self?.window }
         guard let newWindow else { return }
+        Self.registry.setObject(self, forKey: newWindow)
         closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: newWindow, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.windowClosed = true }
         }

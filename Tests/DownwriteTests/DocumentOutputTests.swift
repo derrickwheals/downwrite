@@ -214,6 +214,30 @@ final class PrintRendererTests: XCTestCase {
         XCTAssertEqual(endings, 0, "a heading is the last thing on \(endings) page(s)")
     }
 
+    // MARK: R21: what the print panel would show
+
+    func testThePrintOperationCarriesThePaperSizeAndMarginsWithoutShowingAPanel() async throws {
+        let folder = try Self.makeFixtureFolder()
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let markdown = try String(contentsOf: folder.appendingPathComponent("export-demo.md"), encoding: .utf8)
+        let (html, _) = Self.page(of: markdown, folder: folder, target: .print)
+        let renderer = PrintRenderer()
+        try await renderer.load(html)
+        let operation = renderer.webView.printOperation(with: PrintRenderer.makePrintInfo())
+        let paper = NSPrintInfo.shared.paperSize
+        XCTAssertEqual(operation.printInfo.paperSize.width.rounded(), paper.width.rounded())
+        XCTAssertEqual(operation.printInfo.paperSize.height.rounded(), paper.height.rounded())
+        let margin = (20.0 / 25.4 * 72).rounded()
+        XCTAssertEqual(operation.printInfo.topMargin.rounded(), margin)
+        XCTAssertEqual(operation.printInfo.bottomMargin.rounded(), margin)
+        XCTAssertEqual(operation.printInfo.leftMargin.rounded(), margin)
+        XCTAssertEqual(operation.printInfo.rightMargin.rounded(), margin)
+        XCTAssertNotNil(operation.view, "the pages come from a view of their own")
+        // The page count is not known until the operation runs (the view answers "unknown"), so it is read from the PDF of the same page.
+        var range = NSRange(location: 0, length: 0)
+        XCTAssertTrue(operation.view?.knowsPageRange(&range) == true)
+    }
+
     // MARK: R28: the web view is locked down
 
     func testAScriptInThePageDoesNotRun() async throws {
