@@ -6,7 +6,7 @@ reviewed: 2026-10-10
 base: main
 head: 7ba6328a19175eecdaa60d1ad39cffa464c193f8
 reproven: 02fa7fa2ca966cf83ee78e037366c18729b4c434
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/15
 ---
 
 # Review: Fold and unfold content under headings and nested bullets
