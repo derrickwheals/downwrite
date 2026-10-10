@@ -227,12 +227,23 @@ enum ImageLoader {
     /// The largest image file that is embedded into an HTML card.
     static let maxEmbeddedBytes = 8_000_000
 
+    /// The image file at `url` as a `data:` URI with its size, or why it cannot be embedded: it is missing or unreadable, it is not an image
+    /// type WebKit shows (a folder, a text file), or it is larger than ``maxEmbeddedBytes``. The type is checked before the size.
+    static func embed(at url: URL) -> DocumentHTML.LocalImage {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return .notFound }
+        guard !isDirectory.boolValue, let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
+              let mime = type.preferredMIMEType else { return .notAnImage }
+        guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { return .notFound }
+        guard size <= maxEmbeddedBytes else { return .tooLarge }
+        guard let data = try? Data(contentsOf: url) else { return .notFound }
+        return .image(dataURI: "data:\(mime);base64,\(data.base64EncodedString())", byteCount: data.count)
+    }
+
     /// The image file at `url` as a `data:` URI, or `nil` if it is missing, too big or not an image type WebKit shows.
     static func dataURI(at url: URL) -> String? {
-        guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image), let mime = type.preferredMIMEType,
-              let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxEmbeddedBytes,
-              let data = try? Data(contentsOf: url) else { return nil }
-        return "data:\(mime);base64,\(data.base64EncodedString())"
+        if case .image(let uri, _) = embed(at: url) { return uri }
+        return nil
     }
 }
 
