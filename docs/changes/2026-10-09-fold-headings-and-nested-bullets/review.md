@@ -5,7 +5,7 @@ plan: ./plan.md
 reviewed: 2026-10-10
 base: main
 head: 7ba6328a19175eecdaa60d1ad39cffa464c193f8
-reproven:
+reproven: 02fa7fa2ca966cf83ee78e037366c18729b4c434
 pr:
 ---
 
@@ -17,7 +17,7 @@ Important: 2 (fixed 2, disputed 0, open 0) · Nits: 1 (fixed 1)
 
 The review was done by a fresh-context reviewer that did not write the code, running the three passes in `REVIEW.md` separately over the full diff against `main` (27 commits, 23 files). It found one Important bug and one Nit; the security pass had no findings. Finding 2 was found by the author while verifying finding 1, not by the reviewer, and has the same root cause. Both Important findings were reproduced on a plain `NSTextView` before being fixed, and the fix is in `2aa7bef` (`FoldState.openingBeforeDeleting` in Core, with tests that fail when the word handling or the ⌃⌫ override is switched off).
 
-`reproven` is blank on purpose. The plan's four proof commands were re-run on `2aa7bef` like this: `swift test` passed on its second full run (310 app tests and 335 Core tests, 0 failures; the first full run had two failures in `HTMLCardTests.testMermaidAndImageCardsAreUnaffected` and `MermaidTests.testBrokenDiagramShowsErrorCardWithoutBreakingEditor`, both Mermaid/WebKit card tests that passed alone and in the second run, and that nothing in this change touches); `scripts/build-app.sh` passed and bundled the legal files; `scripts/linux-test.sh` cannot run under this Mac's bash 3.2, so the same Docker image command was run directly, where a single process wedged and a one-process-per-class run plus a one-process-per-method run of the two classes that wedged ran all 335 Core tests with 0 failures (12 watchdog timeouts retried, no failures); `scripts/ci-local.sh --shots` was **not** re-run, because its end-to-end step drives the packaged app with real mouse and keyboard events and writes the user's real Downwrite preferences, and the plan records that two older end-to-end steps cannot pass on this Mac and that GitHub Actions is the judge. The end-to-end step, which includes the real-key-event Return/Delete checks next to the guard that changed, still needs a CI run on the pushed branch.
+The plan's proof was re-run after the fixes and passed on `02fa7fa`, recorded as `reproven`. Locally on `2aa7bef` (the same code): `swift test` passed on its second full run (310 app tests and 335 Core tests, 0 failures; the first full run had two failures in `HTMLCardTests.testMermaidAndImageCardsAreUnaffected` and `MermaidTests.testBrokenDiagramShowsErrorCardWithoutBreakingEditor`, both Mermaid/WebKit card tests that passed alone and in the second run, and that nothing in this change touches); `scripts/build-app.sh` passed and bundled the legal files; `scripts/linux-test.sh` cannot run under this Mac's bash 3.2, so the same Docker image command was run directly, where a single process wedged and a one-process-per-class run plus a one-process-per-method run of the two classes that wedged ran all 335 Core tests with 0 failures; `scripts/ci-local.sh --shots` was not run locally, because its end-to-end step drives the packaged app with real input and writes the user's real Downwrite preferences. GitHub Actions run 38015275033 on `02fa7fa` then ran the rest: both jobs succeeded, with 645 macOS tests and 335 Linux tests at 0 failures, and the end-to-end self-test reporting ALL CHECKS PASSED (192 PASS lines, 0 FAIL, 42 of them folding), the same 192 as before the fix. The later commits on the branch only change `review.md`.
 
 ## Findings
 
