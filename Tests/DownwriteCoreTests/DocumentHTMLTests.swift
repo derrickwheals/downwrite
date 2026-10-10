@@ -187,6 +187,19 @@ final class DocumentHTMLTests: XCTestCase {
                        "<div class=\"dw-table\"><table style=\"--w1:4;--w2:4\">\n<thead>\n<tr><th>a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td><td>2</td></tr>\n</tbody>\n</table></div>\n")
     }
 
+    func testATableWithMoreColumnsThanThereAreWeightRulesHasEqualColumns() {
+        // Weights exist for the first `maxWeightedColumns` only; a table wider than that carries none, so no column is squeezed.
+        func table(columns n: Int) -> String {
+            let header = "|" + (1...n).map { " c\($0) |" }.joined()
+            return header + "\n|" + String(repeating: "---|", count: n) + "\n"
+        }
+        let limit = PrintStyle.maxWeightedColumns
+        let atLimit = body(table(columns: limit))
+        XCTAssertTrue(atLimit.contains("<table style=\"--w1:4;"), atLimit)
+        XCTAssertTrue(atLimit.contains("--w\(limit):4\">"), atLimit)
+        XCTAssertTrue(body(table(columns: limit + 1)).hasPrefix("<div class=\"dw-table\"><table>\n<thead>\n<tr><th>c1</th>"), "no style at all")
+    }
+
     func testAHeaderOnlyTableHasNoBody() {
         XCTAssertEqual(body("| a |\n|---|\n"), "<div class=\"dw-table\"><table style=\"--w1:4\">\n<thead>\n<tr><th>a</th></tr>\n</thead>\n</table></div>\n")
     }

@@ -195,6 +195,7 @@ final class PrintStyleTests: XCTestCase {
         XCTAssertEqual(declarations("img", in: print)["max-height"], "15cm", "small enough for a landscape page too: WebKit does not follow the print panel's orientation in CSS")
         XCTAssertEqual(declarations(".dw-diagram svg", in: print)["max-height"], "15cm")
         XCTAssertEqual(declarations("img", in: print)["max-width"], "100%")
+        XCTAssertEqual(declarations("img", in: print)["object-fit"], "contain", "an image with a width of its own is fitted, not squashed, when max-height cuts its height")
         XCTAssertEqual(declarations(".dw-table", in: print)["overflow"], "visible")
     }
 
@@ -206,7 +207,7 @@ final class PrintStyleTests: XCTestCase {
         XCTAssertEqual(declarations("tr", in: print)["display"], "flex")
         XCTAssertEqual(declarations("td", in: print)["display"], "block")
         XCTAssertEqual(declarations("td", in: print)["min-width"], "0")
-        for n in 1...16 { XCTAssertEqual(declarations("td:nth-child(\(n))", in: print)["flex-grow"], "var(--w\(n),1)") }
+        for n in 1...PrintStyle.maxWeightedColumns { XCTAssertEqual(declarations("td:nth-child(\(n))", in: print)["flex-grow"], "var(--w\(n),1)") }
         XCTAssertNil(declarations("tr", in: screen)["display"], "on screen the table is a table")
         XCTAssertNil(declarations("td", in: screen)["flex"])
         XCTAssertFalse(screen.contains("--w1"))

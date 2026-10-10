@@ -207,8 +207,9 @@ final class DocumentRenderer {
                 for line in Self.plainText(of: cell).components(separatedBy: "\n") { longest[i] = max(longest[i], line.count) }
             }
         }
-        let weights = longest.enumerated().map { "--w\($0.offset + 1):\(min(max($0.element, 4), 40))" }.joined(separator: ";")
-        html += "<div class=\"dw-table\"><table style=\"\(weights)\">\n<thead>\n"
+        let weights = longest.count > PrintStyle.maxWeightedColumns ? "" :
+            longest.enumerated().map { "--w\($0.offset + 1):\(min(max($0.element, 4), 40))" }.joined(separator: ";")
+        html += "<div class=\"dw-table\"><table" + (weights.isEmpty ? "" : " style=\"\(weights)\"") + ">\n<thead>\n"
         tableRow(headCells, tag: "th", alignments: alignments)
         html += "</thead>\n"
         if !rows.isEmpty {

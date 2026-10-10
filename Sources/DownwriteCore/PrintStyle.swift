@@ -3,6 +3,10 @@ import Foundation
 /// The one fixed light style of an exported or printed document (R17 to R20). It uses the light palette whatever the window looks like,
 /// names only fonts every Mac has, and loads nothing.
 public enum PrintStyle {
+    /// The most columns of one table that get a width of their own on paper (`--w1` … in the table's `style`). A table with more is laid out
+    /// with equal columns, because weights for only the first few would squeeze the rest.
+    public static let maxWeightedColumns = 32
+
     private static let sansSerif = "-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif"
     private static let monospace = "ui-monospace,Menlo,Consolas,\"Liberation Mono\",monospace"
 
@@ -60,6 +64,8 @@ public enum PrintStyle {
             // 15 cm is a page's height on the smallest page the print panel offers (A4 on its side): WebKit ignores the orientation in CSS
             // (`vh` and `@media (orientation)` do not follow the page), and a taller figure would be cut instead of scaled to fit.
             "img,.dw-diagram svg{max-height:15cm}",
+            // An image with a `width` of its own keeps it while `max-height` cuts its height, so without this it would be squashed.
+            "img{object-fit:contain}",
         ]
         if isPrint {
             rules += paper
@@ -73,7 +79,7 @@ public enum PrintStyle {
                 "td+td,th+th{border-left:0}",
                 "tr+tr>td,tr+tr>th,thead+tbody>tr:first-child>td{border-top:0}",
             ]
-            rules += (1...16).map { "th:nth-child(\($0)),td:nth-child(\($0)){flex-grow:var(--w\($0),1)}" }
+            rules += (1...maxWeightedColumns).map { "th:nth-child(\($0)),td:nth-child(\($0)){flex-grow:var(--w\($0),1)}" }
         } else {
             // The HTML file printed from a browser: the same rules, on a page with margins of its own and no column.
             paper += ["pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible}", ".dw-table{overflow:visible}",

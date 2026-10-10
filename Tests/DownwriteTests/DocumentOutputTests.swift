@@ -275,6 +275,41 @@ final class PrintRendererTests: XCTestCase {
         }
     }
 
+    // MARK: R19 (review finding 2): an image with a width of its own is scaled to fit, not squashed
+
+    func testATallImageWithAWidthAttributeKeepsItsShapeOnPaper() async throws {
+        let size = NSSize(width: 400, height: 1400)
+        let image = NSImage(size: size)
+        image.lockFocus(); NSColor(srgbRed: 0, green: 0.2, blue: 1, alpha: 1).setFill(); NSRect(origin: .zero, size: size).fill(); image.unlockFocus()
+        let png = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation))?.representation(using: .png, properties: [:]))
+        let p = DocumentHTML.prepare("<img src=\"data:image/png;base64,\(png.base64EncodedString())\" width=\"500\">\n", options: .init(target: .print, documentName: "w.md"))
+        let html = DocumentHTML.assemble(p, images: [p.imageSources[0]: .keep], diagrams: []).html
+        XCTAssertTrue(html.contains("width=\"500\""), "the sanitiser keeps the width")
+        let renderer = PrintRenderer()
+        try await renderer.load(html)
+        let window = Self.hostWindow()
+        defer { window.close() }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("dw-width-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await renderer.writePDF(to: url, in: window, jobTitle: "width")
+        let doc = try XCTUnwrap(PDFDocument(url: url))
+        // The blue area's shape on the page that has it: 400 by 1400 pixels is a narrow strip; squashed to the 15 cm cap at the 500-pixel
+        // width it would be nearly square.
+        var box: (minX: Int, maxX: Int, minY: Int, maxY: Int)?
+        for i in 0..<doc.pageCount {
+            guard let rep = NSBitmapImageRep(data: doc.page(at: i)?.thumbnail(of: NSSize(width: 300, height: 420), for: .mediaBox).tiffRepresentation ?? Data()) else { continue }
+            for y in 0..<rep.pixelsHigh {
+                for x in 0..<rep.pixelsWide {
+                    guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), c.blueComponent - c.redComponent > 0.4 else { continue }
+                    box = (min(box?.minX ?? x, x), max(box?.maxX ?? x, x), min(box?.minY ?? y, y), max(box?.maxY ?? y, y))
+                }
+            }
+        }
+        let found = try XCTUnwrap(box, "the image is on no page")
+        let ratio = Double(found.maxX - found.minX + 1) / Double(found.maxY - found.minY + 1)
+        XCTAssertEqual(ratio, 400.0 / 1400.0, accuracy: 0.06, "the image is squashed (width over height \(ratio))")
+    }
+
     // MARK: R25: an image that cannot be loaded is its alt text
 
     func testAnImageThatFailsToLoadBecomesItsAltText() async throws {

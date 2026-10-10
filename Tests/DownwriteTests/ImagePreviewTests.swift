@@ -100,11 +100,20 @@ final class ImagePreviewTests: XCTestCase {
         XCTAssertNil(ImageLoader.dataURI(at: dir.appendingPathComponent("notes.txt")))
     }
 
+    /// A real PNG followed by zero bytes up to `count` bytes in all: decoders ignore what follows the image.
+    private func png(paddedTo count: Int, named name: String, in dir: URL) throws -> URL {
+        let source = try makeFolder(withImageNamed: "seed.png", size: NSSize(width: 8, height: 8)).appendingPathComponent("seed.png")
+        var data = try Data(contentsOf: source)
+        XCTAssertLessThanOrEqual(data.count, count)
+        data.append(Data(count: count - data.count))
+        let url = dir.appendingPathComponent(name)
+        try data.write(to: url)
+        return url
+    }
+
     func testTheEightMegabyteLimitIsExactlyEightMillionBytes() throws {
         let dir = try scratchFolder()
-        let atLimit = dir.appendingPathComponent("at.png"), over = dir.appendingPathComponent("over.png")
-        try Data(count: 8_000_000).write(to: atLimit)
-        try Data(count: 8_000_001).write(to: over)
+        let atLimit = try png(paddedTo: 8_000_000, named: "at.png", in: dir), over = try png(paddedTo: 8_000_001, named: "over.png", in: dir)
         guard case .image(_, let bytes) = ImageLoader.embed(at: atLimit) else { return XCTFail("8,000,000 bytes should be embedded") }
         XCTAssertEqual(bytes, 8_000_000)
         XCTAssertEqual(ImageLoader.embed(at: over), .tooLarge)
@@ -115,5 +124,44 @@ final class ImagePreviewTests: XCTestCase {
         let dir = try scratchFolder()
         try Data(count: 9_000_000).write(to: dir.appendingPathComponent("huge.bin"))
         XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("huge.bin")), .notAnImage)
+    }
+
+    // MARK: A name is not proof: the bytes are checked (review finding 1)
+
+    func testAFileNamedLikeAnImageButHoldingSomethingElseIsNotEmbedded() throws {
+        let dir = try scratchFolder()
+        try "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n".write(to: dir.appendingPathComponent("banner.png"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("banner.png")), .notAnImage)
+        try "just words".write(to: dir.appendingPathComponent("fake.svg"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("fake.svg")), .notAnImage)
+        try Data().write(to: dir.appendingPathComponent("empty.jpg"))
+        XCTAssertEqual(ImageLoader.embed(at: dir.appendingPathComponent("empty.jpg")), .notAnImage)
+    }
+
+    func testALinkNamedLikeAnImageThatLeadsToASecretIsNotEmbedded() throws {
+        let dir = try scratchFolder()
+        let secret = dir.appendingPathComponent("id_ed25519")
+        try "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n".write(to: secret, atomically: true, encoding: .utf8)
+        let link = dir.appendingPathComponent("banner.png")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: secret)
+        XCTAssertEqual(ImageLoader.embed(at: link), .notAnImage)
+        XCTAssertNil(ImageLoader.dataURI(at: link))
+    }
+
+    func testALinkToARealImageIsStillEmbeddedAndTheLimitIsTheTargets() throws {
+        let dir = try scratchFolder()
+        let real = try makeFolder(withImageNamed: "real.png", size: NSSize(width: 12, height: 12)).appendingPathComponent("real.png")
+        let link = dir.appendingPathComponent("link.png")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        guard case .image(let uri, let bytes) = ImageLoader.embed(at: link) else { return XCTFail("a link to an image should be embedded") }
+        XCTAssertTrue(uri.hasPrefix("data:image/png;base64,"))
+        XCTAssertEqual(bytes, try XCTUnwrap(try real.resourceValues(forKeys: [.fileSizeKey]).fileSize))
+        let big = try png(paddedTo: 8_000_001, named: "big.png", in: dir)
+        let bigLink = dir.appendingPathComponent("biglink.png")
+        try FileManager.default.createSymbolicLink(at: bigLink, withDestinationURL: big)
+        XCTAssertEqual(ImageLoader.embed(at: bigLink), .tooLarge, "the size of the file the link leads to counts, not the link's")
+        let dangling = dir.appendingPathComponent("dangling.png")
+        try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: dir.appendingPathComponent("gone.png"))
+        XCTAssertEqual(ImageLoader.embed(at: dangling), .notFound)
     }
 }
