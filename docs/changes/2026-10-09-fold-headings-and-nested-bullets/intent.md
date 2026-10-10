@@ -6,7 +6,7 @@ track: feature
 status: accepted
 raised: 2026-10-09
 accepted: 2026-10-09
-merged:
+merged: 2026-10-10
 backlog:
 ---
 
