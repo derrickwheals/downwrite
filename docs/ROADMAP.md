@@ -14,7 +14,7 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 
 | Ref | Item | Tier | Status |
 | --- | --- | --- | --- |
-| [DW-001](#dw-001--export-and-print) | Export and print | 1 | Proposed |
+| [DW-001](#dw-001--export-and-print) | Export and print | 1 | Intent drafted |
 | [DW-002](#dw-002--paste-and-drop-images) | Paste and drop images | 1 | Proposed |
 | [DW-003](#dw-003--syntax-highlighting-in-code-blocks) | Syntax highlighting in code blocks | 1 | Proposed |
 | [DW-004](#dw-004--typeset-math) | Typeset math | 1 | Proposed |
@@ -60,7 +60,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-001 — Export and print
 
-- **Status:** Proposed
+- **Status:** Intent drafted ([`docs/changes/2026-10-10-export-and-print/`](changes/2026-10-10-export-and-print/intent.md))
 - **Why add it:** A Markdown document is usually written so that someone else can read it, and today the only way out of Downwrite is to hand over the `.md` file itself. There is no PDF, HTML or Word export and no Print command, which every Mac document app is expected to have. People hit this in their first week and return to another tool for the final step.
 - **Why not, or what to watch:** Word (`.docx`) is a different size of job from PDF and HTML because there is no library for it and it would mean a new dependency or hand-written OOXML, so a sensible first slice is Print, Export as PDF and Export as HTML, with Word deferred. Export has to make decisions the editor never has to: ignore folds and the source view, reproduce tables, Mermaid diagrams, checkboxes and HTML blocks, and use a print-friendly light style even when the window is in a dark theme.
 - **What the code has today:** No print or export code in `Sources/`, and the File menu has Share only (from the CI menu dump in `docs/ci/menus.txt`, which may be older than the code). Useful building blocks exist: `HTMLSupport.page` already builds a locked-down HTML page for rendered HTML blocks, and `MermaidService` produces SVG.
