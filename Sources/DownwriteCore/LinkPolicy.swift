@@ -101,6 +101,27 @@ enum LinkPolicy {
         }
     }
 
+    /// What kind of image source this is, for R14's table. A path that starts with `/` or `~`, and `file:`, do not depend on the
+    /// document's folder; any other scheme-less path does.
+    enum ImageSourceKind: Equatable {
+        case data, https, http
+        case local(relative: Bool)
+        case unsupported
+    }
+
+    static func imageSourceKind(_ raw: String) -> ImageSourceKind {
+        guard let s = normalised(raw), !s.hasPrefix("//") else { return .unsupported }
+        switch kind(of: s) {
+        case .relative: return .local(relative: !(s.hasPrefix("/") || s.hasPrefix("~")))
+        case .unreadable: return .unsupported
+        case .scheme("data"): return s.lowercased().hasPrefix("data:image/") ? .data : .unsupported
+        case .scheme("https"): return .https
+        case .scheme("http"): return .http
+        case .scheme("file"): return .local(relative: false)
+        case .scheme: return .unsupported
+        }
+    }
+
     /// R13/R14: an image source the output may keep for now: a path with no scheme, `file:`, `http:` (left out later with its reason),
     /// `https:`, or a `data:image/…` URI. Anything else (other schemes, `data:` that is not an image, `//host`) loses its `src`.
     static func isCandidateImageSource(_ raw: String) -> Bool {
