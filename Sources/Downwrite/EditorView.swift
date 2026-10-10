@@ -524,14 +524,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         NSWorkspace.shared.open(url)
     }
 
-    static func slug(_ title: String) -> String {
-        let lowered = title.lowercased()
-        let allowed = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == " " || $0 == "-" }
-        return String(String.UnicodeScalarView(allowed)).replacingOccurrences(of: " ", with: "-")
-    }
-
     private func scrollToHeading(slug: String) {
-        guard let tv = textView, let h = analysis.headings.first(where: { Self.slug($0.title) == slug.lowercased() }) else { return }
+        guard let tv = textView, let h = analysis.headings.first(where: { HeadingAnchor.slug($0.title) == slug.lowercased() }) else { return }
         tv.setSelectedRange(NSRange(location: h.range.location, length: 0))
         tv.scrollRangeToVisible(h.range)
     }

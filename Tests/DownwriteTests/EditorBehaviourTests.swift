@@ -128,7 +128,7 @@ final class EditorBehaviourTests: XCTestCase {
     }
 
     func testHeadingAnchorLinkScrollsAndSlugs() {
-        XCTAssertEqual(EditorCoordinator.slug("Hello, World! 2"), "hello-world-2")
+        XCTAssertEqual(HeadingAnchor.slug("Hello, World! 2"), "hello-world-2")
         let h = EditorHarness(text: "intro\n\n## Target Heading\n\ntext")
         h.coordinator.open(destination: "#target-heading")
         XCTAssertEqual(h.textView.selectedRange().location, h.index(of: "## Target"))
