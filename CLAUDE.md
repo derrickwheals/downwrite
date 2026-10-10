@@ -13,6 +13,7 @@ Native macOS Markdown editor (SwiftUI + AppKit/TextKit 1). Goal: Bear-like editi
 | `Packaging/` | `Info.plist` (template: `__VERSION__`/`__BUILD__`), entitlements, icon artwork + `AppIcon.icon`. |
 | `scripts/` | `build-app.sh`, `make-dmg.sh`, `linux-test.sh`, `ci-local.sh`, `generate-icons.py`. |
 | `.github/workflows/` | `ci.yml` (Linux core + macOS build/test/e2e), `release.yml` (tag → DMG). |
+| `FEATURE-LIST.md` | Table of every user-facing feature with the release it shipped in and that release's date. Keep it current (see *Feature list* under Development workflow). |
 
 ## Commands
 
@@ -98,6 +99,14 @@ Commands:
 
 - Test: `scripts/linux-test.sh` (Core, runs anywhere Docker does); `swift test` on macOS for everything
 - Lint: `<lint command>` (none configured in this repo yet)
+
+### Feature list
+
+Always update `FEATURE-LIST.md` (repo root) after a new feature has been fully released, meaning it is merged and shipped in a tagged release (`vX.Y.Z`). Append one row at the bottom with the columns Area, Feature, What it does, Release and Released, matching the existing rows.
+
+- Features only. Bug fixes, minor enhancements (small tweaks to an existing feature), refactors, tests, CI and docs do not get a row.
+- Release is the tag that first shipped the feature, linked to its GitHub release page. Released is that tag's date, from `git for-each-ref refs/tags/vX.Y.Z --format='%(creatordate:short)'` (the maintainer's local date), not the merge or commit date.
+- Never guess a version or a date. If the feature is merged but not tagged yet, tell the user the row is still owed and add it once the tag exists.
 
 ### Things Claude gets wrong here
 
