@@ -45,7 +45,13 @@ extension SelfTest {
         // R1: the three items, together, in this order, after Share, with ⌘P on Print…
         let names = ["Print…", "Export as PDF…", "Export as HTML…"]
         func fileMenu() -> NSMenu? { NSApp.mainMenu?.items.first { $0.title == "File" }?.submenu }
-        func items() -> [NSMenuItem] { NSApp.mainMenu?.update(); return names.compactMap { n in fileMenu()?.items.first { $0.title == n } } }
+        // SwiftUI refreshes a menu's items when AppKit is about to show it (`menuNeedsUpdate`: the menu opens, or a key equivalent is looked
+        // up), not the moment its state changes, so reading `isEnabled` without that call returns whatever the last refresh left.
+        func items() -> [NSMenuItem] {
+            if let menu = fileMenu() { menu.delegate?.menuNeedsUpdate?(menu) }
+            NSApp.mainMenu?.update()
+            return names.compactMap { n in fileMenu()?.items.first { $0.title == n } }
+        }
         let titles = fileMenu()?.items.filter { !$0.isSeparatorItem }.map(\.title) ?? []
         if let first = titles.firstIndex(of: "Print…") {
             ok(Array(titles[first...].prefix(3)) == names, "File menu lists Print…, Export as PDF… and Export as HTML… together, in that order", "\(titles)")
