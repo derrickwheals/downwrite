@@ -174,7 +174,7 @@ final class DocumentHTMLTests: XCTestCase {
     func testATableHasItsHeaderBodyAndColumnAlignment() {
         let md = "| Left | Center | Right |\n|:-----|:------:|------:|\n| a | **b** | `c` |\n| d | e | f |\n"
         XCTAssertEqual(body(md),
-                       "<div class=\"dw-table\"><table>\n<thead>\n"
+                       "<div class=\"dw-table\"><table style=\"--w1:4;--w2:6;--w3:5\">\n<thead>\n"
                        + "<tr><th style=\"text-align:left\">Left</th><th style=\"text-align:center\">Center</th><th style=\"text-align:right\">Right</th></tr>\n"
                        + "</thead>\n<tbody>\n"
                        + "<tr><td style=\"text-align:left\">a</td><td style=\"text-align:center\"><strong>b</strong></td><td style=\"text-align:right\"><code>c</code></td></tr>\n"
@@ -184,11 +184,23 @@ final class DocumentHTMLTests: XCTestCase {
 
     func testColumnsWithoutAlignmentHaveNoStyle() {
         XCTAssertEqual(body("| a | b |\n|---|---|\n| 1 | 2 |\n"),
-                       "<div class=\"dw-table\"><table>\n<thead>\n<tr><th>a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td><td>2</td></tr>\n</tbody>\n</table></div>\n")
+                       "<div class=\"dw-table\"><table style=\"--w1:4;--w2:4\">\n<thead>\n<tr><th>a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td><td>2</td></tr>\n</tbody>\n</table></div>\n")
     }
 
     func testAHeaderOnlyTableHasNoBody() {
-        XCTAssertEqual(body("| a |\n|---|\n"), "<div class=\"dw-table\"><table>\n<thead>\n<tr><th>a</th></tr>\n</thead>\n</table></div>\n")
+        XCTAssertEqual(body("| a |\n|---|\n"), "<div class=\"dw-table\"><table style=\"--w1:4\">\n<thead>\n<tr><th>a</th></tr>\n</thead>\n</table></div>\n")
+    }
+
+
+    func testAColumnsWidthWeightFollowsItsLongestTextWithinLimits() {
+        let long = String(repeating: "w", count: 100)
+        let html = body("| id | description of something long | \(long) |\n|--|--|--|\n| 1 | short | x |\n")
+        XCTAssertTrue(html.contains("<table style=\"--w1:4;--w2:29;--w3:40\">"), html)
+    }
+
+    func testTextInsideAColumnCountsAsTypedNotAsMarkup() {
+        let html = body("| a | b |\n|--|--|\n| **bold text here** | `code` and [a link](https://x.test) |\n")
+        XCTAssertTrue(html.contains("<table style=\"--w1:14;--w2:15\">"), html)
     }
 
     func testALineBreakInACellIsABreak() {
@@ -198,9 +210,9 @@ final class DocumentHTMLTests: XCTestCase {
 
     func testTablesInsideQuotesAndListItemsAreTablesToo() {
         XCTAssertEqual(body("> | a |\n> |---|\n> | 1 |\n"),
-                       "<blockquote>\n<div class=\"dw-table\"><table>\n<thead>\n<tr><th>a</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table></div>\n</blockquote>\n")
+                       "<blockquote>\n<div class=\"dw-table\"><table style=\"--w1:4\">\n<thead>\n<tr><th>a</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table></div>\n</blockquote>\n")
         let inList = body("- item\n\n  | a |\n  |---|\n  | 1 |\n")
-        XCTAssertTrue(inList.hasPrefix("<ul>\n<li>\n<p>item</p>\n<div class=\"dw-table\"><table>"), inList)
+        XCTAssertTrue(inList.hasPrefix("<ul>\n<li>\n<p>item</p>\n<div class=\"dw-table\"><table style="), inList)
     }
 
     // MARK: 6b: code (R10)

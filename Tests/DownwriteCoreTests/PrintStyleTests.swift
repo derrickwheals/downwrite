@@ -197,6 +197,31 @@ final class PrintStyleTests: XCTestCase {
         XCTAssertEqual(declarations(".dw-table", in: print)["overflow"], "visible")
     }
 
+
+    func testOnPaperATableIsAColumnOfFlexRowsSoARowCannotBeCutBetweenItsLines() {
+        // WebKit cuts a real table row between the lines of a tall cell whatever `break-inside` says; a block-level flex row is kept whole.
+        XCTAssertEqual(declarations("table", in: print)["display"], "block")
+        XCTAssertEqual(declarations("tbody", in: print)["display"], "block")
+        XCTAssertEqual(declarations("tr", in: print)["display"], "flex")
+        XCTAssertEqual(declarations("td", in: print)["display"], "block")
+        XCTAssertEqual(declarations("td", in: print)["min-width"], "0")
+        for n in 1...16 { XCTAssertEqual(declarations("td:nth-child(\(n))", in: print)["flex-grow"], "var(--w\(n),1)") }
+        XCTAssertNil(declarations("tr", in: screen)["display"], "on screen the table is a table")
+        XCTAssertNil(declarations("td", in: screen)["flex"])
+        XCTAssertFalse(screen.contains("--w1"))
+    }
+
+    func testFlexCellsDoNotDoubleTheirBorders() {
+        XCTAssertEqual(declarations("td+td", in: print)["border-left"], "0")
+        XCTAssertTrue(print.contains("tr+tr>td"))
+    }
+
+
+    func testALooseListKeepsTheSpaceBetweenItsParagraphs() {
+        for css in [screen, print] { XCTAssertFalse(css.contains("li>p:last-child"), "a loose list's items are spaced by their paragraphs' margins") }
+        XCTAssertEqual(declarations("li>ul", in: print)["margin-bottom"], "0", "a nested list adds no gap after itself")
+    }
+
     func testBackgroundsAreKeptWhenPrinting() {
         for css in [screen, print] {
             XCTAssertTrue(css.contains("print-color-adjust:exact"))

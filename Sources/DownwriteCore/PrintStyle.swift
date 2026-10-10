@@ -19,7 +19,7 @@ public enum PrintStyle {
             "h1,h2,h3,h4,h5,h6{line-height:1.25;font-weight:650;margin:1.4em 0 .5em}",
             "h1{font-size:2em}h2{font-size:1.55em}h3{font-size:1.3em}h4{font-size:1.15em}h5{font-size:1em}h6{font-size:.9em}",
             "p,ul,ol,dl,pre,blockquote,details,.dw-table,.dw-diagram{margin:0 0 .8em}",
-            "ul,ol{padding-left:1.6em}li{margin:.15em 0}li>ul,li>ol,li>p:last-child{margin-bottom:0}",
+            "ul,ol{padding-left:1.6em}li{margin:.15em 0}li>ul,li>ol{margin-bottom:0}",
             "summary{font-weight:600}",
             "a[href]{color:\(p.link.css);text-decoration:underline}",
             "mark{background:\(p.highlightBackground.css);color:inherit;border-radius:3px;padding:0 .1em}",
@@ -61,6 +61,17 @@ public enum PrintStyle {
         ]
         if isPrint {
             rules += paper
+            // WebKit's print engine cuts a real table row between the lines of a tall cell whatever `break-inside` says, but keeps a
+            // block-level box whole. So on paper only, a table is a column of flex rows. Column widths come from the weights the table
+            // carries (`--w1` …), and the borders are thinned so adjacent cells do not double them.
+            rules += [
+                "table,thead,tbody{display:block}",
+                "tr{display:flex}",
+                "th,td{display:block;flex:1 1 0px;min-width:0;overflow-wrap:anywhere}",
+                "td+td,th+th{border-left:0}",
+                "tr+tr>td,tr+tr>th,thead+tbody>tr:first-child>td{border-top:0}",
+            ]
+            rules += (1...16).map { "th:nth-child(\($0)),td:nth-child(\($0)){flex-grow:var(--w\($0),1)}" }
         } else {
             // The HTML file printed from a browser: the same rules, on a page with margins of its own and no column.
             paper += ["pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible}", ".dw-table{overflow:visible}",

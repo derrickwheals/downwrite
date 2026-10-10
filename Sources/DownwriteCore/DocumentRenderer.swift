@@ -172,17 +172,42 @@ final class DocumentRenderer {
 
     private func table(_ t: Table) {
         let alignments = t.columnAlignments
-        html += "<div class=\"dw-table\"><table>\n<thead>\n"
-        tableRow(Array(t.head.children), tag: "th", alignments: alignments)
+        let headCells = Array(t.head.children)
+        let rows = Array(t.body.children).map { Array($0.children) }
+        // On paper a table is laid out as flex rows (see `PrintStyle`), which need to be told how wide each column is: in proportion to
+        // its longest text, within limits. The markup stays an ordinary table.
+        var longest = [Int](repeating: 0, count: max(headCells.count, rows.map(\.count).max() ?? 0))
+        for cells in [headCells] + rows {
+            for (i, cell) in cells.enumerated() where i < longest.count {
+                for line in Self.plainText(of: cell).components(separatedBy: "\n") { longest[i] = max(longest[i], line.count) }
+            }
+        }
+        let weights = longest.enumerated().map { "--w\($0.offset + 1):\(min(max($0.element, 4), 40))" }.joined(separator: ";")
+        html += "<div class=\"dw-table\"><table style=\"\(weights)\">\n<thead>\n"
+        tableRow(headCells, tag: "th", alignments: alignments)
         html += "</thead>\n"
-        let rows = Array(t.body.children)
         if !rows.isEmpty {
             html += "<tbody>\n"
-            for row in rows { tableRow(Array(row.children), tag: "td", alignments: alignments) }
+            for cells in rows { tableRow(cells, tag: "td", alignments: alignments) }
             html += "</tbody>\n"
         }
         html += "</table></div>\n"
         endBlock()
+    }
+
+    /// The text of an inline container as a reader sees it: no markup, a line break as `\n`.
+    private static func plainText(of node: Markup) -> String {
+        var out = ""
+        for child in node.children {
+            switch child {
+            case let t as Text: out += t.string
+            case let c as InlineCode: out += c.code
+            case is SoftBreak, is LineBreak: out += "\n"
+            case is InlineHTML, is Image: break
+            default: out += plainText(of: child)
+            }
+        }
+        return out
     }
 
     private func tableRow(_ cells: [Markup], tag: String, alignments: [Table.ColumnAlignment?]) {
