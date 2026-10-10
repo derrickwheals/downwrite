@@ -174,4 +174,39 @@ public struct FoldState: Equatable, Sendable {
         while let hiding = next.foldHiding(offset: range.location, in: analysis) { next.anchors.remove(hiding.anchor) }
         return next
     }
+
+    // MARK: Deleting at a fold's edge (R16)
+
+    /// The state with the folds opened that a delete command at the empty selection `caret` would otherwise have joined a visible
+    /// line to, or `nil` when the delete is ordinary and nothing needs to open. The command itself is then not run.
+    ///
+    /// Backwards, the line break before the caret's line ends a fold. Every backward delete reaches it from the start of the line;
+    /// the word variant (⌥⌫, `byWord`) also reaches it from further in whenever nothing before the caret on the line is a word
+    /// character (the caret just after `- ` or `## `), because AppKit's word delete then skips the marker and the line break and
+    /// eats the word on the line above. Forwards it is the mirror image on the folded header's last line: at its end, and, for the
+    /// word variant, from any caret whose rest of the header has no word character (`## Plan|!`).
+    ///
+    /// Whether AppKit really reaches the break depends on its own word rules, so this errs towards opening: a caret where the word
+    /// delete would have stopped in time costs one extra keypress, never hidden text. `text` is read only when a fold ends or
+    /// starts at the caret's line. A range the text is too short for counts as having no word.
+    public func openingBeforeDeleting(at caret: Int, backwards: Bool, byWord: Bool, in text: @autoclosure () -> String,
+                                      analysis: MarkdownAnalysis) -> FoldState? {
+        guard !anchors.isEmpty else { return nil }
+        if backwards {
+            let lineStart = analysis.line(at: caret).range.location
+            guard lineStart > 0, outermostFold(endingAt: lineStart, in: analysis) != nil,
+                  caret == lineStart || (byWord && !Self.hasWordCharacter(in: NSRange(location: lineStart, length: caret - lineStart), of: text())) else { return nil }
+            return revealing(NSRange(location: lineStart - 1, length: 0), in: analysis)
+        }
+        guard let region = headerFold(containing: caret, in: analysis) else { return nil }
+        let end = headerEnd(of: region, in: analysis)
+        guard caret == end || (byWord && caret < end && !Self.hasWordCharacter(in: NSRange(location: caret, length: end - caret), of: text())) else { return nil }
+        return toggled(region)
+    }
+
+    private static func hasWordCharacter(in range: NSRange, of text: String) -> Bool {
+        let ns = NSString(string: text)
+        guard range.location >= 0, NSMaxRange(range) <= ns.length else { return false }
+        return ns.rangeOfCharacter(from: .alphanumerics, options: [], range: range).location != NSNotFound
+    }
 }

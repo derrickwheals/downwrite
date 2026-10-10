@@ -264,20 +264,15 @@ extension EditorCoordinator {
     }
 
     /// Backspace at the start of the first visible line after a fold, and forward Delete at the end of a folded header (with
-    /// their word, line and paragraph variants and an empty selection), would join a visible line to hidden text. The fold opens
-    /// instead and nothing is deleted. Returns whether it did.
-    func openFoldInsteadOfDeleting(backwards: Bool) -> Bool {
+    /// their word, line and paragraph variants and an empty selection), would join a visible line to hidden text. So would a word
+    /// delete from just after `- ` or `## `, or from before a header's trailing `!`: `FoldState.openingBeforeDeleting` decides.
+    /// The fold opens instead and nothing is deleted. Returns whether it did.
+    func openFoldInsteadOfDeleting(backwards: Bool, byWord: Bool) -> Bool {
         guard !sourceMode, !foldState.isEmpty, let tv = textView, !tv.hasMarkedText(), tv.selectedRange().length == 0,
-              analysis.length == tv.textStorage?.length else { return false }
-        let caret = tv.selectedRange().location
-        if backwards {
-            // The character before the caret is the last hidden line's terminator: every fold hiding it opens.
-            guard caret > 0, foldState.foldHiding(offset: caret - 1, in: analysis) != nil else { return false }
-            setFoldState(foldState.revealing(NSRange(location: caret - 1, length: 0), in: analysis))
-        } else {
-            guard let region = foldState.headerFold(containing: caret, in: analysis), caret == foldState.headerEnd(of: region, in: analysis) else { return false }
-            setFoldState(foldState.toggled(region))
-        }
+              analysis.length == tv.textStorage?.length,
+              let opened = foldState.openingBeforeDeleting(at: tv.selectedRange().location, backwards: backwards, byWord: byWord,
+                                                           in: tv.string, analysis: analysis) else { return false }
+        setFoldState(opened)
         return true
     }
 

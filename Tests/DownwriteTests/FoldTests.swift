@@ -884,7 +884,8 @@ final class FoldTests: XCTestCase {
     func testBackspaceAtTheStartOfTheLineAfterAFoldOpensItAndDeletesNothing() async throws {
         let text = try Self.fixtureF()
         let variants: [(String, Selector)] = [("⌫", #selector(NSResponder.deleteBackward(_:))), ("⌥⌫", #selector(NSResponder.deleteWordBackward(_:))),
-                                              ("⌘⌫", #selector(NSResponder.deleteToBeginningOfLine(_:))), ("paragraph", #selector(NSResponder.deleteToBeginningOfParagraph(_:)))]
+                                              ("⌘⌫", #selector(NSResponder.deleteToBeginningOfLine(_:))), ("paragraph", #selector(NSResponder.deleteToBeginningOfParagraph(_:))),
+                                              ("⌃⌫", #selector(NSResponder.deleteBackwardByDecomposingPreviousCharacter(_:)))]
         for (name, selector) in variants {
             let h = try await fixtureHarness()
             h.coordinator.setFoldState(folded(h, 5, 9, 20))             // Plan and Tasks (inside it) both end where ## Notes begins
@@ -894,6 +895,47 @@ final class FoldTests: XCTestCase {
             XCTAssertEqual(foldedHeaders(h), ["## Notes"], "\(name): the folds that hid the join opened; Notes (below the caret) did not")
             XCTAssertEqual(h.textView.selectedRange(), NSRange(location: lineStart(h, 20), length: 0), "\(name): the caret stayed")
         }
+    }
+
+    /// ⌥⌫ from just after `## ` or `- ` is where the caret sits when you start typing a line, and AppKit's word delete skips the
+    /// marker and the line break and eats the word above: with a fold there that is hidden text.
+    func testWordBackspaceFromAfterTheMarkersOfTheLineAfterAFoldOpensItAndDeletesNothing() async throws {
+        let text = try Self.fixtureF()
+        let heading = try await fixtureHarness()
+        heading.coordinator.setFoldState(folded(heading, 5, 9, 20))
+        heading.select(lineStart(heading, 20) + 3)                       // ## |Notes
+        heading.textView.deleteWordBackward(nil)
+        XCTAssertEqual(heading.textView.string, text, "heading: nothing was deleted")
+        XCTAssertEqual(foldedHeaders(heading), ["## Notes"], "heading: Plan and Tasks opened, Notes did not")
+        XCTAssertEqual(heading.textView.selectedRange(), NSRange(location: lineStart(heading, 20) + 3, length: 0))
+
+        let item = try await fixtureHarness()
+        item.coordinator.setFoldState(folded(item, 26))
+        item.select(lineStart(item, 31) + 2)                              // - |Done, under the folded "- Groceries" whose last line ends in "Eggs."
+        item.textView.deleteWordBackward(nil)
+        XCTAssertEqual(item.textView.string, text, "item: nothing was deleted")
+        XCTAssertEqual(foldedHeaders(item), [], "item: the fold opened")
+        XCTAssertEqual(item.textView.selectedRange(), NSRange(location: lineStart(item, 31) + 2, length: 0))
+    }
+
+    func testWordBackspaceAfterAWordOnTheLineAfterAFoldIsOrdinary() async throws {
+        let h = try await fixtureHarness()
+        h.coordinator.setFoldState(folded(h, 26))
+        h.select(lineStart(h, 31) + 3)                                    // - D|one
+        h.textView.deleteWordBackward(nil)
+        XCTAssertTrue(h.textView.string.contains("\n- one\n"), "it deleted the D and nothing else")
+        XCTAssertEqual(foldedHeaders(h), ["- Groceries"], "and the fold stayed")
+    }
+
+    func testWordDeleteForwardFromBeforeAWordlessTailOfAFoldedHeaderOpensItAndDeletesNothing() async throws {
+        let text = "## Plan!\nhidden words\n## Next\n"
+        let h = EditorHarness(text: text)
+        h.coordinator.setFoldState(FoldState().toggled(h.coordinator.analysis.foldRegions[0]))
+        h.select(7)                                                       // ## Plan|!
+        h.textView.deleteWordForward(nil)
+        XCTAssertEqual(h.textView.string, text, "nothing was deleted: AppKit would have taken \"!\\nhidden\"")
+        XCTAssertEqual(foldedHeaders(h), [], "the fold opened")
+        XCTAssertEqual(h.textView.selectedRange(), NSRange(location: 7, length: 0))
     }
 
     func testForwardDeleteAtTheEndOfAFoldedHeaderOpensItAndDeletesNothing() async throws {

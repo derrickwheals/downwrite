@@ -751,6 +751,84 @@ final class FoldingTests: XCTestCase {
         XCTAssertNil(f.state(5).outermostFold(endingAt: f.end(5), in: f.a), "the end of the header is not where a fold ends")
     }
 
+    // MARK: Deleting at a fold's edge (R16)
+
+    /// What `openingBeforeDeleting` leaves folded (1-based header lines), or nil when the delete is ordinary.
+    private func foldedAfterDeleting(_ f: F, _ state: FoldState, at caret: Int, backwards: Bool, byWord: Bool = false) -> [Int]? {
+        state.openingBeforeDeleting(at: caret, backwards: backwards, byWord: byWord, in: f.text, analysis: f.a).map(f.folded)
+    }
+
+    func testBackspaceAtTheStartOfTheFirstVisibleLineAfterAFoldOpensTheFoldsThatEndThere() throws {
+        let f = try F()
+        // Plan and Tasks both end where ## Notes starts; Notes itself (below the caret) stays folded.
+        for byWord in [false, true] {
+            XCTAssertEqual(foldedAfterDeleting(f, f.state(5, 9, 20), at: f.start(20), backwards: true, byWord: byWord), [20], "byWord \(byWord)")
+        }
+        XCTAssertEqual(foldedAfterDeleting(f, f.state(26), at: f.start(31), backwards: true), [], "an item fold ends at the next sibling")
+    }
+
+    func testWordBackspaceFromAfterTheMarkersOfTheLineAfterAFoldAlsoOpensIt() throws {
+        let f = try F()
+        // AppKit's word delete skips `## ` and `- ` and the line break and eats the word on the line above, which is hidden.
+        XCTAssertEqual(foldedAfterDeleting(f, f.state(5, 9), at: f.start(20) + 3, backwards: true, byWord: true), [], "## |Notes")
+        XCTAssertEqual(foldedAfterDeleting(f, f.state(26), at: f.start(31) + 2, backwards: true, byWord: true), [], "- |Done")
+        XCTAssertEqual(foldedAfterDeleting(f, f.state(26), at: f.start(31) + 1, backwards: true, byWord: true), [], "-| Done")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5, 9), at: f.start(20) + 3, backwards: true), "a single-character Backspace there only deletes the space")
+    }
+
+    func testWordBackspaceAfterAWordOnTheLineIsOrdinary() throws {
+        let f = try F()
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5, 9), at: f.start(20) + 4, backwards: true, byWord: true), "## N|otes deletes N")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(26), at: f.start(31) + 3, backwards: true, byWord: true), "- D|one deletes D")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(26), at: f.end(31), backwards: true, byWord: true), "the end of the line")
+    }
+
+    func testBackspaceNotNextToAFoldIsOrdinary() throws {
+        let f = try F()
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5, 9), at: f.start(21), backwards: true, byWord: true), "the line after is not where a fold ends")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5, 9), at: f.start(3), backwards: true, byWord: true), "above the fold")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5, 9), at: f.end(5), backwards: true, byWord: true), "at the end of the header, the letter before the caret shows")
+        XCTAssertNil(foldedAfterDeleting(f, FoldState(), at: f.start(20), backwards: true, byWord: true), "nothing folded")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(20), at: f.start(20) + 3, backwards: true, byWord: true), "the fold hides lines below the caret, not the line break above it")
+    }
+
+    func testForwardDeleteAtTheEndOfAFoldedHeaderOpensIt() throws {
+        let f = try F()
+        for byWord in [false, true] {
+            XCTAssertEqual(foldedAfterDeleting(f, f.state(5, 20), at: f.end(5), backwards: false, byWord: byWord), [20], "byWord \(byWord)")
+        }
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5), at: f.end(5) - 1, backwards: false, byWord: true), "Pla|n: the word delete only takes the n")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5), at: f.start(5) + 3, backwards: false, byWord: true))
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5), at: f.start(3), backwards: false, byWord: true), "not a folded header")
+        XCTAssertNil(foldedAfterDeleting(f, f.state(5), at: f.end(21), backwards: false, byWord: true))
+    }
+
+    func testWordDeleteForwardFromBeforeAWordlessTailOfAFoldedHeaderAlsoOpensIt() throws {
+        // AppKit's word delete skips the tail (punctuation, spaces), the line break, and eats the first hidden word.
+        for (text, caret, tail) in [("## Plan!\nhidden words\n## Next", 7, "!"), ("- Groceries \n  - hidden item\n- Next", 11, "a trailing space"),
+                                    ("Title\n=====\nhidden words", 5, "a setext underline")] {
+            let a = MarkdownAnalyzer.analyze(text)
+            let state = FoldState().toggled(a.foldRegions[0])
+            XCTAssertEqual(state.openingBeforeDeleting(at: caret, backwards: false, byWord: true, in: text, analysis: a), FoldState(), tail)
+            XCTAssertNil(state.openingBeforeDeleting(at: caret, backwards: false, byWord: false, in: text, analysis: a), "\(tail): a single Delete takes one character of it")
+        }
+        let wordy = "## Plan ok\nhidden words"
+        let a = MarkdownAnalyzer.analyze(wordy)
+        XCTAssertNil(FoldState().toggled(a.foldRegions[0]).openingBeforeDeleting(at: 7, backwards: false, byWord: true, in: wordy, analysis: a), "a word in the tail stops it")
+    }
+
+    func testDeleteGuardReadsTheTextOnlyNextToAFoldAndSurvivesAShortOne() throws {
+        let f = try F()
+        var reads = 0
+        func text() -> String { reads += 1; return f.text }
+        _ = f.state(5, 9).openingBeforeDeleting(at: f.start(21), backwards: true, byWord: true, in: text(), analysis: f.a)
+        _ = f.state(5).openingBeforeDeleting(at: f.start(3), backwards: false, byWord: true, in: text(), analysis: f.a)
+        _ = FoldState().openingBeforeDeleting(at: f.start(20) + 3, backwards: true, byWord: true, in: text(), analysis: f.a)
+        XCTAssertEqual(reads, 0, "the document is not touched unless a fold ends or starts at the caret's line")
+        // A text shorter than the analysis (a stale pair) must not crash; the safe answer is to open the fold.
+        XCTAssertNotNil(f.state(5, 9).openingBeforeDeleting(at: f.start(20) + 3, backwards: true, byWord: true, in: "short", analysis: f.a))
+    }
+
     func testStateIsPlainValueData() throws {
         let f = try F()
         let a = f.state(5, 20), b = f.state(20, 5)

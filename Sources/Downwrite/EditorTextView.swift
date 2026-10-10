@@ -281,15 +281,17 @@ final class EditorTextView: NSTextView {
     }
 
     // Word and line deletes would eat the hidden newline next to a table (or a fold) just the same.
-    override func deleteWordBackward(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteWordBackward(sender) } }
+    override func deleteWordBackward(_ sender: Any?) { if !guardDelete(backwards: true, byWord: true) { super.deleteWordBackward(sender) } }
     override func deleteToBeginningOfLine(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfLine(sender) } }
     override func deleteToBeginningOfParagraph(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteToBeginningOfParagraph(sender) } }
-    override func deleteWordForward(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteWordForward(sender) } }
+    override func deleteBackwardByDecomposingPreviousCharacter(_ sender: Any?) { if !guardDelete(backwards: true) { super.deleteBackwardByDecomposingPreviousCharacter(sender) } }
+    override func deleteWordForward(_ sender: Any?) { if !guardDelete(backwards: false, byWord: true) { super.deleteWordForward(sender) } }
     override func deleteToEndOfLine(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfLine(sender) } }
     override func deleteToEndOfParagraph(_ sender: Any?) { if !guardDelete(backwards: false) { super.deleteToEndOfParagraph(sender) } }
 
-    private func guardDelete(backwards: Bool) -> Bool {
-        coordinator?.openFoldInsteadOfDeleting(backwards: backwards) == true || guardTableDelete(backwards: backwards)
+    /// `byWord`: the word delete skips punctuation and line breaks, so it can reach hidden text from further than the line's edge.
+    private func guardDelete(backwards: Bool, byWord: Bool = false) -> Bool {
+        coordinator?.openFoldInsteadOfDeleting(backwards: backwards, byWord: byWord) == true || guardTableDelete(backwards: backwards)
     }
 
     private func guardTableDelete(backwards: Bool) -> Bool {

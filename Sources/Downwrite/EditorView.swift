@@ -86,7 +86,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
 
     private var settings: EditorSettings?
     var preview = PreviewState()
-    var lastHidden = Set<Int>()
+    private var lastHidden = Set<Int>()
     var isStyling = false
     private var repositionScheduled = false
     private var tocPublishScheduled = false
