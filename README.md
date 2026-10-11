@@ -62,6 +62,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 - **Small.** Under 10 MB on disk, most of it the bundled Mermaid engine. No network access needed except for remote images.
 - **Inline images.** `![alt](path)` on its own line shows the picture below the (collapsed) Markdown.
 - **Inline HTML.** HTML in a document is drawn, not shown as source. Tags inside a paragraph — `<kbd>`, `<b>`/`<strong>`, `<i>`/`<em>`, `<u>`/`<ins>`, `<s>`/`<del>`, `<mark>`, `<code>`, `<sub>`, `<sup>` and `<a href>` — are styled like their Markdown cousins and hide their tags until the caret touches them (`<a href>` links open with ⌘-click). Whole blocks (`<p align="center"><img …></p>`, `<div>`, `<details>`, `<table>`…) are rendered under their collapsed source in the editor's font and colours; click one to edit it and it re-renders as you type. Blocks are shown in a locked-down web view that never runs scripts, never leaves the page, and loads nothing but inline CSS and images (local ones from next to the document, or `https:`), so a downloaded file cannot do anything surprising. The source view (⌘/) shows the raw HTML.
+- **Print and export.** File ▸ **Print…** (⌘P), **Export as PDF…** and **Export as HTML…** output the whole document as a reader would see it, in one fixed light page whatever the window looks like: the theme, folds and source view never leak in, and the document, its undo history and the file on disk are not touched. Local images are embedded, Mermaid diagrams become inline SVG, tables and task boxes are drawn for paper, and front matter is left out. HTML in the document is kept (centred images, `<details>`, badges) but scripts, event attributes, frames, forms and unsafe links are removed. Print and PDF use the system paper size, 20 mm margins and the standard print panel (Save as PDF, Open in Preview…); the HTML export is a single self-contained file that opens in any browser. Output is prepared off the main thread, so the window stays usable while a long document is made ready.
 
 ## Keyboard shortcuts
 
@@ -79,6 +80,7 @@ Markdown syntax **disappears while you read** and **comes back when your cursor 
 | Table of contents | ⌃⌘O | Markdown source view | ⌘/ |
 | Next / previous table cell | Tab / ⇧Tab | New table row (in the last cell) | Tab or Return |
 | Fold / unfold at the caret | ⌥⌘← / ⌥⌘→ | Fold all / unfold all | ⇧⌥⌘← / ⇧⌥⌘→ |
+| Print | ⌘P | | |
 
 Pressing a formatting shortcut again removes the formatting. With nothing selected it wraps the word under the caret (or inserts an empty pair). Standard shortcuts (⌘Z, ⇧⌘Z, ⌘C/V/X, ⌘A, ⌘S, ⌘W, ⌘T …) work as in any Mac app. ⌘-click a link to open it.
 
@@ -194,6 +196,7 @@ A few more pieces, all kept in the pure-Swift core so they are tested on Linux: 
 
 - Images are previewed inline when they sit on a line of their own (local paths are resolved relative to the document; `http(s)` images load from the network). Images inside a paragraph are styled but not previewed.
 - Math (`$…$`, `$$…$$`) is styled, not typeset.
+- Print and export: a table that runs over several pages shows its header row only where it starts, and a heading is kept with the block after it only when both fit one page (WebKit's print engine has neither). Local images over 8 MB are left out (shown as their alt text), as is any image once an output already holds 64 MB, and `http:` images (only `https:` ones are kept; the HTML file links to them rather than embedding them). Relative and `file:` links work only next to the original document. Footnotes and `$math$` are shown as typed, not typeset. Word (`.docx`) export is not offered.
 - HTML: only top-level blocks are rendered (HTML inside a quote or list item stays source), links inside a rendered block are not clickable, and `<details>` that wraps Markdown is drawn piece by piece because Markdown ends an HTML block at the first blank line. Inline tags other than the ones listed above (`<br>`, `<span style=…>`, `<font>`, `<small>`…), unclosed tags and tags that cross a Markdown span stay as dim source.
 - Folds are kept in memory per window (nothing is written to the file or to disk), and Replace All is one change of the text, so a fold whose heading lies between the first and the last match is closed. Only top-level headings fold (not those inside quotes or list items).
 - Numbered tasks (`1. [ ]`) keep their number and the raw `[ ]`; only bulleted tasks become checkboxes. The source view is deliberately plain (no syntax colouring).
