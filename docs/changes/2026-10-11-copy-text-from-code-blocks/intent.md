@@ -6,7 +6,7 @@ track: enhancement
 status: accepted
 raised: 2026-10-11
 accepted: 2026-10-11
-merged:
+merged: 2026-10-11
 backlog: "DW-012 (docs/ROADMAP.md#dw-012--copy-text-from-code-blocks)"
 ---
 
