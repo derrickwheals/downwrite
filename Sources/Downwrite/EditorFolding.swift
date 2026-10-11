@@ -77,17 +77,25 @@ extension EditorCoordinator {
 
     // MARK: Pointer and clicks (R8, R9)
 
-    /// The visible foldable header whose line `point` (text view coordinates) is on. The band covers the whole width of the
-    /// view, margins included, so the pointer beside a header counts as over it.
-    private func foldHeader(at point: NSPoint) -> FoldHeader? {
-        guard !sourceMode, !preview.foldHeaders.isEmpty, let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer,
+    /// The source line `point` (text view coordinates) is on, and whether it is inside the text column rather than a margin. The
+    /// band covers the whole width of the view, so the pointer beside a line counts as on it. `nil` in the source view, above or
+    /// below the text, and while the analysis is older than the text.
+    func pointerLine(at point: NSPoint) -> (line: Int, inColumn: Bool)? {
+        guard !sourceMode, let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer,
               analysis.length == tv.textStorage?.length, lm.numberOfGlyphs > 0 else { return nil }
         let origin = tv.textContainerOrigin
-        let local = NSPoint(x: min(max(point.x - origin.x, 0), tc.size.width - 1), y: point.y - origin.y)
+        let x = point.x - origin.x
+        let local = NSPoint(x: min(max(x, 0), tc.size.width - 1), y: point.y - origin.y)
         let glyph = lm.glyphIndex(for: local, in: tc, fractionOfDistanceThroughGlyph: nil)
         let band = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
         guard local.y >= band.minY, local.y <= band.maxY else { return nil }
-        return preview.foldHeaders[analysis.lineIndex(at: lm.characterIndexForGlyph(at: glyph))]
+        return (analysis.lineIndex(at: lm.characterIndexForGlyph(at: glyph)), x >= 0 && x <= tc.size.width)
+    }
+
+    /// The visible foldable header whose line `point` (text view coordinates) is on, margins included.
+    private func foldHeader(at point: NSPoint) -> FoldHeader? {
+        guard !preview.foldHeaders.isEmpty, let hit = pointerLine(at: point) else { return nil }
+        return preview.foldHeaders[hit.line]
     }
 
     /// The header whose chevron or chip (the chip only while folded) is at `point`, if any.
@@ -114,15 +122,19 @@ extension EditorCoordinator {
         setFoldState(foldState.toggled(region))
     }
 
-    /// The chevron of the header under the pointer shows even while its region is open.
+    /// The chevron of the header under the pointer shows even while its region is open, and the copy control of the code block
+    /// under it. (One glyph lookup serves both.)
     func pointerMoved(to point: NSPoint) {
         guard let lm = textView?.layoutManager as? DWLayoutManager else { return }
-        setHoveredHeader(foldHeader(at: point), in: lm)
+        let hit = preview.foldHeaders.isEmpty && analysis.codeBlocks.isEmpty ? nil : pointerLine(at: point)
+        setHoveredHeader(hit.flatMap { preview.foldHeaders[$0.line] }, in: lm)
+        setHoveredCodeBlock(at: point, hit: hit, in: lm)
     }
 
     func pointerLeft() {
         guard let lm = textView?.layoutManager as? DWLayoutManager else { return }
         setHoveredHeader(nil, in: lm)
+        clearHoveredCodeBlock(in: lm)
     }
 
     private func setHoveredHeader(_ header: FoldHeader?, in lm: DWLayoutManager) {

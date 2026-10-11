@@ -45,7 +45,8 @@ public enum MarkdownAnalyzer {
             .map { LinkSpan(range: moved($0.range), textRange: moved($0.textRange), destination: $0.destination) }
         let line = LineStyle(range: NSRange(location: 0, length: units.count), contentEnd: units.count)
         return MarkdownAnalysis(length: units.count, spans: spans, markers: markers, lines: [line], links: links, images: [],
-                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [], foldRegions: [])
+                                taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [], codeBlocks: [],
+                                foldRegions: [])
     }
 }
 
@@ -69,6 +70,7 @@ private struct Builder {
     var tables: [TableBlock] = []
     var headings: [HeadingInfo] = []
     var htmlBlocks: [RawHTMLBlock] = []
+    var codeBlocks: [CodeBlockInfo] = []
     /// Top-level headings in document order, with every line each one occupies (`finish` turns them into fold regions).
     var foldHeadings: [(level: Int, lines: ClosedRange<Int>)] = []
     /// List items with content after their first paragraph: the header lines (the paragraph) and the item's last line.
@@ -109,7 +111,7 @@ private struct Builder {
         return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
             taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks,
-            htmlBlocks: htmlBlocks, foldRegions: cellMode ? [] : foldRegions()
+            htmlBlocks: htmlBlocks, codeBlocks: codeBlocks, foldRegions: cellMode ? [] : foldRegions()
         )
     }
 
@@ -370,7 +372,9 @@ private struct Builder {
             while q < end0 && src.units[q] == fenceChar { q += 1 }
             fenceLen = q - first
         }
-        addSpan(NSRange(location: src.lineStarts[l0], length: src.lineContentEnds[l1] - src.lineStarts[l0]), .codeBlock)
+        let whole = NSRange(location: src.lineStarts[l0], length: src.lineContentEnds[l1] - src.lineStarts[l0])
+        addSpan(whole, .codeBlock)
+        recordCopyableText(c, range: whole, lines: l0...l1)
         guard fenceLen >= 3 else {                      // indented code block
             for l in ls { lines[l].kind = .codeBlock }
             return
@@ -401,6 +405,16 @@ private struct Builder {
             mermaid.append(MermaidBlock(range: reveal, source: codeLines.joined(separator: "\n"),
                                         firstLine: l0, lastLine: closed ? l1 : l1))
         }
+    }
+
+    /// Records what the block's copy control puts on the clipboard: cmark's code (it already lacks the fence lines, the language
+    /// tag and any quote or list prefix) with one final line break removed. Blocks with nothing left have no record.
+    private mutating func recordCopyableText(_ c: CodeBlock, range: NSRange, lines span: ClosedRange<Int>) {
+        guard !cellMode else { return }
+        var text = c.code
+        if text.last == "\n" || text.last == "\r\n" { text.removeLast() }
+        guard !text.isEmpty else { return }
+        codeBlocks.append(CodeBlockInfo(range: range, firstLine: span.lowerBound, lastLine: span.upperBound, text: text))
     }
 
     private mutating func thematicBreak(_ node: Markup) {

@@ -148,6 +148,8 @@ final class EditorTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        // After the text, so the copy control covers whatever the first line of its card puts under it.
+        (layoutManager as? DWLayoutManager)?.drawCodeCopyControls(in: dirtyRect, origin: textContainerOrigin)
         guard string.isEmpty, !hasMarkedText(), let coordinator, let styler = coordinator.styler else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: coordinator.typography.font(),
@@ -238,6 +240,21 @@ final class EditorTextView: NSTextView {
     @objc func dwTableCommand(_ sender: Any?) {
         guard let box = sender as? TableCommandBox, let overlay = coordinator?.tableOverlay else { NSSound.beep(); return }
         overlay.perform(box.command, atOffset: selectedRange().location)
+    }
+
+    /// Edit ▸ Copy Code Block (⇧⌘C): the code of the block the caret is in.
+    @objc func dwCopyCodeBlock(_ sender: Any?) { coordinator?.copyCodeBlockAtCaret() }
+
+    /// VoiceOver's actions menu offers Copy Code Block while the caret is in a code block, for anyone who cannot see or point at
+    /// the drawn control.
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        var actions = super.accessibilityCustomActions() ?? []
+        if coordinator?.hasCodeBlockAtCaret == true {
+            actions.append(NSAccessibilityCustomAction(name: "Copy Code Block") { [weak self] in
+                MainActor.assumeIsolated { self?.coordinator?.copyCodeBlockAtCaret() ?? false }
+            })
+        }
+        return actions.isEmpty ? nil : actions
     }
 
     // Folding (View menu): the commands live on the coordinator, which owns the fold state.
@@ -400,6 +417,8 @@ final class EditorTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A click on a code card's copy control copies the block and does nothing else: the caret and the selection stay.
+        if coordinator?.handleCopyControlClick(at: point, clickCount: event.clickCount) == true { return }
         // A click on a chevron or a ⋯ chip folds or unfolds without touching the selection.
         if let header = coordinator?.foldControl(at: point) {
             if event.clickCount == 1 {

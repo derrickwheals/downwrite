@@ -12,19 +12,20 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 
 ## Summary
 
-| Ref | Item | Tier | Status |
-| --- | --- | --- | --- |
-| [DW-001](#dw-001--export-and-print) | Export and print | 1 | Released (v0.9.3) |
-| [DW-002](#dw-002--paste-and-drop-images) | Paste and drop images | 1 | Proposed |
-| [DW-003](#dw-003--syntax-highlighting-in-code-blocks) | Syntax highlighting in code blocks | 1 | Proposed |
-| [DW-004](#dw-004--typeset-math) | Typeset math | 1 | Proposed |
-| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes) | Folders, quick open and linking between notes | 1 | Proposed |
-| [DW-006](#dw-006--github-style-callouts) | GitHub-style callouts | 2 | Proposed |
-| [DW-007](#dw-007--focus-and-typewriter-mode) | Focus and typewriter mode | 2 | Proposed |
-| [DW-008](#dw-008--auto-pairing-while-typing) | Auto-pairing while typing | 2 | Proposed |
-| [DW-009](#dw-009--localisation) | Localisation | 2 | Proposed |
-| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2 | Proposed |
-| [DW-011](#dw-011--accessibility-audit) | Accessibility audit | Unverified risk | Proposed |
+| Ref                                                                  | Item                                                  | Tier            | Status            |
+| -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | ----------------- |
+| [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3) |
+| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed          |
+| [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          |
+| [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          |
+| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          |
+| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | Proposed          |
+| [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed          |
+| [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed          |
+| [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed          |
+| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2               | Proposed          |
+| [DW-012](#dw-012--copy-text-from-code-blocks)                        | Copy text from code blocks                            | 2               | In progress       |
+| [DW-011](#dw-011--accessibility-audit)                               | Accessibility audit                                   | Unverified risk | Proposed          |
 
 Tier 1 is the set of gaps most likely to stop someone using Downwrite every day. Tier 2 is worth doing but would not stop anyone adopting it. The last item is an audit of something that has not been tested yet.
 
@@ -48,6 +49,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 | --- | --- |
 | DW-003 + DW-004 | Both turn on the bundled-library question, so both edit `Package.swift` or `build-app.sh`, `THIRD-PARTY-NOTICES.md` and `ThirdParty/`, and both change `MarkdownAnalyzer`. Settle the approach once, then do one after the other. |
 | DW-003 + DW-006, DW-003 + DW-007, DW-006 + DW-007 | All three work in the styler, the analyzer and `DWLayoutManager`, which is where merge conflicts and restyling bugs are most likely. |
+| DW-012 + DW-003, DW-006 or DW-007 | DW-012 needs a record of each code block in `MarkdownAnalyzer` and draws its button in `DWLayoutManager` and `EditorTextView`, the same files the other three work in. DW-003 also restyles the code card itself. |
 | DW-009 + any item that adds or changes UI text | Localisation touches nearly every file in the app target. Do it alone, or last. |
 
 **Order matters** (a dependency rather than a conflict):
@@ -134,6 +136,14 @@ Two agents can work on two items at once, each in its own git worktree and branc
 - **Why add it:** Mac power users automate their writing: Shortcuts actions (App Intents) such as "append to document" or "get word count", a Services entry to start a Downwrite document from selected text in any app, and AppleScript. It makes Downwrite part of existing workflows.
 - **Why not, or what to watch:** The audience is small, and every surface is an API to keep stable. App Intents have to work with a `DocumentGroup` document model, which is not trivial. Services alone (an `NSServices` entry in `Info.plist`) is a cheap first slice if any of this is done. It can wait for demand.
 - **What the code has today:** No App Intents, Services entries or AppleScript support.
+
+## DW-012 — Copy text from code blocks
+
+- **Status:** In progress. Plan approved on 2026-10-11 and built on the branch `change/2026-10-11-copy-text-from-code-blocks`, awaiting review ([`docs/changes/2026-10-11-copy-text-from-code-blocks/`](changes/2026-10-11-copy-text-from-code-blocks/intent.md)).
+- **Why add it:** Code blocks are the part of a document people most often want to lift out whole: a shell command, a config snippet, a README example. Today that means dragging a selection exactly from the first character to the last, and while the fences are collapsed the selection can sweep in the hidden fence lines as well, because hidden syntax stays in the text and copies with it. A small copy button at the top right of the card, as GitHub and most documentation sites show, puts exactly the code on the clipboard in one click.
+- **Why not, or what to watch:** It is a small feature with a few decisions in it. (1) What is copied: the code as a reader sees it, without the fence lines, the language tag, or a quote or list prefix when the block is nested, which is what cmark's `CodeBlock.code` already gives the HTML export. (2) When the button shows: always, or only while the pointer is over the card or the caret is in the block, like the fold chevrons. Hover-only keeps the page quiet but is less discoverable. (3) The card spans the text column, so the first line of a long block can run underneath the button, and the button needs its own background or the line needs room. (4) Confirmation: a brief tick after the click, drawn without touching the text storage, so the document is never marked edited and nothing lands on the undo stack. (5) Which blocks qualify: fenced and indented blocks, an unclosed fence, and whether a Mermaid block's source (shown as a code card while the caret is inside it) gets the button too. (6) VoiceOver cannot see a drawn button, so it needs an accessibility action or a menu command such as Copy Code Block, which also gives keyboard users a route; this overlaps DW-011. There should be no button in the source view (⌘/), in folded lines, or in any export or print output.
+- **What the code has today (checked 2026-10-11):** Nothing in the app writes to the pasteboard. A code block is drawn as a rounded card by `DWLayoutManager.drawCustomBackgrounds` from the `.dwBlockBackground` attribute, which tables and front matter share, and the card is the union of the block's visible line fragments. `MarkdownAnalyzer.codeBlock` marks the fence lines `.fence`, the lines between them `.codeBlock` and adds a `.codeBlock` span, but keeps no record of a block's code range or text (only Mermaid blocks get one, as `MermaidBlock`), so Core needs a small new type, tested on Linux, to say what each block's copyable text is. The pieces for a control like this exist for fold chevrons: pointer tracking in `EditorTextView` (`updateTrackingAreas`, `mouseMoved`), a click handled in `mouseDown` before the selection changes, and drawing from `EditorTextView.drawBackground(in:)` through a `DWLayoutManager` helper (`drawFoldControls`).
+- **Related:** DW-003 (restyles the same card), DW-011 (a drawn control needs an accessibility route), DW-001 (the button must not appear in print or export).
 
 ## Unverified risk
 

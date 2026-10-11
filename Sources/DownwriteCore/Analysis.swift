@@ -91,6 +91,19 @@ public struct MermaidBlock: Equatable, Sendable {
     public var lastLine: Int
 }
 
+/// A code block that has something to copy: fenced (closed or not), indented, or nested in a quote or list.
+public struct CodeBlockInfo: Equatable, Sendable {
+    /// Whole block, fences included, from the start of its first line to the end of its last line's content. This is the
+    /// range of the block's card.
+    public var range: NSRange
+    /// Index of the first and last source line of the block (fence lines included).
+    public var firstLine: Int
+    public var lastLine: Int
+    /// What a reader would copy: cmark's `CodeBlock.code` (no fence lines, language tag, quote or list prefix) with one final
+    /// line break removed. Never empty; a block with nothing to copy has no record.
+    public var text: String
+}
+
 /// A line that consists of nothing but one image (`![alt](src)`): previewed under the line.
 public struct ImageBlock: Equatable, Sendable {
     public var line: Int
@@ -240,6 +253,8 @@ public struct MarkdownAnalysis: Sendable {
     public let headings: [HeadingInfo]
     public let imageBlocks: [ImageBlock]
     public let htmlBlocks: [RawHTMLBlock]
+    /// Code blocks with something to copy, in document order. Their ranges never overlap.
+    public let codeBlocks: [CodeBlockInfo]
     /// Everything that can fold, in document order (ascending `anchor`, which is unique).
     public let foldRegions: [FoldRegion]
 
@@ -336,6 +351,39 @@ public struct MarkdownAnalysis: Sendable {
 
     public func mermaidBlock(containing offset: Int) -> MermaidBlock? {
         mermaid.first { offset >= $0.range.location && offset <= NSMaxRange($0.range) }
+    }
+
+    /// Index into `codeBlocks` of the first block the selection touches, ends included: the rule that reveals a block's fences
+    /// (`isRevealed`). For a caret that is the block holding it. The blocks are in order and do not overlap, so this is a binary search.
+    public func codeBlockIndex(touching selection: NSRange) -> Int? {
+        var lo = 0, hi = codeBlocks.count
+        while lo < hi {                                   // the first block that ends at or after the selection starts
+            let mid = (lo + hi) / 2
+            if NSMaxRange(codeBlocks[mid].range) < selection.location { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo < codeBlocks.count, codeBlocks[lo].range.location <= NSMaxRange(selection) else { return nil }
+        return lo
+    }
+
+    /// Index into `codeBlocks` of the block that occupies source line `line`.
+    public func codeBlockIndex(containingLine line: Int) -> Int? {
+        var lo = 0, hi = codeBlocks.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if codeBlocks[mid].firstLine <= line { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo > 0, line <= codeBlocks[lo - 1].lastLine else { return nil }
+        return lo - 1
+    }
+
+    /// The code block whose range contains `offset`, ends included.
+    public func codeBlock(containing offset: Int) -> CodeBlockInfo? {
+        codeBlockIndex(touching: NSRange(location: offset, length: 0)).map { codeBlocks[$0] }
+    }
+
+    /// The code block that occupies source line `line`.
+    public func codeBlock(containingLine line: Int) -> CodeBlockInfo? {
+        codeBlockIndex(containingLine: line).map { codeBlocks[$0] }
     }
 
     /// Index into `tables` of the grid table whose source contains `offset` (end of the last line included).

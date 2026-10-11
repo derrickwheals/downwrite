@@ -1,4 +1,31 @@
 import AppKit
+import DownwriteCore
+
+/// The colours of the copy control on a code card. Only roles every theme already has, so the legibility floors of the
+/// built-in and imported themes cover it.
+struct CopyControlStyle: Equatable {
+    /// Opaque, so the control covers whatever the card's first line puts under it.
+    var fill: NSColor
+    var border: NSColor
+    var glyph: NSColor
+    /// The glyph while the pointer is on the control itself.
+    var glyphHover: NSColor
+    /// The tick that confirms a copy.
+    var tick: NSColor
+
+    init(fill: NSColor, border: NSColor, glyph: NSColor, glyphHover: NSColor, tick: NSColor) {
+        self.fill = fill; self.border = border; self.glyph = glyph; self.glyphHover = glyphHover; self.tick = tick
+    }
+
+    init(palette p: Palette) {
+        self.init(fill: p.background.nsColor, border: p.rule.nsColor, glyph: p.secondaryText.nsColor,
+                  glyphHover: p.text.nsColor, tick: p.accent.nsColor)
+    }
+
+    /// Until the coordinator hands over the theme's palette.
+    static let system = CopyControlStyle(fill: .textBackgroundColor, border: .separatorColor, glyph: .secondaryLabelColor,
+                                         glyphHover: .labelColor, tick: .controlAccentColor)
+}
 
 /// Draws what plain text attributes cannot: rounded code-block cards, inline "pills" (code, highlight),
 /// block-quote bars and horizontal rules. Everything is drawn *behind* the glyphs.
@@ -149,6 +176,104 @@ final class DWLayoutManager: NSLayoutManager {
         }
     }
 
+    // MARK: Code copy controls
+
+    /// How far a card reaches above its first line and below its last one.
+    static let cardPad: CGFloat = 6
+    /// The copy control is a square this long, this far in from the card's top and right edges.
+    static let copyControlSide: CGFloat = 22
+    static let copyControlInset: CGFloat = 6
+    /// How many line fragments from a block's start `copyControlRect` looks at before deciding the block shows no card.
+    static let copyControlProbeFragments = 6
+
+    /// The code blocks of the current analysis, and which of them show a copy control (indices into `codeBlocks`): the one under
+    /// the pointer, the one holding the caret, and the one just copied (drawn with a tick). Set by the coordinator, which clears
+    /// them whenever the text changes; ranges are clamped to the storage because an analysis can be a moment older than the text.
+    var codeBlocks: [CodeBlockInfo] = []
+    var hoveredCodeBlock: Int?
+    var activeCodeBlock: Int?
+    var copiedCodeBlock: Int?
+    /// The pointer is on the hovered block's control itself (the glyph darkens).
+    var pointerOnCopyControl = false
+    var copyControlStyle = CopyControlStyle.system
+
+    /// The control's rectangle (text container coordinates) at the top right of the block's card: measured from the card's first
+    /// visible line, that is the first line taller than a point that carries the card's background. A folded block has no such line
+    /// (its lines are about 0 pt), and neither has a collapsed Mermaid source, whose last line is tall only because it reserves the
+    /// room for the diagram card, and which has no code card behind it.
+    func copyControlRect(forBlock block: CodeBlockInfo) -> NSRect? {
+        guard let storage = textStorage, textContainers.first != nil else { return nil }
+        let range = NSIntersectionRange(block.range, NSRange(location: 0, length: storage.length))
+        guard range.length > 0 else { return nil }
+        // Walk the first few line fragments from the block's start, laying out only those: the card's first visible line is the
+        // fence (revealed) or the line after it (collapsed), so a block that has none within a few is folded or collapsed, and a huge
+        // block that the caret just entered is not laid out whole to find that out.
+        var glyph = glyphIndexForCharacter(at: range.location)
+        var first: NSRect?
+        for _ in 0..<Self.copyControlProbeFragments {
+            guard glyph < numberOfGlyphs else { break }
+            let index = characterIndexForGlyph(at: glyph)
+            guard index < NSMaxRange(range) else { break }
+            var fragment = NSRange()
+            let lineRect = lineFragmentRect(forGlyphAt: glyph, effectiveRange: &fragment)
+            if lineRect.height > 1, storage.attribute(.dwBlockBackground, at: index, effectiveRange: nil) != nil {
+                first = lineRect
+                break
+            }
+            glyph = max(NSMaxRange(fragment), glyph + 1)
+        }
+        guard let line = first else { return nil }
+        let side = Self.copyControlSide
+        return NSRect(x: line.maxX - Self.copyControlInset - side, y: line.minY - Self.cardPad + Self.copyControlInset, width: side, height: side)
+    }
+
+    /// Draws the control of every block that shows one on top of everything else, so it covers the code that runs under it. The text
+    /// view calls this after the text; `rect` is the dirty rectangle in view coordinates.
+    func drawCodeCopyControls(in rect: NSRect, origin: NSPoint) {
+        var drawn = Set<Int>()
+        for index in [copiedCodeBlock, hoveredCodeBlock, activeCodeBlock].compactMap({ $0 }) where drawn.insert(index).inserted {
+            guard codeBlocks.indices.contains(index), let box = copyControlRect(forBlock: codeBlocks[index]) else { continue }
+            let target = box.offsetBy(dx: origin.x, dy: origin.y)
+            guard target.intersects(rect) else { continue }
+            drawCopyControl(in: target, copied: index == copiedCodeBlock, emphasised: pointerOnCopyControl && index == hoveredCodeBlock)
+        }
+    }
+
+    private func drawCopyControl(in box: NSRect, copied: Bool, emphasised: Bool) {
+        let style = copyControlStyle
+        let body = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        style.fill.setFill()
+        body.fill()
+        body.lineWidth = 1
+        style.border.setStroke()
+        body.stroke()
+        let c = NSPoint(x: box.midX, y: box.midY)
+        if copied {                                       // ✓
+            let tick = NSBezierPath()
+            tick.move(to: NSPoint(x: c.x - 4.5, y: c.y + 0.3))
+            tick.line(to: NSPoint(x: c.x - 1.5, y: c.y + 3.3))
+            tick.line(to: NSPoint(x: c.x + 4.5, y: c.y - 3.5))
+            tick.lineWidth = 2
+            tick.lineCapStyle = .round
+            tick.lineJoinStyle = .round
+            style.tick.setStroke()
+            tick.stroke()
+            return
+        }
+        // Two overlapping rounded squares: the back one outlined, the front one filled with the control's own fill to hide the part of
+        // the back one it covers.
+        let ink = emphasised ? style.glyphHover : style.glyph
+        let back = NSBezierPath(roundedRect: NSRect(x: c.x - 5, y: c.y - 5, width: 8, height: 8), xRadius: 2, yRadius: 2)
+        let front = NSBezierPath(roundedRect: NSRect(x: c.x - 3, y: c.y - 3, width: 8, height: 8), xRadius: 2, yRadius: 2)
+        back.lineWidth = 1.3
+        front.lineWidth = 1.3
+        ink.setStroke()
+        back.stroke()
+        style.fill.setFill()
+        front.fill()
+        front.stroke()
+    }
+
     private func drawCheckbox(_ mark: CheckboxMark, in box: NSRect) {
         let radius = box.width * 0.3
         if mark.checked {
@@ -190,7 +315,7 @@ final class DWLayoutManager: NSLayoutManager {
                 if lineRect.height > 1 { rect = rect.union(lineRect) }
             }
             guard !rect.isNull else { return }
-            let card = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: 0, dy: -6)
+            let card = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: 0, dy: -Self.cardPad)
             color.setFill()
             NSBezierPath(roundedRect: card, xRadius: 9, yRadius: 9).fill()
         }
