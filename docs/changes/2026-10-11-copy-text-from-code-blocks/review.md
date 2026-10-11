@@ -6,7 +6,7 @@ reviewed: 2026-10-11
 base: main
 head: 72544481fd88e8bfb7c1694478ddede5b19b804b
 reproven:
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/20
 ---
 
 # Review: Copy the text of a code block with one click
