@@ -80,6 +80,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var analyzedText = ""
     /// What a command with nothing to act on does (the system beep; tests listen instead).
     var beep: () -> Void = { NSSound.beep() }
+    /// Told each rectangle (text view coordinates) the copy controls ask to have redrawn; tests listen to prove that moving the
+    /// pointer or the caret redraws nothing but the controls.
+    var onCopyControlInvalidated: ((NSRect) -> Void)?
     /// True while a caret-movement command runs: the selection it leaves may sit in hidden text, which `snapCaretOverFolds`
     /// then steps over, instead of the fold being opened.
     var isMovingCaret = false
@@ -114,6 +117,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tv.layoutManager?.allowsNonContiguousLayout = true
         applySettings(s)
         styler = MarkdownStyler(typography: typography, palette: currentPalette(for: tv.effectiveAppearance))
+        refreshCopyControlStyle()
         overlay = DiagramOverlay(textView: tv, palette: styler.palette)
         overlay.onReservedHeightsChanged = { [weak self] in self?.reservedHeightsChanged() }
         tableOverlay = TableOverlay(coordinator: self, textView: tv)
@@ -259,6 +263,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         styler.palette = palette
         overlay.setPalette(palette)
         tableOverlay.setPalette()
+        refreshCopyControlStyle()
         applyChrome()
         return true
     }
@@ -292,6 +297,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         preview.heights = sourceMode ? [:] : combinedHeights()
         preview.collapsed = sourceMode ? [] : collapsedBlocks(selection: tv.selectedRange())
         restyleAll()
+        syncCodeBlocks()                          // (after the restyle: the copy controls sit on the cards it lays out)
     }
 
     func combinedHeights() -> [Int: CGFloat] {
@@ -441,6 +447,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         let sel = tv.selectedRange()
         scheduleTOCPublish()
         if sourceMode { return }                  // plain text: moving the caret changes nothing that is drawn
+        let controlsBefore = (tv.layoutManager as? DWLayoutManager).map { copyControlFrames(in: $0) } ?? []
         // R15: Find, the sidebar, `#links`, undo… that put the start of the selection into hidden text open the folds hiding it.
         // (Caret movement keys step over folds instead: see `snapCaretOverFolds`.)
         if !isMovingCaret, !foldState.isEmpty, foldState.foldHiding(offset: sel.location, in: analysis) != nil {
@@ -478,6 +485,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         if collapseChanged { scheduleReposition() }
         tableOverlay.highlightSelection()
         tableOverlay.scheduleHandOff()
+        updateActiveCodeBlock(selection: sel, framesBefore: controlsBefore)
     }
 
     // MARK: NSLayoutManagerDelegate

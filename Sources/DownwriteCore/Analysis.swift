@@ -353,26 +353,37 @@ public struct MarkdownAnalysis: Sendable {
         mermaid.first { offset >= $0.range.location && offset <= NSMaxRange($0.range) }
     }
 
-    /// The code block whose range contains `offset`, ends included (the same inclusive rule as `isRevealed`).
-    public func codeBlock(containing offset: Int) -> CodeBlockInfo? {
+    /// Index into `codeBlocks` of the first block the selection touches, ends included: the rule that reveals a block's fences
+    /// (`isRevealed`). For a caret that is the block holding it. The blocks are in order and do not overlap, so this is a binary search.
+    public func codeBlockIndex(touching selection: NSRange) -> Int? {
         var lo = 0, hi = codeBlocks.count
-        while lo < hi {
+        while lo < hi {                                   // the first block that ends at or after the selection starts
             let mid = (lo + hi) / 2
-            if codeBlocks[mid].range.location <= offset { lo = mid + 1 } else { hi = mid }
+            if NSMaxRange(codeBlocks[mid].range) < selection.location { lo = mid + 1 } else { hi = mid }
         }
-        guard lo > 0, offset <= NSMaxRange(codeBlocks[lo - 1].range) else { return nil }
-        return codeBlocks[lo - 1]
+        guard lo < codeBlocks.count, codeBlocks[lo].range.location <= NSMaxRange(selection) else { return nil }
+        return lo
     }
 
-    /// The code block that occupies source line `line`.
-    public func codeBlock(containingLine line: Int) -> CodeBlockInfo? {
+    /// Index into `codeBlocks` of the block that occupies source line `line`.
+    public func codeBlockIndex(containingLine line: Int) -> Int? {
         var lo = 0, hi = codeBlocks.count
         while lo < hi {
             let mid = (lo + hi) / 2
             if codeBlocks[mid].firstLine <= line { lo = mid + 1 } else { hi = mid }
         }
         guard lo > 0, line <= codeBlocks[lo - 1].lastLine else { return nil }
-        return codeBlocks[lo - 1]
+        return lo - 1
+    }
+
+    /// The code block whose range contains `offset`, ends included.
+    public func codeBlock(containing offset: Int) -> CodeBlockInfo? {
+        codeBlockIndex(touching: NSRange(location: offset, length: 0)).map { codeBlocks[$0] }
+    }
+
+    /// The code block that occupies source line `line`.
+    public func codeBlock(containingLine line: Int) -> CodeBlockInfo? {
+        codeBlockIndex(containingLine: line).map { codeBlocks[$0] }
     }
 
     /// Index into `tables` of the grid table whose source contains `offset` (end of the last line included).

@@ -168,10 +168,40 @@ final class CodeBlockTests: XCTestCase {
         XCTAssertNil(a.codeBlock(containingLine: 99))
     }
 
+    func testIndexOfTheBlockASelectionTouches() {
+        let doc = "x\n\n```\na\n```\n\ny\n\n```\nb\n```\n\nz\n"
+        let a = MarkdownAnalyzer.analyze(doc)
+        let first = a.codeBlocks[0].range, second = a.codeBlocks[1].range
+        // A caret: the block holding it, ends included, none in the gaps.
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: 0, length: 0)))
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: first.location - 1, length: 0)))
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: first.location, length: 0)), 0)
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: NSMaxRange(first), length: 0)), 0)
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: NSMaxRange(first) + 1, length: 0)))
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: second.location + 2, length: 0)), 1)
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: a.length, length: 0)))
+        // A selection: the first block it touches, whichever end it reaches in from.
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: 0, length: first.location)), 0, "ends exactly at the block's start")
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: 0, length: first.location - 1)))
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: NSMaxRange(first) + 1, length: second.location - NSMaxRange(first))), 1)
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: 0, length: a.length)), 0, "select all: the first of several")
+        XCTAssertEqual(a.codeBlockIndex(touching: NSRange(location: first.location + 1, length: 1)), 0)
+    }
+
+    func testIndexOfTheBlockOnALine() {
+        let a = MarkdownAnalyzer.analyze("x\n\n```\na\n```\n\ny\n\n```\nb\n```\n")
+        XCTAssertEqual((0..<a.lines.count).map { a.codeBlockIndex(containingLine: $0) },
+                       [nil, nil, 0, 0, 0, nil, nil, nil, 1, 1, 1, nil])
+        XCTAssertNil(a.codeBlockIndex(containingLine: -3))
+        XCTAssertNil(a.codeBlockIndex(containingLine: 500))
+    }
+
     func testLookupsOnADocumentWithoutBlocks() {
         let a = MarkdownAnalyzer.analyze("just text\n")
         XCTAssertNil(a.codeBlock(containing: 0))
         XCTAssertNil(a.codeBlock(containingLine: 0))
+        XCTAssertNil(a.codeBlockIndex(touching: NSRange(location: 0, length: a.length)))
+        XCTAssertNil(a.codeBlockIndex(containingLine: 0))
     }
 
     // MARK: Agreement with the export

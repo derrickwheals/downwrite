@@ -183,6 +183,8 @@ final class DWLayoutManager: NSLayoutManager {
     /// The copy control is a square this long, this far in from the card's top and right edges.
     static let copyControlSide: CGFloat = 22
     static let copyControlInset: CGFloat = 6
+    /// How many line fragments from a block's start `copyControlRect` looks at before deciding the block shows no card.
+    static let copyControlProbeFragments = 6
 
     /// The code blocks of the current analysis, and which of them show a copy control (indices into `codeBlocks`): the one under
     /// the pointer, the one holding the caret, and the one just copied (drawn with a tick). Set by the coordinator, which clears
@@ -203,13 +205,22 @@ final class DWLayoutManager: NSLayoutManager {
         guard let storage = textStorage, textContainers.first != nil else { return nil }
         let range = NSIntersectionRange(block.range, NSRange(location: 0, length: storage.length))
         guard range.length > 0 else { return nil }
+        // Walk the first few line fragments from the block's start, laying out only those: the card's first visible line is the
+        // fence (revealed) or the line after it (collapsed), so a block that has none within a few is folded or collapsed, and a huge
+        // block that the caret just entered is not laid out whole to find that out.
+        var glyph = glyphIndexForCharacter(at: range.location)
         var first: NSRect?
-        enumerateLineFragments(forGlyphRange: glyphRange(forCharacterRange: range, actualCharacterRange: nil)) { lineRect, _, _, lineGlyphs, stop in
-            guard lineRect.height > 1,
-                  storage.attribute(.dwBlockBackground, at: min(self.characterIndexForGlyph(at: lineGlyphs.location), storage.length - 1),
-                                    effectiveRange: nil) != nil else { return }
-            first = lineRect
-            stop.pointee = true
+        for _ in 0..<Self.copyControlProbeFragments {
+            guard glyph < numberOfGlyphs else { break }
+            let index = characterIndexForGlyph(at: glyph)
+            guard index < NSMaxRange(range) else { break }
+            var fragment = NSRange()
+            let lineRect = lineFragmentRect(forGlyphAt: glyph, effectiveRange: &fragment)
+            if lineRect.height > 1, storage.attribute(.dwBlockBackground, at: index, effectiveRange: nil) != nil {
+                first = lineRect
+                break
+            }
+            glyph = max(NSMaxRange(fragment), glyph + 1)
         }
         guard let line = first else { return nil }
         let side = Self.copyControlSide
