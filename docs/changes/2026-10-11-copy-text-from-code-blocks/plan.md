@@ -63,7 +63,7 @@ Each step is one commit; a failing test comes first where the step is testable.
 
 - [x] 1. Core record. Write `CodeBlockTests` first (fenced, tilde with info string, unclosed, empty and blank-only, indented, nested in a quote and in a list including a fence on the marker line, tabs, non-BMP text, Mermaid, back-to-back blocks, lookups, front matter and inline code absent); then `CodeBlockInfo`, `codeBlocks`, the lookups and the analyzer change. `swift test --filter DownwriteCoreTests` green.
 - [x] 2. Core guards. The export cross-check (for the nested cases, `codeBlocks[i].text + "\n"` equals the text `DocumentHTML` puts in the matching `<pre><code>`, unescaped), the many-blocks speed test, and the range-sanity additions.
-- [ ] 3. Geometry and drawing. `copyControlRect(forBlock:)` and `drawCodeCopyControls` with the test-set state, the `draw(_:)` call; tests for position, size, being on top of text, tick, and every built-in theme (see Proof).
+- [x] 3. Geometry and drawing. `copyControlRect(forBlock:)` and `drawCodeCopyControls` with the test-set state, the `draw(_:)` call; tests for position, size, being on top of text, tick, and every built-in theme (see Proof).
 - [ ] 4. State. Coordinator hooks: hover from `pointerMoved`/`pointerLeft`, active block from `selectionChanged`, reset in `reanalyze`, empty in the source view; invalidation of chip rects only. Tests for the visibility rules and for "no restyle on pointer movement".
 - [ ] 5. Click and copy. The `mouseDown` path, `codeCopyPasteboard` seam, tick timer with a shortened duration in tests, pending-debounce flush, announcement. Tests for the click, the unchanged document, and fall-through when the chip is not showing.
 - [ ] 6. Command and accessibility. `dwCopyCodeBlock`, `Responder`, the menu item, the custom action. First confirm the exact `accessibilityCustomActions` override signature by compiling, and run the app to confirm ⇧⌘C is free. Tests for the command, beep, source view and action.
@@ -122,4 +122,5 @@ Outcome coverage:
 
 ## Deviations
 
-<Filled during build. One line per departure from this plan, added in the same commit as the code that departs.>
+- Step 3 · `copyControlRect(forBlock:)` takes "the first line fragment taller than 1 pt that carries `.dwBlockBackground`", not just "taller than 1 pt". A collapsed Mermaid source does not give nil under the plain rule: its last fence line is 72 pt tall because it holds the diagram card's reserved space (found by a failing test). A collapsed source has no code card, and the background attribute is what makes the card get drawn, so the control now follows the card. Same intent, different test for it.
+- Step 3 · `DWLayoutManager` has one more state flag than the plan lists, `pointerOnCopyControl`, and `CopyControlStyle` has a field for it (`glyphHover`, from the palette's `text`): the glyph darkens while the pointer is on the control itself. The plan named `text` among the five colours but gave it no use. Step 4 sets the flag from the pointer position.

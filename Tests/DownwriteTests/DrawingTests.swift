@@ -396,4 +396,123 @@ final class DrawingTests: XCTestCase {
         let sample = color(render(h), atViewPoint: NSPoint(x: container + origin.x + 6, y: chip.midY + origin.y), in: h)
         XCTAssertLessThan(distance(sample, p.inlineCodeBackground.nsColor), distance(sample, p.background.nsColor) + 0.02, "its fill is painted out in the margin")
     }
+
+
+    // MARK: Copy control on a code card (DW-012)
+
+    /// A first code line that runs the full width of the card, so it passes under the control.
+    private static let longLine = String(repeating: "w", count: 110)
+
+    private func copyHarness(dark: Bool = false, theme: String? = nil, first: String = DrawingTests.longLine) -> EditorHarness {
+        let h = EditorHarness(text: "intro\n\n```\n\(first)\nsecond line\n```\n\nafter\n", dark: dark, size: NSSize(width: 900, height: 760))
+        if let theme {
+            h.coordinator.update(text: h.textView.string, settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720,
+                                                                                   lightTheme: theme, darkTheme: theme))
+        }
+        makeKey(h)
+        h.select(h.textView.string.utf16.count)             // outside the block: fences collapsed
+        lm(h).codeBlocks = h.coordinator.analysis.codeBlocks
+        lm(h).copyControlStyle = CopyControlStyle(palette: h.coordinator.styler.palette)
+        return h
+    }
+
+    /// The control's rectangle in view coordinates.
+    private func copyControl(_ h: EditorHarness) -> NSRect {
+        let o = h.textView.textContainerOrigin
+        return lm(h).copyControlRect(forBlock: lm(h).codeBlocks[0])!.offsetBy(dx: o.x, dy: o.y)
+    }
+
+    private func show(_ h: EditorHarness, active: Bool = false, copied: Bool = false) {
+        lm(h).activeCodeBlock = active ? 0 : nil
+        lm(h).copiedCodeBlock = copied ? 0 : nil
+        h.textView.needsDisplay = true
+    }
+
+    /// The page as the offscreen bitmap renders it, from the empty top-left margin. (A dark page does not come out as its palette value
+    /// there, so the checks below compare the control with this and not with the palette.)
+    private func renderedPage(_ rep: NSBitmapImageRep, _ h: EditorHarness) -> NSColor { color(rep, atViewPoint: NSPoint(x: 4, y: 4), in: h) }
+
+    /// The card as rendered, from the padding above its first line, clear of both the text and the control.
+    private func renderedCard(_ rep: NSBitmapImageRep, _ h: EditorHarness, box: NSRect) -> NSColor {
+        color(rep, atViewPoint: NSPoint(x: box.midX, y: box.minY - 3), in: h)
+    }
+
+    /// Sample points (half a point apart) inside `r`.
+    private func points(in r: NSRect) -> [NSPoint] {
+        stride(from: r.minY, to: r.maxY, by: 0.5).flatMap { y in stride(from: r.minX, to: r.maxX, by: 0.5).map { NSPoint(x: $0, y: y) } }
+    }
+
+    /// Points of the control's corners and edges between its glyph and its border: nothing but the fill belongs there.
+    private func ringPoints(_ box: NSRect) -> [NSPoint] {
+        points(in: box.insetBy(dx: 3, dy: 3)).filter { abs($0.x - box.midX) > 6.5 || abs($0.y - box.midY) > 6.5 }
+    }
+
+    /// Ring points that are neither the control's fill nor the card behind it: ink of the code underneath.
+    private func codeInk(_ rep: NSBitmapImageRep, _ h: EditorHarness, box: NSRect, fill: NSColor, card: NSColor) -> Int {
+        ringPoints(box).filter { p in
+            let c = color(rep, atViewPoint: p, in: h)
+            return distance(c, card) > 0.3 && distance(c, fill) > 0.3
+        }.count
+    }
+
+    /// Points of the glyph's area that differ from the control's own fill.
+    private func glyphInk(_ rep: NSBitmapImageRep, _ h: EditorHarness, box: NSRect, fill: NSColor) -> Int {
+        points(in: box.insetBy(dx: 4, dy: 4)).filter { distance(color(rep, atViewPoint: $0, in: h), fill) > 0.12 }.count
+    }
+
+    /// Points of the control's inside that are close to the theme's accent colour (the tick).
+    private func accentInk(_ rep: NSBitmapImageRep, _ h: EditorHarness, box: NSRect, accent: NSColor) -> Int {
+        points(in: box.insetBy(dx: 3, dy: 3)).filter { distance(color(rep, atViewPoint: $0, in: h), accent) < 0.25 }.count
+    }
+
+    func testCopyControlCoversTheCodeThatRunsUnderIt() {
+        let h = copyHarness()
+        let box = copyControl(h)
+        let bare = render(h)
+        let page = renderedPage(bare, h), card = renderedCard(bare, h, box: box)
+        show(h)
+        XCTAssertGreaterThan(codeInk(render(h), h, box: box, fill: page, card: card), 3, "the first line runs under where the control goes")
+        show(h, active: true)
+        let rep = render(h)
+        XCTAssertEqual(codeInk(rep, h, box: box, fill: page, card: card), 0, "and the control hides it")
+        XCTAssertLessThan(distance(color(rep, atViewPoint: NSPoint(x: box.minX + 3, y: box.midY), in: h), page), 0.02, "its fill is the page colour")
+    }
+
+    func testCopyControlGlyphHasInkAndTheTickIsDrawnInTheAccentColour() {
+        let h = copyHarness(first: "x")
+        let box = copyControl(h)
+        let accent = h.coordinator.styler.palette.accent.nsColor
+        show(h, active: true)
+        let glyph = render(h)
+        let fill = renderedPage(glyph, h)
+        XCTAssertGreaterThan(glyphInk(glyph, h, box: box, fill: fill), 10, "two overlapping squares")
+        XCTAssertEqual(accentInk(glyph, h, box: box, accent: accent), 0, "the idle glyph is not the accent colour")
+        show(h, copied: true)
+        let tick = render(h)
+        XCTAssertGreaterThan(accentInk(tick, h, box: box, accent: accent), 8, "the tick is the accent colour")
+        XCTAssertNotEqual(glyphInk(glyph, h, box: box, fill: fill), glyphInk(tick, h, box: box, fill: fill), "a different shape in the same box")
+    }
+
+    func testCopyControlIsDrawnInEveryBuiltInTheme() {
+        for theme in ThemeCatalog.builtIn {
+            let h = copyHarness(dark: theme.appearance == .dark, theme: theme.id)
+            let p = h.coordinator.styler.palette
+            XCTAssertEqual(p, theme.palette, "\(theme.id): the editor uses the theme")
+            let box = copyControl(h)
+            let bare = render(h)
+            let page = renderedPage(bare, h), card = renderedCard(bare, h, box: box)
+            XCTAssertGreaterThan(distance(page, card), 0.01, "\(theme.id): the card is told apart from the page")
+            show(h)
+            XCTAssertGreaterThan(codeInk(render(h), h, box: box, fill: page, card: card), 3, "\(theme.id): the line runs under the control")
+            show(h, active: true)
+            let rep = render(h)
+            let fill = color(rep, atViewPoint: NSPoint(x: box.minX + 3, y: box.midY), in: h)
+            XCTAssertLessThan(distance(fill, page), 0.02, "\(theme.id): the control's fill is the page colour")
+            XCTAssertGreaterThan(distance(fill, card), 0.01, "\(theme.id): which is told apart from the card behind it")
+            XCTAssertEqual(codeInk(rep, h, box: box, fill: page, card: card), 0, "\(theme.id): the code under it is covered")
+            XCTAssertGreaterThan(glyphInk(rep, h, box: box, fill: fill), 10, "\(theme.id): glyph ink")
+            show(h, copied: true)
+            XCTAssertGreaterThan(accentInk(render(h), h, box: box, accent: p.accent.nsColor), 8, "\(theme.id): the tick is the accent colour")
+        }
+    }
 }

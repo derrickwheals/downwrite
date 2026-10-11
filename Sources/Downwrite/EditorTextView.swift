@@ -148,6 +148,8 @@ final class EditorTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        // After the text, so the copy control covers whatever the first line of its card puts under it.
+        (layoutManager as? DWLayoutManager)?.drawCodeCopyControls(in: dirtyRect, origin: textContainerOrigin)
         guard string.isEmpty, !hasMarkedText(), let coordinator, let styler = coordinator.styler else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: coordinator.typography.font(),
