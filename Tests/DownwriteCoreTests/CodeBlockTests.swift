@@ -174,6 +174,56 @@ final class CodeBlockTests: XCTestCase {
         XCTAssertNil(a.codeBlock(containingLine: 0))
     }
 
+    // MARK: Agreement with the export
+
+    /// The text of each `<pre><code>` the export produces, unescaped, in document order.
+    private func exportedCode(_ markdown: String) -> [String] {
+        let body = DocumentHTML.prepare(markdown, options: .init(documentName: "t.md")).body
+        let regex = try! NSRegularExpression(pattern: "<pre><code>(.*?)</code></pre>", options: [.dotMatchesLineSeparators])
+        let ns = NSString(string: body)
+        return regex.matches(in: body, range: NSRange(location: 0, length: ns.length)).map { m in
+            ns.substring(with: m.range(at: 1))
+                .replacingOccurrences(of: "&lt;", with: "<")
+                .replacingOccurrences(of: "&gt;", with: ">")
+                .replacingOccurrences(of: "&amp;", with: "&")
+        }
+    }
+
+    /// What the copy control puts on the clipboard is what the export puts in the code element, minus its final line break.
+    func testCopiedTextMatchesTheExportedCodeForEveryNesting() {
+        let docs = [
+            "```swift\nlet a = 1\nlet b = 2\n```\n",
+            "para\n\n    indented\n      deeper\n\n    after a gap\n",
+            "> ```sh\n> echo hi\n>\n> ls\n> ```\n",
+            "> quote\n>\n>     indented in a quote\n",
+            "- item\n\n  ```sh\n  npm i\n  ```\n\n- second\n\n  ```\n  two\n  ```\n",
+            "1. one\n\n   ```\n   a\n\n   b\n   ```\n",
+            "- ```sh\n  npm i\n  ```\n",
+            "- a\n  - b\n\n    ```\n    deep\n    ```\n",
+            "> - item\n>\n>   ```\n>   quoted list\n>   ```\n",
+            "```\n<b>&amp; \"x\" 'y'</b>\n```\n",
+            "```\n\ttabbed\n\t\tmore\n```\n",
+            "```\n😀 x\n𝒜 y\n```\n",
+            "```\na\n\nb\n```\n```\nc\n```\n",
+            "```\nunclosed\nfence",
+            "````md\n```\ninner\n```\n````\n",
+            "---\ntitle: x\n---\n\n```\nafter front matter\n```\n",
+        ]
+        for doc in docs {
+            let copied = MarkdownAnalyzer.analyze(doc).codeBlocks.map(\.text)
+            let exported = exportedCode(doc)
+            XCTAssertFalse(copied.isEmpty, doc)
+            XCTAssertEqual(copied.map { $0 + "\n" }, exported, doc)
+        }
+    }
+
+    func testMermaidSourceMatchesTheExportedDiagram() {
+        let doc = "```mermaid\ngraph TD\n  A-->B\n```\n\n```\nplain\n```\n"
+        let a = MarkdownAnalyzer.analyze(doc)
+        XCTAssertEqual(a.codeBlocks.map(\.text), ["graph TD\n  A-->B", "plain"])
+        XCTAssertEqual(DocumentHTML.prepare(doc, options: .init(documentName: "t.md")).diagrams, [a.codeBlocks[0].text])
+    }
+
     // MARK: Ranges stay inside the text
 
     func testRangesAndLinesAgreeWithTheLineTable() {

@@ -620,10 +620,23 @@ final class AnalyzerTests: XCTestCase {
             "==", "====", "$$", "$", "[^", "\\", "`", "``", "<", "<!--", "***", "___", "a\u{0}b", "- \n- \n-",
             String(repeating: "*", count: 500), String(repeating: "> ", count: 200) + "x",
             String(repeating: "- ", count: 100) + "x",
+            "```\n", "```\r\nx\r\n```", "> ```\n> x", "- ```\n  x", "    x", "~~~\n\n~~~\n```\nx\n```", "```\n```\n```\n```",
+            "```mermaid\nx", String(repeating: "```\nx\n```\n", count: 50),
         ]
         for s in inputs {
             let a = MarkdownAnalyzer.analyze(s)
             _ = a.runs(in: NSRange(location: 0, length: s.utf16.count), selection: NSRange(location: 0, length: 0))
+            var previousEnd = -1
+            for b in a.codeBlocks {
+                XCTAssertGreaterThanOrEqual(b.range.location, 0, s)
+                XCTAssertLessThanOrEqual(NSMaxRange(b.range), s.utf16.count, s)
+                XCTAssertGreaterThan(b.range.location, previousEnd, "code blocks are in order and do not overlap: \(s)")
+                XCTAssertTrue(a.lines.indices.contains(b.firstLine) && a.lines.indices.contains(b.lastLine) && b.firstLine <= b.lastLine, s)
+                XCTAssertFalse(b.text.isEmpty, s)
+                XCTAssertEqual(a.codeBlock(containing: b.range.location), b, s)
+                XCTAssertEqual(a.codeBlock(containingLine: b.lastLine), b, s)
+                previousEnd = NSMaxRange(b.range)
+            }
             for m in a.markers {
                 XCTAssertGreaterThanOrEqual(m.range.location, 0, s)
                 XCTAssertLessThanOrEqual(NSMaxRange(m.range), s.utf16.count, s)
@@ -643,6 +656,19 @@ final class AnalyzerTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(start)
         XCTAssertGreaterThan(a.headings.count, 2999)
         // ~190 KB; generous bound because this runs in an unoptimised debug build.
+        XCTAssertLessThan(elapsed, 4.0, "analysis took \(elapsed)s")
+    }
+
+    /// Every block's text is read from cmark on every analysis (DW-012), so many blocks must not make analysis slow.
+    func testManyCodeBlocksPerformance() {
+        var s = ""
+        for i in 0..<3000 { s += "Text \(i)\n\n```swift\nlet a\(i) = 1\nlet b\(i) = 2\nprint(a\(i) + b\(i))\n```\n\n> ```sh\n> echo \(i)\n> ```\n\n" }
+        let start = Date()
+        let a = MarkdownAnalyzer.analyze(s)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertEqual(a.codeBlocks.count, 6000)
+        XCTAssertEqual(a.codeBlock(containing: a.codeBlocks[4321].range.location + 1), a.codeBlocks[4321])
+        // ~280 KB; the same generous bound as above because this runs in an unoptimised debug build.
         XCTAssertLessThan(elapsed, 4.0, "analysis took \(elapsed)s")
     }
 }
