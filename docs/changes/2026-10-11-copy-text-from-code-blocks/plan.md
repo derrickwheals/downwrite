@@ -2,7 +2,7 @@
 type: plan
 id: 2026-10-11-copy-text-from-code-blocks
 intent: ./intent.md
-status: approved       # draft | approved | in-progress | done
+status: in-progress    # draft | approved | in-progress | done
 approved: 2026-10-11
 branch: change/2026-10-11-copy-text-from-code-blocks
 ---
@@ -61,7 +61,7 @@ Not changed on purpose: `MarkdownStyler`, `Palette`, `Themes`, `DocumentHTML` an
 
 Each step is one commit; a failing test comes first where the step is testable.
 
-- [ ] 1. Core record. Write `CodeBlockTests` first (fenced, tilde with info string, unclosed, empty and blank-only, indented, nested in a quote and in a list including a fence on the marker line, tabs, non-BMP text, Mermaid, back-to-back blocks, lookups, front matter and inline code absent); then `CodeBlockInfo`, `codeBlocks`, the lookups and the analyzer change. `swift test --filter DownwriteCoreTests` green.
+- [x] 1. Core record. Write `CodeBlockTests` first (fenced, tilde with info string, unclosed, empty and blank-only, indented, nested in a quote and in a list including a fence on the marker line, tabs, non-BMP text, Mermaid, back-to-back blocks, lookups, front matter and inline code absent); then `CodeBlockInfo`, `codeBlocks`, the lookups and the analyzer change. `swift test --filter DownwriteCoreTests` green.
 - [ ] 2. Core guards. The export cross-check (for the nested cases, `codeBlocks[i].text + "\n"` equals the text `DocumentHTML` puts in the matching `<pre><code>`, unescaped), the many-blocks speed test, and the range-sanity additions.
 - [ ] 3. Geometry and drawing. `copyControlRect(forBlock:)` and `drawCodeCopyControls` with the test-set state, the `draw(_:)` call; tests for position, size, being on top of text, tick, and every built-in theme (see Proof).
 - [ ] 4. State. Coordinator hooks: hover from `pointerMoved`/`pointerLeft`, active block from `selectionChanged`, reset in `reanalyze`, empty in the source view; invalidation of chip rects only. Tests for the visibility rules and for "no restyle on pointer movement".
