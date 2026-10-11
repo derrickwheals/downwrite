@@ -43,6 +43,14 @@ final class CodeBlockTests: XCTestCase {
         XCTAssertEqual(texts("```\na\n\n\n```\n"), ["a\n\n"])
     }
 
+    /// "Empty" (D5) means no characters left after the one final line break; whitespace is code, so it is copied as it is.
+    func testWhitespaceOnlyAndTrailingBlankLinesCountAsCode() {
+        XCTAssertEqual(texts("```\n   \n```\n"), ["   "])
+        XCTAssertEqual(texts("```\n\t\n```\n"), ["\t"])
+        // An unclosed fence runs to the end of the document, blank lines included (one final line break is still removed).
+        XCTAssertEqual(texts("```\nabc\n\n"), ["abc\n"])
+    }
+
     func testBlankLinesInsideAreKept() {
         XCTAssertEqual(texts("```\na\n\nb\n```\n"), ["a\n\nb"])
     }

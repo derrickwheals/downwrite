@@ -2,7 +2,7 @@
 type: plan
 id: 2026-10-11-copy-text-from-code-blocks
 intent: ./intent.md
-status: in-progress    # draft | approved | in-progress | done
+status: done           # draft | approved | in-progress | done
 approved: 2026-10-11
 branch: change/2026-10-11-copy-text-from-code-blocks
 ---
@@ -124,6 +124,8 @@ Outcome coverage:
 ## Deviations
 
 - Step 3 · `copyControlRect(forBlock:)` takes "the first line fragment taller than 1 pt that carries `.dwBlockBackground`", not just "taller than 1 pt". A collapsed Mermaid source does not give nil under the plain rule: its last fence line is 72 pt tall because it holds the diagram card's reserved space (found by a failing test). A collapsed source has no code card, and the background attribute is what makes the card get drawn, so the control now follows the card. Same intent, different test for it.
+- Step 7 · The real-app step lives in a new file, `Sources/Downwrite/SelfTestCodeCopy.swift` (the pattern of `SelfTestFold.swift` and `SelfTestExport.swift`), with a two-line hook in `SelfTest.swift`, not inside `SelfTest.swift`. Four screenshots from it, `docs/screenshots/window-{light,dark}-codecopy-{hover,ticked}.png`, are added; the other screenshots and `docs/ci` are not refreshed.
+- After verification · `hasCodeBlockAtCaret` (the accessibility action's availability, a getter) no longer runs a big document's pending analysis; performing the action, the menu command and a click still do (D7). Found by the verifier.
 - Step 7 · The real-app step does not press ⇧⌘C. A synthesised shifted-letter key event is matched by the unshifted item with the same letter however it is built or sent (found with a control: a synthetic ⇧⌘X cut the selection instead of reaching Format ▸ Strikethrough; ⇧⌘C is swallowed by the disabled Copy item), so the step checks what AppKit dispatches on instead: Edit ▸ Copy Code Block exists, its key is `c` with ⇧⌘, no other item in the menu bar has it (this is the "⇧⌘C is free" confirmation moved from step 6), and choosing the item copies the block. Pressing the keys is added to the by-hand checks below. The step also has a development flag, `--selftest-codecopy-only`, like the fold and export steps.
 - Step 6 · The "run the app to confirm ⇧⌘C is free" check moves from step 6 to step 7: the real-app self-test step scans the whole main menu for another item with that key equivalent, which is a stronger check than looking, and needs the built app bundle that step 7 builds anyway. The override signature was confirmed by compiling: `override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]?`.
 - Step 6 · Copy Code Block acts on the first block the *selection* touches (the block whose control shows), not only the block that holds a caret; for a caret they are the same. Matches the Step 4 note about Select All.
@@ -145,3 +147,15 @@ What was run, on this Mac (macOS 27.0.1, Xcode 27.0), and what came out. For `re
 - **End-to-end (real app, isolated bundle-ID copy, `--selftest-*` with the fold and export fixtures), final run:** 248 checks passed, including all 30 `codecopy:` checks (hover, a real click, the exact clipboard text in light and dark, the tick and its going, no edit or undo or edited mark, a block in a quote, Edit ▸ Copy Code Block present and ⇧⌘C unique in the menu bar, choosing the item copies) and four screenshots (`docs/screenshots/window-{light,dark}-codecopy-{hover,ticked}.png`). **3 checks failed and are not about this change:** *the Appearance settings tab fits a small screen* (633 pt, limit 620) and the two *library is empty* checks, which assume an empty imported-theme library; this Mac's shared `~/Library/Application Support/Downwrite/Themes` (not keyed by bundle ID) holds 8 of the person's own imported themes, which were left untouched. No Settings or theme code is in this diff. Not proven by a run on `main`.
 - **Environment note for the next person:** earlier runs that reused one e2e bundle ID also failed 7 SwiftUI-focus checks (⌘/ ×4, Keep on Top ×2, the fold items), already at step 6 and so before this change's step; a fresh bundle ID per run cleared them.
 - **Owed by hand (cannot be automated):** the VoiceOver walk-through (actions menu and announcement, from the menu and from the action); pressing ⇧⌘C (see the Step 7 deviation); looking at a block whose first line reaches the right edge (pixel-tested, not looked at). The ⌘C-of-a-selection problem is unchanged (D8). `FEATURE-LIST.md` is untouched (D9).
+
+### Independent verification (`ai-sdlc:verifier`, 2026-10-11)
+
+**PASS** on all five items it was given: the targeted suites re-run (144 tests, 0 failures), every outcome in the intent has a real assertion, no defect found reading the production code (stale indices, edit paths, click fall-through, timer, source view, UTF-16), the seven print and export files and `docs/ROADMAP.pdf` are outside the change, and every Deviation matches the code. It did not run Docker, the packaged-app end-to-end, VoiceOver or a real ⇧⌘C press. Its low-severity notes, none blocking:
+
+1. The control shows, and ⇧⌘C copies, while the caret or pointer is on the blank lines after an indented block when two or more blank lines follow it: cmark's range for an indented block over-extends over them. The copied text is right ("indented"). The card already had this range, so it is existing behaviour; not changed.
+2. An unclosed fence at the end of a document copies its trailing blank lines (`"```\nabc\n\n"` copies `abc⏎`). That is D1 (blank lines inside a block are kept); pinned by `testWhitespaceOnlyAndTrailingBlankLinesCountAsCode`.
+3. A whitespace-only fenced block is recorded and copies its whitespace: D5's "empty" is no characters after the one final line break. Pinned by the same test.
+4. The accessibility getter ran the pending analysis: fixed (see Deviations).
+5. The real-app step sets `window.acceptsMouseMovedEvents` to deliver its synthetic mouse moves; the production tracking area (the one the fold chevrons use) does not need it. With a trackpad scroll and a stationary pointer the hover control stays on the old block until the mouse moves, as the chevrons do.
+
+After the verifier: one Core test added (`CodeBlockTests` now 30, so Core is 564 tests) and the getter change; `CodeBlockTests`, `CodeCopyTests` and `DrawingTests` re-run green (85 tests). The verifier was not run a second time for those two small follow-ups, and the full suites and the end-to-end were not repeated after them.

@@ -99,21 +99,22 @@ extension EditorCoordinator {
 
     /// Index of the code block the selection touches, the same one whose control shows (the caret's block, for a caret). Reads the
     /// analysis as it stands once any pending one has run.
-    private func codeBlockAtCaret() -> Int? {
+    private func codeBlockAtCaret(flushing: Bool) -> Int? {
         guard let tv = textView, let storage = tv.textStorage else { return nil }
-        flushPendingAnalysis()
+        if flushing { flushPendingAnalysis() }
         guard analysis.length == storage.length else { return nil }
         return analysis.codeBlockIndex(touching: tv.selectedRange())
     }
 
-    /// Whether Copy Code Block has a block to act on, for the accessibility action.
-    var hasCodeBlockAtCaret: Bool { codeBlockAtCaret() != nil }
+    /// Whether Copy Code Block has a block to act on, for the accessibility action. A getter, so it never runs the pending analysis of
+    /// a big document (performing the action does); while that is pending it may offer the action a moment late or early.
+    var hasCodeBlockAtCaret: Bool { codeBlockAtCaret(flushing: false) != nil }
 
     /// Edit ▸ Copy Code Block: copies the block the caret is in. Works in the source view too, as it is a command on the text and
     /// not the drawn control. Beeps (and leaves the clipboard alone) when the caret is not in a block.
     @discardableResult
     func copyCodeBlockAtCaret() -> Bool {
-        guard let index = codeBlockAtCaret() else { beep(); return false }
+        guard let index = codeBlockAtCaret(flushing: true) else { beep(); return false }
         copyCodeBlock(index: index)
         return true
     }
