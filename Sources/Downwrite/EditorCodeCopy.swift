@@ -14,6 +14,8 @@ extension EditorCoordinator {
     func syncCodeBlocks() {
         guard let tv = textView, let lm = tv.layoutManager as? DWLayoutManager else { return }
         let before = copyControlFrames(in: lm)
+        codeCopyTickTimer?.invalidate()
+        codeCopyTickTimer = nil
         lm.codeBlocks = sourceMode ? [] : analysis.codeBlocks
         lm.hoveredCodeBlock = nil
         lm.pointerOnCopyControl = false
@@ -68,6 +70,70 @@ extension EditorCoordinator {
         guard style != lm.copyControlStyle else { return }
         lm.copyControlStyle = style
         invalidate(copyControlFrames(in: lm), in: tv)
+    }
+
+    // MARK: Copying (D1, D4, D7)
+
+    /// The block whose control is on screen at `point` (text view coordinates): the one under the pointer, the one holding the
+    /// caret, or the one just copied.
+    func codeCopyControl(at point: NSPoint) -> Int? {
+        guard !sourceMode, let lm = textView?.layoutManager as? DWLayoutManager else { return nil }
+        for index in [lm.hoveredCodeBlock, lm.activeCodeBlock, lm.copiedCodeBlock].compactMap({ $0 }) {
+            if let frame = copyControlFrame(ofBlock: index, in: lm), frame.contains(point) { return index }
+        }
+        return nil
+    }
+
+    /// A mouse-down at `point`. If a control is showing there it copies its block and swallows the click: no `super`, so the caret
+    /// and the selection stay, and no edit is made. The editor takes the keyboard, as it does for a chevron; a double click does
+    /// nothing. Returns whether the click was on a control. A click where no control is showing is an ordinary click.
+    func handleCopyControlClick(at point: NSPoint, clickCount: Int) -> Bool {
+        guard codeCopyControl(at: point) != nil, let tv = textView else { return false }
+        if tv.window?.firstResponder !== tv { tv.window?.makeFirstResponder(tv) }
+        guard clickCount == 1 else { return true }
+        // A big document's last edit may still be waiting to be analysed: copy what is there now, not what was there before it.
+        if flushPendingAnalysis() { pointerMoved(to: point) }
+        if let block = codeCopyControl(at: point) { copyCodeBlock(index: block) }
+        return true
+    }
+
+    /// Puts block `index`'s code on the pasteboard as plain text (D1), ticks its control for a moment (D4) and announces it. Reads
+    /// and writes nothing else: no edit, no undo entry, and the document is not marked as edited.
+    func copyCodeBlock(index: Int) {
+        guard analysis.codeBlocks.indices.contains(index), let tv = textView else { return beep() }
+        codeCopyPasteboard.clearContents()
+        codeCopyPasteboard.setString(analysis.codeBlocks[index].text, forType: .string)
+        showCopyTick(on: index)
+        let message = "Copied code block"
+        onAnnouncement?(message)
+        NSAccessibility.post(element: tv, notification: .announcementRequested,
+                             userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
+    /// Shows the tick on block `index`'s control for `codeCopyTickDuration`. (No control, no tick: the source view has none.)
+    private func showCopyTick(on index: Int) {
+        guard let tv = textView, let lm = tv.layoutManager as? DWLayoutManager else { return }
+        let before = copyControlFrames(in: lm)
+        lm.copiedCodeBlock = lm.codeBlocks.indices.contains(index) ? index : nil
+        invalidate(before + copyControlFrames(in: lm), in: tv)
+        codeCopyTickTimer?.invalidate()
+        codeCopyTickTimer = nil
+        guard lm.copiedCodeBlock != nil else { return }
+        let timer = Timer(timeInterval: codeCopyTickDuration, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.clearCopyTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        codeCopyTickTimer = timer
+    }
+
+    /// Takes the tick off again.
+    func clearCopyTick() {
+        codeCopyTickTimer?.invalidate()
+        codeCopyTickTimer = nil
+        guard let tv = textView, let lm = tv.layoutManager as? DWLayoutManager, lm.copiedCodeBlock != nil else { return }
+        let before = copyControlFrames(in: lm)
+        lm.copiedCodeBlock = nil
+        invalidate(before, in: tv)
     }
 
     // MARK: Geometry

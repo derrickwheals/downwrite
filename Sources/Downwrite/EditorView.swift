@@ -83,6 +83,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// Told each rectangle (text view coordinates) the copy controls ask to have redrawn; tests listen to prove that moving the
     /// pointer or the caret redraws nothing but the controls.
     var onCopyControlInvalidated: ((NSRect) -> Void)?
+    /// Where Copy Code Block puts the code. Tests use a private named pasteboard so the person's clipboard is left alone.
+    var codeCopyPasteboard = NSPasteboard.general
+    /// How long the tick stays on a copied block's control (a test shortens it).
+    var codeCopyTickDuration: TimeInterval = 1.5
+    var codeCopyTickTimer: Timer?
+    /// Told the message of each "Copied code block" announcement (the accessibility notification itself cannot be observed).
+    var onAnnouncement: ((String) -> Void)?
     /// True while a caret-movement command runs: the selection it leaves may sit in hidden text, which `snapCaretOverFolds`
     /// then steps over, instead of the fold being opened.
     var isMovingCaret = false
@@ -428,13 +435,28 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         if text.wrappedValue != s { text.wrappedValue = s }
         if tv.hasMarkedText() { return }
         debounce?.cancel()
+        debounce = nil
         if s.utf16.count > 400_000 {
-            let work = DispatchWorkItem { [weak self] in self?.reanalyze() }
+            let work = DispatchWorkItem { [weak self] in
+                self?.debounce = nil
+                self?.reanalyze()
+            }
             debounce = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
         } else {
             reanalyze()
         }
+    }
+
+    /// Runs the re-analysis a big document's last edit is still waiting for (see `textDidChange`), so that something read from
+    /// `analysis` right now is not older than the text. Returns whether there was one.
+    @discardableResult
+    func flushPendingAnalysis() -> Bool {
+        guard let pending = debounce else { return false }
+        pending.cancel()
+        debounce = nil
+        reanalyze()
+        return true
     }
 
     func textViewDidChangeSelection(_ notification: Notification) { selectionChanged() }

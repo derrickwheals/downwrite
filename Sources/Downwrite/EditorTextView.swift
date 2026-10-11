@@ -402,6 +402,8 @@ final class EditorTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A click on a code card's copy control copies the block and does nothing else: the caret and the selection stay.
+        if coordinator?.handleCopyControlClick(at: point, clickCount: event.clickCount) == true { return }
         // A click on a chevron or a ⋯ chip folds or unfolds without touching the selection.
         if let header = coordinator?.foldControl(at: point) {
             if event.clickCount == 1 {

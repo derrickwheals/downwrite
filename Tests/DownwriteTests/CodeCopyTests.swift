@@ -301,6 +301,181 @@ final class CodeCopyTests: XCTestCase {
         XCTAssertEqual(layout(h).copyControlStyle, CopyControlStyle(palette: h.coordinator.styler.palette))
     }
 
+    // MARK: Clicking it (D1, D4, D7)
+
+    /// The harness with a private pasteboard (the person's clipboard is never touched) and a short tick.
+    private func armed(_ text: String = CodeCopyTests.doc, tick: TimeInterval = 0.25) -> (h: EditorHarness, pb: NSPasteboard) {
+        let h = ready(text)
+        let pb = NSPasteboard(name: NSPasteboard.Name("downwrite.test.codecopy.\(UUID().uuidString)"))
+        pb.clearContents()
+        h.coordinator.codeCopyPasteboard = pb
+        h.coordinator.codeCopyTickDuration = tick
+        return (h, pb)
+    }
+
+    /// A left click at `point` (text view coordinates). A click that is not on a control falls through to `NSTextView`, which tracks
+    /// the mouse until the button comes up, so `release` posts that mouse-up first.
+    private func click(_ h: EditorHarness, atView point: NSPoint, count: Int = 1, release: Bool = false) {
+        func event(_ type: NSEvent.EventType) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: h.textView.convert(point, to: nil), modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: h.window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: count, pressure: type == .leftMouseDown ? 1 : 0)!
+        }
+        if release { NSApp.postEvent(event(.leftMouseUp), atStart: false) }
+        h.textView.mouseDown(with: event(.leftMouseDown))
+    }
+
+    private func centre(_ r: NSRect) -> NSPoint { NSPoint(x: r.midX, y: r.midY) }
+
+    /// Moves the pointer onto block `i` and clicks its control.
+    private func clickControl(_ h: EditorHarness, block i: Int = 0, count: Int = 1) {
+        let lm = layout(h)
+        let block = h.coordinator.analysis.codeBlocks[i]
+        h.coordinator.pointerMoved(to: point(h, at: block.range.location + (block.range.length / 2)))
+        click(h, atView: centre(controlFrame(h, block: i)), count: count)
+        XCTAssertNotNil(lm.hoveredCodeBlock)
+    }
+
+    func testClickingTheControlPutsExactlyTheCodeOnTheClipboardAsPlainText() {
+        let (h, pb) = armed()
+        clickControl(h)
+        XCTAssertEqual(pb.string(forType: .string), "let a = 1\nlet b = 2", "no fences, no language tag, no final line break")
+        // Plain text only. (AppKit lists its synonyms for a string, such as the UTF-8 and legacy types; there is no styled flavour.)
+        let types = Set(pb.types ?? [])
+        XCTAssertTrue(types.contains(.string))
+        XCTAssertTrue(types.isDisjoint(with: [.rtf, .rtfd, .html, .pdf, .tiff, .png, .fileURL, .URL]), "no RTF, HTML or other flavour: \(types)")
+    }
+
+    func testTheSameTextIsCopiedWithTheFencesRevealed() {
+        let (h, pb) = armed()
+        h.select(h.index(of: "let b") + 3)
+        XCTAssertGreaterThan(lineRect(h, at: h.index(of: "```swift")).height, 1, "revealed")
+        clickControl(h)
+        XCTAssertEqual(pb.string(forType: .string), "let a = 1\nlet b = 2")
+    }
+
+    func testBlocksInAQuoteAnListAndIndentedBlocksCopyWithoutTheirPrefix() {
+        let (h, pb) = armed("para\n\n    indented\n      deeper\n\n> ```sh\n> echo hi\n> ls\n> ```\n\n- item\n\n  ```\n  npm i\n\n  npm test\n  ```\n\nend\n")
+        XCTAssertEqual(h.coordinator.analysis.codeBlocks.count, 3)
+        for (i, expected) in ["indented\n  deeper", "echo hi\nls", "npm i\n\nnpm test"].enumerated() {
+            pb.clearContents()
+            clickControl(h, block: i)
+            XCTAssertEqual(pb.string(forType: .string), expected, "block \(i)")
+        }
+    }
+
+    func testAMermaidBlockCopiesItsSourceWhileItShows() {
+        let (h, pb) = armed("intro\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nafter\n")
+        h.select(h.index(of: "graph TD") + 2)
+        click(h, atView: centre(controlFrame(h)))
+        XCTAssertEqual(pb.string(forType: .string), "graph TD\n  A-->B")
+    }
+
+    func testCopyingLeavesTheDocumentTheCaretAndTheUndoStackAlone() {
+        let (h, _) = armed()
+        h.select(h.index(of: "after"), 2)
+        let text = h.textView.string, selection = h.textView.selectedRange()
+        var changes = 0
+        let token = NotificationCenter.default.addObserver(forName: NSText.didChangeNotification, object: h.textView, queue: nil) { _ in changes += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+        h.textView.undoManager?.removeAllActions()
+        clickControl(h)
+        XCTAssertEqual(h.textView.string, text)
+        XCTAssertEqual(h.box.value, text, "nothing reached the document")
+        XCTAssertEqual(h.textView.selectedRange(), selection, "the selection stays where it was")
+        XCTAssertEqual(changes, 0, "no didChangeText")
+        XCTAssertEqual(h.textView.undoManager?.canUndo, false, "no undo entry")
+    }
+
+    func testClickingTheControlGivesTheEditorTheKeyboardWithoutMovingTheCaret() {
+        let (h, _) = armed()
+        h.window.makeFirstResponder(nil)
+        let caret = h.textView.selectedRange()
+        clickControl(h)
+        XCTAssertTrue(h.window.firstResponder === h.textView)
+        XCTAssertEqual(h.textView.selectedRange(), caret)
+    }
+
+    func testADoubleClickOnTheControlDoesNothing() {
+        let (h, pb) = armed()
+        let caret = h.textView.selectedRange()
+        clickControl(h, count: 2)
+        XCTAssertNil(pb.string(forType: .string))
+        XCTAssertEqual(h.textView.selectedRange(), caret, "and it does not select a word either")
+        XCTAssertNil(layout(h).copiedCodeBlock)
+    }
+
+    func testAClickOnTheCardAwayFromTheControlMovesTheCaretAsUsual() {
+        let (h, pb) = armed()
+        h.coordinator.pointerMoved(to: point(h, at: h.index(of: "let b")))
+        click(h, atView: point(h, at: h.index(of: "let b"), x: 40), release: true)
+        XCTAssertNil(pb.string(forType: .string))
+        let r = h.coordinator.analysis.codeBlocks[0].range
+        XCTAssertTrue(NSLocationInRange(h.textView.selectedRange().location, r), "the caret went into the block")
+        XCTAssertEqual(layout(h).activeCodeBlock, 0)
+    }
+
+    func testAClickWhereTheControlIsNotShowingIsAnOrdinaryClick() {
+        let (h, pb) = armed()
+        XCTAssertNil(layout(h).hoveredCodeBlock)
+        XCTAssertNil(layout(h).activeCodeBlock)
+        let place = centre(controlFrame(h))
+        click(h, atView: place, release: true)
+        XCTAssertNil(pb.string(forType: .string), "nothing is copied")
+        XCTAssertTrue(NSLocationInRange(h.textView.selectedRange().location, h.coordinator.analysis.codeBlocks[0].range) ||
+                      h.textView.selectedRange().location == NSMaxRange(h.coordinator.analysis.codeBlocks[0].range),
+                      "the caret moved to the click, into the card")
+    }
+
+    func testTheTickShowsAtOnceAndGoesAfterAMoment() async {
+        let (h, _) = armed(tick: 0.2)
+        clickControl(h)
+        XCTAssertEqual(layout(h).copiedCodeBlock, 0, "ticked")
+        XCTAssertNotNil(h.coordinator.codeCopyTickTimer)
+        let gone = await waitUntil(timeout: 5) { self.layout(h).copiedCodeBlock == nil }
+        XCTAssertTrue(gone, "the tick reverts to the normal control")
+        XCTAssertNil(h.coordinator.codeCopyTickTimer)
+    }
+
+    func testTheTickIsDroppedByAnEditAndByTheSourceView() {
+        let (h, _) = armed(tick: 30)
+        clickControl(h)
+        XCTAssertEqual(layout(h).copiedCodeBlock, 0)
+        h.textView.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertNil(layout(h).copiedCodeBlock)
+        XCTAssertNil(h.coordinator.codeCopyTickTimer, "and its timer with it")
+        clickControl(h)
+        XCTAssertEqual(layout(h).copiedCodeBlock, 0)
+        h.coordinator.setSourceMode(true)
+        XCTAssertNil(layout(h).copiedCodeBlock)
+        XCTAssertNil(h.coordinator.codeCopyTickTimer)
+    }
+
+    func testEachCopyIsAnnounced() {
+        let (h, _) = armed(tick: 30)
+        var heard: [String] = []
+        h.coordinator.onAnnouncement = { heard.append($0) }
+        clickControl(h)
+        clickControl(h)
+        XCTAssertEqual(heard, ["Copied code block", "Copied code block"])
+    }
+
+    func testAClickRunsThePendingAnalysisOfABigDocumentFirst() {
+        // Over 400,000 characters the analysis follows an edit 150 ms late; a click in that gap must still copy the new text.
+        let filler = String(repeating: String(repeating: "x", count: 99) + "\n", count: 4_100)
+        let (h, pb) = armed("```\nold\n```\n\n" + filler)
+        XCTAssertGreaterThan(h.textView.string.utf16.count, 400_000)
+        h.coordinator.pointerMoved(to: point(h, at: h.index(of: "old")))
+        XCTAssertEqual(layout(h).hoveredCodeBlock, 0)
+        let frame = controlFrame(h)
+        h.textView.insertText("newer", replacementRange: NSRange(location: h.index(of: "old"), length: 3))
+        XCTAssertEqual(h.coordinator.analysis.codeBlocks[0].text, "old", "the analysis is still the old one")
+        click(h, atView: centre(frame))
+        XCTAssertEqual(pb.string(forType: .string), "newer")
+        XCTAssertEqual(h.coordinator.analysis.codeBlocks[0].text, "newer")
+        XCTAssertEqual(layout(h).copiedCodeBlock, 0)
+    }
+
     func testRangesBeyondTheTextAreClampedAndEmptyOnesHaveNoControl() {
         let h = ready()
         let real = h.coordinator.analysis.codeBlocks[0]
