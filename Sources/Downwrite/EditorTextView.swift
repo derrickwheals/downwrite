@@ -243,6 +243,21 @@ final class EditorTextView: NSTextView {
     }
 
     // Folding (View menu): the commands live on the coordinator, which owns the fold state.
+    /// Edit ▸ Copy Code Block (⇧⌘C): the code of the block the caret is in.
+    @objc func dwCopyCodeBlock(_ sender: Any?) { coordinator?.copyCodeBlockAtCaret() }
+
+    /// VoiceOver's actions menu offers Copy Code Block while the caret is in a code block, for anyone who cannot see or point at
+    /// the drawn control.
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        var actions = super.accessibilityCustomActions() ?? []
+        if coordinator?.hasCodeBlockAtCaret == true {
+            actions.append(NSAccessibilityCustomAction(name: "Copy Code Block") { [weak self] in
+                MainActor.assumeIsolated { self?.coordinator?.copyCodeBlockAtCaret() ?? false }
+            })
+        }
+        return actions.isEmpty ? nil : actions
+    }
+
     @objc func dwFold(_ sender: Any?) { coordinator?.foldAtCaret() }
     @objc func dwUnfold(_ sender: Any?) { coordinator?.unfoldAtCaret() }
     @objc func dwFoldAll(_ sender: Any?) { coordinator?.foldAll() }

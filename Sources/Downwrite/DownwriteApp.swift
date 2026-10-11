@@ -162,6 +162,7 @@ enum Responder {
         NSApp.sendAction(#selector(TableGridView.dwTableCommand(_:)), to: nil, from: TableCommandBox(command))
     }
     static func indent() { NSApp.sendAction(#selector(EditorTextView.dwIndent(_:)), to: nil, from: nil) }
+    static func copyCodeBlock() { NSApp.sendAction(#selector(EditorTextView.dwCopyCodeBlock(_:)), to: nil, from: nil) }
     static func fold() { NSApp.sendAction(#selector(EditorTextView.dwFold(_:)), to: nil, from: nil) }
     static func unfold() { NSApp.sendAction(#selector(EditorTextView.dwUnfold(_:)), to: nil, from: nil) }
     static func foldAll() { NSApp.sendAction(#selector(EditorTextView.dwFoldAll(_:)), to: nil, from: nil) }
@@ -248,6 +249,10 @@ struct TableMenuItems: View {
 struct FormatCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .textFormatting) { FormatMenuItems() }
+        // Edit ▸ Copy Code Block: the way to do what the drawn copy control does without seeing or pointing at it.
+        CommandGroup(after: .pasteboard) {
+            Button("Copy Code Block") { Responder.copyCodeBlock() }.keyboardShortcut("c", modifiers: [.command, .shift])
+        }
         CommandGroup(after: .textEditing) {
             Menu("Find") {
                 Button("Find…") { Responder.find(.showFindInterface) }.keyboardShortcut("f", modifiers: .command)

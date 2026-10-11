@@ -476,6 +476,93 @@ final class CodeCopyTests: XCTestCase {
         XCTAssertEqual(layout(h).copiedCodeBlock, 0)
     }
 
+    // MARK: The command and the accessibility action (D6)
+
+    func testCopyCodeBlockCopiesTheBlockTheCaretIsInEndsIncluded() {
+        let (h, pb) = armed(tick: 30)
+        let r = h.coordinator.analysis.codeBlocks[0].range
+        for offset in [r.location, r.location + 14, NSMaxRange(r)] {
+            pb.clearContents()
+            h.select(offset)
+            XCTAssertTrue(NSApp.sendAction(#selector(EditorTextView.dwCopyCodeBlock(_:)), to: h.textView, from: nil))
+            XCTAssertEqual(pb.string(forType: .string), "let a = 1\nlet b = 2", "caret at \(offset - r.location)")
+        }
+        XCTAssertEqual(layout(h).copiedCodeBlock, 0, "and its control shows the tick")
+    }
+
+    func testCopyCodeBlockBeepsAndLeavesTheClipboardWhenTheCaretIsNotInABlock() {
+        let (h, pb) = armed()
+        pb.setString("keep me", forType: .string)
+        var beeps = 0
+        h.coordinator.beep = { beeps += 1 }
+        var heard: [String] = []
+        h.coordinator.onAnnouncement = { heard.append($0) }
+        let r = h.coordinator.analysis.codeBlocks[0].range
+        for offset in [0, r.location - 1, NSMaxRange(r) + 1, h.textView.string.utf16.count] {
+            h.select(offset)
+            h.textView.dwCopyCodeBlock(nil)
+        }
+        XCTAssertEqual(beeps, 4)
+        XCTAssertEqual(pb.string(forType: .string), "keep me")
+        XCTAssertNil(layout(h).copiedCodeBlock)
+        XCTAssertEqual(heard, [], "nothing was copied, so nothing is announced")
+    }
+
+    func testCopyCodeBlockLeavesTheDocumentAloneAndIsAnnounced() {
+        let (h, _) = armed()
+        var heard: [String] = []
+        h.coordinator.onAnnouncement = { heard.append($0) }
+        h.select(h.index(of: "let a") + 2)
+        let text = h.textView.string, caret = h.textView.selectedRange()
+        h.textView.undoManager?.removeAllActions()
+        h.textView.dwCopyCodeBlock(nil)
+        XCTAssertEqual(h.textView.string, text)
+        XCTAssertEqual(h.box.value, text)
+        XCTAssertEqual(h.textView.selectedRange(), caret)
+        XCTAssertEqual(h.textView.undoManager?.canUndo, false)
+        XCTAssertEqual(heard, ["Copied code block"])
+    }
+
+    func testCopyCodeBlockWorksInTheSourceViewWhereNothingIsDrawn() {
+        let (h, pb) = armed()
+        h.coordinator.setSourceMode(true)
+        h.select(h.index(of: "let b") + 1)
+        h.textView.dwCopyCodeBlock(nil)
+        XCTAssertEqual(pb.string(forType: .string), "let a = 1\nlet b = 2", "the code, not the fences, even though the source shows them")
+        XCTAssertNil(layout(h).copiedCodeBlock, "no control, so no tick")
+        XCTAssertNil(h.coordinator.codeCopyTickTimer)
+    }
+
+    func testCopyCodeBlockActsOnTheFirstBlockASelectionTouches() {
+        let (h, pb) = armed("```\none\n```\n\ntext\n\n```\ntwo\n```\n")
+        h.select(0, h.textView.string.utf16.count)
+        h.textView.dwCopyCodeBlock(nil)
+        XCTAssertEqual(pb.string(forType: .string), "one", "the block whose control shows")
+        let second = h.coordinator.analysis.codeBlocks[1].range
+        pb.clearContents()
+        h.select(second.location + 4)
+        h.textView.dwCopyCodeBlock(nil)
+        XCTAssertEqual(pb.string(forType: .string), "two")
+    }
+
+    func testTheAccessibilityActionIsOfferedOnlyWhileTheCaretIsInABlockAndCopies() {
+        let (h, pb) = armed()
+        func names() -> [String] { (h.textView.accessibilityCustomActions() ?? []).map(\.name) }
+        XCTAssertFalse(names().contains("Copy Code Block"), "the caret is at the end of the document")
+        h.select(h.index(of: "intro"))
+        XCTAssertFalse(names().contains("Copy Code Block"))
+        h.select(h.index(of: "let a") + 3)
+        XCTAssertTrue(names().contains("Copy Code Block"))
+        let action = (h.textView.accessibilityCustomActions() ?? []).first { $0.name == "Copy Code Block" }!
+        XCTAssertEqual(action.handler?(), true, "performing it reports success")
+        XCTAssertEqual(pb.string(forType: .string), "let a = 1\nlet b = 2")
+        h.select(h.index(of: "after"))
+        XCTAssertFalse(names().contains("Copy Code Block"))
+        h.coordinator.setSourceMode(true)
+        h.select(h.index(of: "let a") + 3)
+        XCTAssertTrue(names().contains("Copy Code Block"), "it is a command on the text, so the source view has it too")
+    }
+
     func testRangesBeyondTheTextAreClampedAndEmptyOnesHaveNoControl() {
         let h = ready()
         let real = h.coordinator.analysis.codeBlocks[0]
