@@ -67,7 +67,7 @@ Each step is one commit; a failing test comes first where the step is testable.
 - [x] 4. State. Coordinator hooks: hover from `pointerMoved`/`pointerLeft`, active block from `selectionChanged`, reset in `reanalyze`, empty in the source view; invalidation of chip rects only. Tests for the visibility rules and for "no restyle on pointer movement".
 - [x] 5. Click and copy. The `mouseDown` path, `codeCopyPasteboard` seam, tick timer with a shortened duration in tests, pending-debounce flush, announcement. Tests for the click, the unchanged document, and fall-through when the chip is not showing.
 - [x] 6. Command and accessibility. `dwCopyCodeBlock`, `Responder`, the menu item, the custom action. First confirm the exact `accessibilityCustomActions` override signature by compiling, and run the app to confirm ⇧⌘C is free. Tests for the command, beep, source view and action.
-- [ ] 7. Real-app step in `SelfTest.swift`, README, CLAUDE.md bullet, ROADMAP status. Run the full proof below, with `--shots` once to look at the chip in light and dark.
+- [x] 7. Real-app step in `SelfTest.swift`, README, CLAUDE.md bullet, ROADMAP status. Run the full proof below, with `--shots` once to look at the chip in light and dark.
 
 ## Risks
 
@@ -107,6 +107,7 @@ Checks that cannot be automated, to be done by hand and recorded in `review.md` 
 
 - With VoiceOver on, open the editor's actions menu with the caret in a code block, run Copy Code Block, and hear the announcement; then the same from Edit ▸ Copy Code Block.
 - Look at the chip in the light and dark `--shots` captures, including a block whose first line reaches the right edge.
+- Press ⇧⌘C in the running app with the caret in a code block and see the block copied (the end-to-end step cannot drive a shifted-letter key press; see the Step 7 deviation). If it does not copy, drop the shortcut and keep the menu item, as D6 says.
 
 Outcome coverage:
 
@@ -123,6 +124,7 @@ Outcome coverage:
 ## Deviations
 
 - Step 3 · `copyControlRect(forBlock:)` takes "the first line fragment taller than 1 pt that carries `.dwBlockBackground`", not just "taller than 1 pt". A collapsed Mermaid source does not give nil under the plain rule: its last fence line is 72 pt tall because it holds the diagram card's reserved space (found by a failing test). A collapsed source has no code card, and the background attribute is what makes the card get drawn, so the control now follows the card. Same intent, different test for it.
+- Step 7 · The real-app step does not press ⇧⌘C. A synthesised shifted-letter key event is matched by the unshifted item with the same letter however it is built or sent (found with a control: a synthetic ⇧⌘X cut the selection instead of reaching Format ▸ Strikethrough; ⇧⌘C is swallowed by the disabled Copy item), so the step checks what AppKit dispatches on instead: Edit ▸ Copy Code Block exists, its key is `c` with ⇧⌘, no other item in the menu bar has it (this is the "⇧⌘C is free" confirmation moved from step 6), and choosing the item copies the block. Pressing the keys is added to the by-hand checks below. The step also has a development flag, `--selftest-codecopy-only`, like the fold and export steps.
 - Step 6 · The "run the app to confirm ⇧⌘C is free" check moves from step 6 to step 7: the real-app self-test step scans the whole main menu for another item with that key equivalent, which is a stronger check than looking, and needs the built app bundle that step 7 builds anyway. The override signature was confirmed by compiling: `override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]?`.
 - Step 6 · Copy Code Block acts on the first block the *selection* touches (the block whose control shows), not only the block that holds a caret; for a caret they are the same. Matches the Step 4 note about Select All.
 - Step 5 · `EditorCoordinator` also gets `onAnnouncement` (a test seam, as the announcement itself cannot be observed) and `flushPendingAnalysis()`. To tell whether a debounced re-analysis is pending, `textDidChange` now clears `debounce` after cancelling it and the work item clears it when it runs; before, the property kept a finished item. No behaviour change for typing.
@@ -132,3 +134,14 @@ Outcome coverage:
 - Step 4 · `copyControlRect(forBlock:)` (written in step 3) now walks the first six line fragments from the block's start instead of enumerating the whole block, so that the caret entering a huge off-screen block does not lay all of it out.
 - Step 4 · `EditorCoordinator.onCopyControlInvalidated` is a test seam reporting each rectangle the controls ask to have redrawn; `NSView.needsToDraw(_:)` only answers during a draw, so it cannot show what was invalidated.
 - Step 3 · `DWLayoutManager` has one more state flag than the plan lists, `pointerOnCopyControl`, and `CopyControlStyle` has a field for it (`glyphHover`, from the palette's `text`): the glyph darkens while the pointer is on the control itself. The plan named `text` among the five colours but gave it no use. Step 4 sets the flag from the pointer position.
+
+## Proof results (build stage, 2026-10-11)
+
+What was run, on this Mac (macOS 27.0.1, Xcode 27.0), and what came out. For `review.md`.
+
+- **`swift test` (macOS), final code:** `DownwriteTests` 400 tests and `DownwriteCoreTests` 563 tests, 0 failures. (`scripts/ci-local.sh --no-e2e`, run earlier on the same code apart from the end-to-end step, was ALL GREEN; its one-line summary shows only the last bundle.)
+- **Linux (Core), the recorded workaround:** `scripts/linux-test.sh` fails under macOS's bash 3.2, so the same `docker run` was used by hand. A whole-suite process wedged (container idle at 0.01% CPU). Run one class per process under a 30 s timeout, retrying only a timeout: 25 of 26 classes passed whole (501 tests, 41 timeouts retried; includes `CodeBlockTests` 29 and `AnalyzerTests` 60). `FoldingTests` (62 tests) timed out ten times in a row as a class, in a different place each time (so not one test), then passed **62 of 62 with one test per process and no timeouts**. All 563 Core tests pass on Linux.
+- **Print and export untouched:** `git diff --stat main --` over the seven export and print files prints nothing.
+- **End-to-end (real app, isolated bundle-ID copy, `--selftest-*` with the fold and export fixtures), final run:** 248 checks passed, including all 30 `codecopy:` checks (hover, a real click, the exact clipboard text in light and dark, the tick and its going, no edit or undo or edited mark, a block in a quote, Edit ▸ Copy Code Block present and ⇧⌘C unique in the menu bar, choosing the item copies) and four screenshots (`docs/screenshots/window-{light,dark}-codecopy-{hover,ticked}.png`). **3 checks failed and are not about this change:** *the Appearance settings tab fits a small screen* (633 pt, limit 620) and the two *library is empty* checks, which assume an empty imported-theme library; this Mac's shared `~/Library/Application Support/Downwrite/Themes` (not keyed by bundle ID) holds 8 of the person's own imported themes, which were left untouched. No Settings or theme code is in this diff. Not proven by a run on `main`.
+- **Environment note for the next person:** earlier runs that reused one e2e bundle ID also failed 7 SwiftUI-focus checks (⌘/ ×4, Keep on Top ×2, the fold items), already at step 6 and so before this change's step; a fresh bundle ID per run cleared them.
+- **Owed by hand (cannot be automated):** the VoiceOver walk-through (actions menu and announcement, from the menu and from the action); pressing ⇧⌘C (see the Step 7 deviation); looking at a block whose first line reaches the right edge (pixel-tested, not looked at). The ⌘C-of-a-selection problem is unchanged (D8). `FEATURE-LIST.md` is untouched (D9).

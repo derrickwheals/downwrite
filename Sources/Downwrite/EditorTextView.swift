@@ -242,7 +242,6 @@ final class EditorTextView: NSTextView {
         overlay.perform(box.command, atOffset: selectedRange().location)
     }
 
-    // Folding (View menu): the commands live on the coordinator, which owns the fold state.
     /// Edit ▸ Copy Code Block (⇧⌘C): the code of the block the caret is in.
     @objc func dwCopyCodeBlock(_ sender: Any?) { coordinator?.copyCodeBlockAtCaret() }
 
@@ -258,6 +257,7 @@ final class EditorTextView: NSTextView {
         return actions.isEmpty ? nil : actions
     }
 
+    // Folding (View menu): the commands live on the coordinator, which owns the fold state.
     @objc func dwFold(_ sender: Any?) { coordinator?.foldAtCaret() }
     @objc func dwUnfold(_ sender: Any?) { coordinator?.unfoldAtCaret() }
     @objc func dwFoldAll(_ sender: Any?) { coordinator?.foldAll() }
