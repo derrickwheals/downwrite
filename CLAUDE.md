@@ -117,3 +117,4 @@ Always update `FEATURE-LIST.md` (repo root) after a new feature has been fully r
 - Guards on editing commands are decided by what AppKit does, not by the spec's wording: the word deletes (⌥⌫, ⌥⌦) skip punctuation and line breaks and ⌃⌫ is its own selector, so probe a plain `NSTextView` first, guard every variant, and test each one.
 - A file's name is not proof of its type: when bytes leave the machine (export), check the bytes and the symlink target as well as the extension (`ImageLoader.embed`).
 - CSS `max-height` with `height:auto` squashes an element that has its own width: add `object-fit: contain` and measure the shape in a real PDF, not in the CSS.
+- Tests that create a named `NSPasteboard` must release it in a teardown (`addTeardownBlock { pb.releaseGlobally() }`), as `SelfTestCodeCopy` does; a fresh name per test otherwise leaves one pasteboard in the pasteboard server per test until logout.
