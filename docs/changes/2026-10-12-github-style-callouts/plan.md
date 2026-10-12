@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-12-github-style-callouts
 intent: ./intent.md
 spec: ./spec.md
-status: approved       # draft | approved | in-progress | done
+status: in-progress    # draft | approved | in-progress | done
 approved: 2026-10-13
 branch: change/2026-10-12-github-style-callouts
 ---
@@ -70,7 +70,7 @@ Not changed on purpose: `Palette`, `ThemeDefinition`, `StoredTheme`, `Themes.swi
 
 Each step is one commit, test first where the step is testable. Run `caffeinate -u -t 2; caffeinate -d &` before any macOS test run.
 
-- [ ] 1. Fixture and recogniser. Write `Tests/Fixtures/callouts.md` (the spec's whole table, the D2 row, rows for a tab after `>`, a non-BMP title, a CRLF document built in the test) and the `CalloutTests` that read it and fail; then `Callouts.swift` (`CalloutKind`, `CalloutSyntax.match`). Includes the literal reference-definition test. `swift test --filter CalloutTests` green.
+- [x] 1. Fixture and recogniser. Write `Tests/Fixtures/callouts.md` (the spec's whole table, the D2 row, rows for a tab after `>`, a non-BMP title, a CRLF document built in the test) and the `CalloutTests` that read it and fail; then `Callouts.swift` (`CalloutKind`, `CalloutSyntax.match`). Includes the literal reference-definition test. `swift test --filter CalloutTests` green.
 - [ ] 2. Analysis record. Tests first for `callouts`, `markerLine`/`markerRange`/`titleRange`, the lookups, the hidden-run flags and the inclusive reveal; then `CalloutInfo`, the two flags, the analyzer change. Add the quote ranges to the range-sanity loop in `AnalyzerTests` and a many-quotes speed test next to `testLargeDocumentPerformance`.
 - [ ] 3. Colours. Tests first (built-ins: contrast ≥ 4.5 and CIE76 ≥ 25, opaque, pure; the 300 random themes ≥ 4.5; a stored theme JSON from before this change loads and gets callout colours); then `Palette.calloutColor`.
 - [ ] 4. Export. Tests first: exact markup for the five kinds, titled and untitled, title-only, inline formatting in the title, a list and a code block in the body, a nested plain quote, a plain quote and a quote in a list unchanged, escaping and the three sentinel characters, the D8 edge, the sanitiser and the mutation harness over callout markup, `PrintStyle` rules from the light palette, and the parity test (every fixture row: `analysis.callouts` and the export agree on kind and on "is a callout"); then the renderer, `DocumentHTML` and `PrintStyle` changes.
@@ -151,4 +151,7 @@ Requirement coverage:
 
 ## Deviations
 
-None yet.
+None that change what is delivered. Two notes from step 1 on how the plan's wording turned out:
+
+- Two spec rows cannot share the fixture, not one: a reference definition elsewhere (`[!note]: https://x`) and the in-quote `> [!NOTE]: x`, which is itself a definition of `!note` (and so is `> [!NOTE]:` followed by a body line, whose destination is that line). All are literals in `CalloutTests` (`testReferenceDefinitionElsewhereMakesTheMarkerALink`, `testMarkerFollowedByColonIsADefinitionNotACallout`).
+- The GitHub cross-check in *Proof* has a known answer. `Tests/Fixtures/callouts.md` has 50 rows. Probed on 2026-10-13, GitHub shows a `markdown-alert` for 24 of them: the 23 untitled rows marked `callout`, plus `backslash` (the spec's out-of-scope difference: GitHub drops the hard break and shows a callout, Downwrite keeps a plain quote). The 8 titled rows (`title`, `title-only`, `title-tab`, `title-trailing`, `title-inline`, `title-link`, `title-marker`, `title-unicode`) are the deliberate difference: GitHub shows each as a plain quote. Every other row agrees with GitHub. So the Proof command must print 24.
