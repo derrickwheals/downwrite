@@ -120,6 +120,50 @@ extension SelfTest {
         await settle()
         check(mark(at: marker) != nil && layout.calloutLabelRect(forCharacterAt: marker) != nil, "callouts: the label returns when the caret leaves the marker line")
 
+        // MARK: the window really repaints: a screenshot with the caret on the marker line, then with it away (R6, R9)
+        // (The attributes and the unit tests' own bitmaps cannot tell a stale display from a fresh one; a screenshot of the composited window can.)
+        func colouredInk(in viewRect: NSRect, of image: NSBitmapImageRep) -> Int {
+            let window = tv.convert(viewRect, to: nil)
+            let scale = CGFloat(image.pixelsWide) / (tv.window?.frame.width ?? 1)
+            let x0 = Int(window.minX * scale), x1 = Int(window.maxX * scale)
+            let y0 = Int(((tv.window?.frame.height ?? 0) - window.maxY) * scale), y1 = Int(((tv.window?.frame.height ?? 0) - window.minY) * scale)
+            var n = 0
+            for y in max(0, y0)..<min(image.pixelsHigh, max(0, y1)) {
+                for x in max(0, x0)..<min(image.pixelsWide, max(0, x1)) {
+                    guard let c = image.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                    if max(c.redComponent, c.greenComponent, c.blueComponent) - min(c.redComponent, c.greenComponent, c.blueComponent) > 0.3 { n += 1 }
+                }
+            }
+            return n
+        }
+        for (name, callout) in [("without a title", first), ("with a title", analysis.callouts.first { $0.titleRange != nil && $0.kind == .note })] {
+            guard let callout else { fail("the corpus has a callout \(name)"); continue }
+            tv.scrollToTop(of: lineRange(callout.markerLine), animated: false)
+            let marker = callout.markerRange.location
+            tv.setSelectedRange(NSRange(location: lineRange(callout.lastLine).location + 3, length: 0))
+            await settle(0.7)
+            guard let box = layout.calloutLabelRect(forCharacterAt: marker) else { fail("the label has a place \(name)"); continue }
+            let viewBox = box.offsetBy(dx: tv.textContainerOrigin.x, dy: tv.textContainerOrigin.y)
+            let away = outDir.appendingPathComponent("callout-away.png"), onLine = outDir.appendingPathComponent("callout-on-line.png")
+            _ = capture(window: window, to: away)
+            tv.setSelectedRange(NSRange(location: marker + 3, length: 0))
+            await settle(0.7)
+            _ = capture(window: window, to: onLine)
+            tv.setSelectedRange(NSRange(location: lineRange(callout.lastLine).location + 3, length: 0))
+            await settle(0.7)
+            let back = outDir.appendingPathComponent("callout-back.png")
+            _ = capture(window: window, to: back)
+            if let a = pixels(of: away), let b = pixels(of: onLine), let c = pixels(of: back) {
+                let inkAway = colouredInk(in: viewBox, of: a), inkOn = colouredInk(in: viewBox, of: b), inkBack = colouredInk(in: viewBox, of: c)
+                check(inkAway > 40 && inkOn * 3 < inkAway && inkBack > 40,
+                      "callouts: the window shows the label \(name) with the caret away, the literal text with it on the line, and the label again after",
+                      detail: "coloured pixels in the label's box: away \(inkAway), on the line \(inkOn), back \(inkBack)")
+            } else {
+                fail("the screenshots can be read \(name)")
+            }
+            for f in [away, onLine, back] { try? FileManager.default.removeItem(at: f) }
+        }
+
         // MARK: moving into a callout is announced (R14)
         var said: [String] = []
         coordinator.onAnnouncement = { said.append($0) }

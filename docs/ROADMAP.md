@@ -12,20 +12,20 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 
 ## Summary
 
-| Ref                                                                  | Item                                                  | Tier            | Status            |
-| -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | ----------------- |
-| [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3) |
-| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed          |
-| [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          |
-| [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          |
-| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          |
-| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | Intent drafted    |
-| [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed          |
-| [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed          |
-| [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed          |
-| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2               | Proposed          |
-| [DW-012](#dw-012--copy-text-from-code-blocks)                        | Copy text from code blocks                            | 2               | Released (v0.9.4) |
-| [DW-011](#dw-011--accessibility-audit)                               | Accessibility audit                                   | Unverified risk | Proposed          |
+| Ref                                                                  | Item                                                  | Tier            | Status            | Todoist ID       |
+| -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | ----------------- | ---------------- |
+| [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3) | —                |
+| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed          | 6hjfjGvqJXxhJqrH |
+| [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          | 6hjfjGxrHHghQ9QH |
+| [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          | 6hjfjGw57MpVp2gq |
+| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          | 6hjfjH3Q4pH554Pq |
+| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | In progress       | 6hjfjH4QfpgpMcRq |
+| [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed          | 6hjfjH74GgcMJVcq |
+| [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed          | 6hjfjH5gmF37jVWq |
+| [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed          | 6hjfjH6w5mHHQ2xq |
+| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2               | Proposed          | 6hjfjH9FvFxcJfJq |
+| [DW-012](#dw-012--copy-text-from-code-blocks)                        | Copy text from code blocks                            | 2               | Released (v0.9.4) | —                |
+| [DW-011](#dw-011--accessibility-audit)                               | Accessibility audit                                   | Unverified risk | Proposed          | 6hjfjHCFqqQq6Fjq |
 
 Tier 1 is the set of gaps most likely to stop someone using Downwrite every day. Tier 2 is worth doing but would not stop anyone adopting it. The last item is an audit of something that has not been tested yet.
 
@@ -71,6 +71,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-002 — Paste and drop images
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjGvqJXxhJqrH
 - **Status:** Proposed
 - **Why add it:** Images already preview inline, but getting one into a document is manual: save the file somewhere, then type its path. Pasting a screenshot or dragging a photo in is how people actually add images, and users of other Markdown editors expect it. Without it, the image preview feature is only half used.
 - **Why not, or what to watch:** The image has to be saved somewhere, normally in an assets folder next to the document, and an untitled, unsaved document has no folder. That needs a decision (ask to save first, or hold the image in a temporary place and move it on save). It also needs rules for file naming and collisions, for converting pasteboard formats (TIFF, HEIC) to PNG or JPEG, and for what happens to very large images. The app is not sandboxed, so writing next to the document is possible.
@@ -79,6 +80,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-003 — Syntax highlighting in code blocks
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjGxrHHghQ9QH
 - **Status:** Proposed
 - **Why add it:** Fenced code is shown in a single monospaced style, so it looks unfinished next to the themed cards and careful typography around it. Anyone writing READMEs, documentation or tutorials expects ` ```swift ` to colour the code. The language is already parsed, and imported VS Code themes already carry `tokenColors` scopes that Downwrite reads and matches, so the colour data for token types partly exists.
 - **Why not, or what to watch:** This is where the project rule "keep the app light: no new dependencies without a strong reason" bites. The options are a hand-written tokenizer in `DownwriteCore` for a short list of languages (no dependency and testable on Linux, but limited coverage and ongoing upkeep) or a bundled highlighter such as highlight.js (broad coverage, but it adds size and a licence entry in `THIRD-PARTY-NOTICES.md` and `ThirdParty/`, and its output has to be mapped back onto text attributes because code cards are drawn by TextKit, not a web view). Every built-in palette would need token colours and keep to the legibility floors in `ThemeCatalogTests`.
@@ -87,6 +89,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-004 — Typeset math
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjGw57MpVp2gq
 - **Status:** Proposed
 - **Why add it:** `$…$` and `$$…$$` are recognised and styled but shown as raw LaTeX, which the README already lists as a limitation. Anyone writing science, engineering or academic notes sees source instead of equations. A bundled KaTeX would work offline in the same way Mermaid does.
 - **Why not, or what to watch:** The two forms are very different in cost. Block math (`$$…$$`) fits the existing card machinery used for Mermaid and HTML (collapsed source, rendered card under it). Inline math is much harder, because the editor draws inline text itself and the same limit already applies to images inside a paragraph (styled, not previewed), so inline math needs a new mechanism such as an inline attachment aligned to the baseline. A sensible slice is block math first. KaTeX also adds JavaScript, CSS and fonts to an app that advertises being small, plus a licence entry. The existing regexes already avoid some false positives such as `$5 and $10`.
@@ -95,6 +98,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-005 — Folders, quick open and linking between notes
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH3Q4pH554Pq
 - **Status:** Proposed
 - **Why add it:** People who keep notes or docs in a folder, such as an Obsidian vault or a `docs/` directory in a repository, move between files constantly. Today each file is its own window or tab, with no folder view, no quick-open, no search across files, and no `[[wikilinks]]` or backlinks. For an app that wants to be the default `.md` editor, this is the gap that sends heavy users to a notes app.
 - **Why not, or what to watch:** This is the biggest scope decision on the list, and "do not build it" is a reasonable answer. Downwrite is deliberately a light, one-document-per-window editor, and folder features pull it towards a notes app with indexing, file watching, search and persistent state to maintain, which conflicts with "keep the app light". If it goes ahead it should be sliced so each piece ships alone: Open Quickly over recent files, then a folder sidebar, then search across files, then wikilinks and backlinks. Decide the direction before writing an intent.
@@ -104,13 +108,15 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-006 — GitHub-style callouts
 
-- **Status:** Intent drafted ([`docs/changes/2026-10-12-github-style-callouts/`](changes/2026-10-12-github-style-callouts/intent.md))
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH4QfpgpMcRq
+- **Status:** In progress. Plan approved on 2026-10-13 and built on the branch `change/2026-10-12-github-style-callouts`, awaiting review ([`docs/changes/2026-10-12-github-style-callouts/`](changes/2026-10-12-github-style-callouts/intent.md))
 - **Why add it:** `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]` and similar render as coloured callouts on GitHub and in several editors, and documentation written for GitHub uses them heavily. In Downwrite they show as a plain quote with the literal `[!NOTE]` text, so the author sees something different from the reader.
 - **Why not, or what to watch:** The cost is low for the value: it is a variant of a block quote, parsed in `DownwriteCore` (so testable on Linux), drawn with a coloured bar and a label, with the marker line hidden like other syntax. It could reasonably move up the list. Decisions needed: which types to support, whether to accept other editors' variants such as foldable `[!note]+` callouts, and how callouts interact with folding. Elsewhere they degrade gracefully to a normal quote.
 - **What the code has today:** Block quotes are drawn with a quote bar, and there is no `[!TYPE]` handling.
 
 ## DW-007 — Focus and typewriter mode
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH74GgcMJVcq
 - **Status:** Proposed
 - **Why add it:** A common writing aid for long-form text: dim everything except the current line, sentence or paragraph, and keep the caret vertically centred. It suits the "quiet, beautiful to type in" positioning.
 - **Why not, or what to watch:** It is not a Markdown capability, so it is a nice-to-have rather than a gap. It adds another display layer that has to cooperate with folding, overlay cards and the source view, and dimming means more attributes in the styler, which is sensitive to performance because lines are restyled as the caret moves. It would follow the source view's pattern: per window and off by default.
@@ -118,6 +124,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-008 — Auto-pairing while typing
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH5gmF37jVWq
 - **Status:** Proposed
 - **Why add it:** Many editors close brackets, quotes and backticks as you type them, and Downwrite already does this for code fences (`FenceEditing`). Closing a bracket or backtick yourself is a small interruption to writing flow.
 - **Why not, or what to watch:** This is the weakest item in tier 2 and may be better dropped. Auto-pairing is arguably wrong for Markdown: a lone `*` or `_` is common (list markers, `snake_case`), so pairing leaves stray markers, and a pair inserted automatically interacts awkwardly with syntax that hides and reveals around the caret. Smart quotes are deliberately switched off (`isAutomaticQuoteSubstitutionEnabled = false`), which suggests literal typing is the intended feel. The Format shortcuts (⌘B, ⌘E, ⌘K) already wrap a selection or insert an empty pair. If anything is done, limit it to brackets, backticks and quotes, or wrapping a selection when you type a marker.
@@ -125,6 +132,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-009 — Localisation
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH6w5mHHQ2xq
 - **Status:** Proposed
 - **Why add it:** Downwrite is English only, with no `Localizable` strings or String Catalog, while Markdown users are worldwide. SwiftUI text literals pick up a String Catalog with little work, so a first set of languages would not be a big job.
 - **Why not, or what to watch:** The ongoing cost is higher than the first pass. Every UI string change needs re-translation and native review. Strings built in AppKit code (alerts, the table grid's menus) need `NSLocalizedString` rather than being picked up automatically. The end-to-end self-test checks Settings tabs by their window title, so tests would have to pin the locale. Right-to-left languages would need the custom-drawn bars, checkboxes and table grid checked, which has not been tested. It may be better to wait for evidence of demand.
@@ -132,6 +140,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-010 — System integration (Shortcuts, Services, AppleScript)
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjH9FvFxcJfJq
 - **Status:** Proposed
 - **Why add it:** Mac power users automate their writing: Shortcuts actions (App Intents) such as "append to document" or "get word count", a Services entry to start a Downwrite document from selected text in any app, and AppleScript. It makes Downwrite part of existing workflows.
 - **Why not, or what to watch:** The audience is small, and every surface is an API to keep stable. App Intents have to work with a `DocumentGroup` document model, which is not trivial. Services alone (an `NSServices` entry in `Info.plist`) is a cheap first slice if any of this is done. It can wait for demand.
@@ -150,6 +159,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-011 — Accessibility audit
 
+- **Todoist:** https://app.todoist.com/app/task/6hjfjHCFqqQq6Fjq
 - **Status:** Proposed
 - **Why add it:** The task checkboxes, fold chevrons and chips, quote bars and table grid are drawn by `DWLayoutManager` or custom views rather than being native controls, so VoiceOver may not expose them (whether a task is ticked, whether a section is folded). Accessibility is a matter of correctness, not polish, and finding out how bad it is costs little.
 - **Why it is last, or what to watch:** It is an audit rather than a feature, and its result is unknown until someone tests with VoiceOver, Voice Control and Full Keyboard Access. It could rank higher, and moving it up costs nothing. The deliverable would be a findings list, each finding then becoming its own item or fix.
