@@ -19,7 +19,7 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 | [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          |
 | [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          |
 | [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          |
-| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | Proposed          |
+| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | Intent drafted    |
 | [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed          |
 | [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed          |
 | [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed          |
@@ -104,7 +104,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-006 — GitHub-style callouts
 
-- **Status:** Proposed
+- **Status:** Intent drafted ([`docs/changes/2026-10-12-github-style-callouts/`](changes/2026-10-12-github-style-callouts/intent.md))
 - **Why add it:** `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]` and similar render as coloured callouts on GitHub and in several editors, and documentation written for GitHub uses them heavily. In Downwrite they show as a plain quote with the literal `[!NOTE]` text, so the author sees something different from the reader.
 - **Why not, or what to watch:** The cost is low for the value: it is a variant of a block quote, parsed in `DownwriteCore` (so testable on Linux), drawn with a coloured bar and a label, with the marker line hidden like other syntax. It could reasonably move up the list. Decisions needed: which types to support, whether to accept other editors' variants such as foldable `[!note]+` callouts, and how callouts interact with folding. Elsewhere they degrade gracefully to a normal quote.
 - **What the code has today:** Block quotes are drawn with a quote bar, and there is no `[!TYPE]` handling.
