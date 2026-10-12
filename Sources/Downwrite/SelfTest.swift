@@ -87,6 +87,10 @@ enum SelfTest {
             await codeCopyWalkthrough(outDir: outDir, reusing: tv)
             return finish(outDir)
         }
+        if calloutsOnly, let fixture = calloutFixture {        // (development: just the callout walkthrough)
+            await calloutWalkthrough(outDir: outDir, fixture: fixture, reusing: tv)
+            return finish(outDir)
+        }
         check(NSApp.mainMenu?.items.contains { $0.title == "Format" } == true, "Format menu is installed")
         let viewMenu = NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu
         check(viewMenu?.items.contains { $0.title.hasSuffix("Table of Contents") } == true, "View menu has the Table of Contents toggle")
@@ -768,6 +772,10 @@ enum SelfTest {
         // 8b. The copy control on code cards, end to end: hover, a real click, the clipboard, the tick, Edit ▸ Copy Code Block (SelfTestCodeCopy.swift).
         // It reloads this run's first window with a document of its own, so it runs before the folding walkthrough, which does the same.
         await codeCopyWalkthrough(outDir: outDir, reusing: tv)
+
+        // 8c. Callouts, end to end: the shared corpus classified and drawn, the caret on a marker line, the announcement, a fold, the source
+        // view, screenshots (SelfTestCallout.swift). It reloads this run's first window with the corpus, so it also runs before the folding walkthrough.
+        if let fixture = calloutFixture { await calloutWalkthrough(outDir: outDir, fixture: fixture, reusing: tv) }
 
         // 9. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift). It runs last, in this
         // run's first window (the one SwiftUI resolves ⌘/ and the other focused-value menu items against), which it reloads with Fixture F.
