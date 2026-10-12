@@ -90,6 +90,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var codeCopyTickTimer: Timer?
     /// Told the message of each "Copied code block" announcement (the accessibility notification itself cannot be observed).
     var onAnnouncement: ((String) -> Void)?
+    /// The callout the selection touches (an index into `analysis.callouts`), so entering one can be announced (see `EditorCallouts.swift`).
+    var activeCallout: Int?
     /// True while a caret-movement command runs: the selection it leaves may sit in hidden text, which `snapCaretOverFolds`
     /// then steps over, instead of the fold being opened.
     var isMovingCaret = false
@@ -305,6 +307,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         preview.collapsed = sourceMode ? [] : collapsedBlocks(selection: tv.selectedRange())
         restyleAll()
         syncCodeBlocks()                          // (after the restyle: the copy controls sit on the cards it lays out)
+        syncActiveCallout()                       // (silently: an edit, undo or reload is not a move into a callout)
     }
 
     func combinedHeights() -> [Int: CGFloat] {
@@ -508,6 +511,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tableOverlay.highlightSelection()
         tableOverlay.scheduleHandOff()
         updateActiveCodeBlock(selection: sel, framesBefore: controlsBefore)
+        announceCalloutIfEntered(selection: sel)
     }
 
     // MARK: NSLayoutManagerDelegate
