@@ -53,7 +53,7 @@ public enum DocumentHTML {
 
         // Smart punctuation off: the text is shown as typed (the editor's own parse turns it on because only ranges are used there).
         let document = Document(parsing: markdown, options: [.disableSmartOpts])
-        let renderer = DocumentRenderer(headingIDs: ids)
+        let renderer = DocumentRenderer(headingIDs: ids, source: SourceText(markdown))
         renderer.render(document)
 
         let scanned = HTMLSanitizer.scan(renderer.html, openDetails: options.target == .print, allowImageSource: LinkPolicy.isCandidateImageSource)

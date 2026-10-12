@@ -486,4 +486,55 @@ final class CalloutTests: XCTestCase {
         XCTAssertEqual(quoteMarkers.map { slice(s, $0.range) }, ["> ", "> "])
         XCTAssertFalse(quoteMarkers.contains { $0.flags.contains(.calloutMarker) })
     }
+
+    // MARK: The editor and the export agree (R5)
+
+    private func exported(_ text: String) -> String {
+        DocumentHTML.prepare(text, options: .init(target: .screen, documentName: "doc.md")).body
+    }
+
+    /// The kinds the export wrote as callouts, in order.
+    private func exportedKinds(_ html: String) -> [CalloutKind] {
+        let pattern = try! NSRegularExpression(pattern: "<blockquote class=\"callout callout-([a-z]+)\">")
+        return pattern.matches(in: html, range: NSRange(location: 0, length: html.utf16.count)).compactMap { m in
+            CalloutKind(rawValue: NSString(string: html).substring(with: m.range(at: 1)))
+        }
+    }
+
+    func testEditorAndExportDecideTheSameForEveryRow() throws {
+        let rows = try Self.rows()
+        for row in rows {
+            for (label, text) in [("LF", row.source + "\n"), ("CRLF", row.source.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n")] {
+                let html = exported(text)
+                XCTAssertEqual(exportedKinds(html), analyze(text).callouts.map(\.kind), "row \(row.id) (\(label))")
+                switch row.expected {
+                case .plain:
+                    XCTAssertFalse(html.contains("callout"), "row \(row.id) (\(label)) is a plain quote: \(html)")
+                case .callout(let kind, let title):
+                    XCTAssertEqual(exportedKinds(html), [kind], "row \(row.id) (\(label))")
+                    XCTAssertTrue(html.contains("<span class=\"callout-type\">\(kind.title)</span>"), "row \(row.id) (\(label)): \(html)")
+                    if title == nil { XCTAssertTrue(html.contains("</span></p>"), "row \(row.id) has no title: \(html)") }
+                    // The marker text is gone, apart from rows whose body or title spell another marker on purpose.
+                    if !["second-marker", "title-marker"].contains(row.id) {
+                        XCTAssertFalse(html.contains("[!"), "row \(row.id) (\(label)) shows its marker: \(html)")
+                    }
+                }
+            }
+        }
+    }
+
+    func testEditorAndExportAgreeOnTheWholeFixtureInOneDocument() throws {
+        let text = try Self.fixture()
+        let html = exported(text)
+        XCTAssertEqual(exportedKinds(html), analyze(text).callouts.map(\.kind))
+        XCTAssertEqual(exportedKinds(html).count, try Self.rows().filter { $0.expected != .plain }.count)
+    }
+
+    /// Plain titles come out as the editor's title text, escaped.
+    func testExportedTitlesAreTheEditorsTitles() throws {
+        for row in try Self.rows() {
+            guard case .callout(_, let title?) = row.expected, !title.contains(where: { "*`[&<>\"".contains($0) }) else { continue }
+            XCTAssertTrue(exported(row.source + "\n").contains("</span> \(title)</p>"), "row \(row.id)")
+        }
+    }
 }
