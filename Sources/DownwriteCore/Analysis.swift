@@ -47,6 +47,10 @@ public struct StyleFlags: OptionSet, Hashable, Sendable {
     /// Subscript (`<sub>`) and superscript (`<sup>`) text.
     public static let sub = StyleFlags(rawValue: 1 << 28)
     public static let sup = StyleFlags(rawValue: 1 << 29)
+    /// The `[!TYPE]` and the whitespace after it on a callout's marker line. Hidden while the selection is off that line.
+    public static let calloutMarker = StyleFlags(rawValue: 1 << 30)
+    /// The title after a callout's marker (the last free bit: the next flag needs `StyleFlags` and `runs` widened to `UInt64`).
+    public static let calloutTitle = StyleFlags(rawValue: 1 << 31)
 }
 
 public struct FormatSpan: Equatable, Sendable {
@@ -102,6 +106,23 @@ public struct CodeBlockInfo: Equatable, Sendable {
     /// What a reader would copy: cmark's `CodeBlock.code` (no fence lines, language tag, quote or list prefix) with one final
     /// line break removed. Never empty; a block with nothing to copy has no record.
     public var text: String
+}
+
+/// A top-level block quote that is a callout (`> [!NOTE]` …), as decided by `CalloutSyntax`.
+public struct CalloutInfo: Equatable, Sendable {
+    public var kind: CalloutKind
+    /// The whole quote, from the start of its first line to the end of its last line's content. The bar covers every one of
+    /// these lines, so a blank `>` line before the marker is inside it.
+    public var range: NSRange
+    /// Index of the first and last source line of the quote.
+    public var firstLine: Int
+    public var lastLine: Int
+    /// The line `[!TYPE]` is on: `firstLine`, or a later one when the quote opens with blank `>` lines.
+    public var markerLine: Int
+    /// `[!TYPE]` plus the whitespace after it, up to the title or the end of the line's content. This is what hides.
+    public var markerRange: NSRange
+    /// The title: the rest of the marker line, trimmed. Nil when the author wrote none.
+    public var titleRange: NSRange?
 }
 
 /// A line that consists of nothing but one image (`![alt](src)`): previewed under the line.
@@ -255,6 +276,8 @@ public struct MarkdownAnalysis: Sendable {
     public let htmlBlocks: [RawHTMLBlock]
     /// Code blocks with something to copy, in document order. Their ranges never overlap.
     public let codeBlocks: [CodeBlockInfo]
+    /// Callouts in document order. Their ranges never overlap (a callout is a top-level quote).
+    public let callouts: [CalloutInfo]
     /// Everything that can fold, in document order (ascending `anchor`, which is unique).
     public let foldRegions: [FoldRegion]
 
@@ -384,6 +407,34 @@ public struct MarkdownAnalysis: Sendable {
     /// The code block that occupies source line `line`.
     public func codeBlock(containingLine line: Int) -> CodeBlockInfo? {
         codeBlockIndex(containingLine: line).map { codeBlocks[$0] }
+    }
+
+    /// Index into `callouts` of the first callout the selection touches, ends included (the rule every marker follows, so a
+    /// caret at the very start or end of the quote counts). The callouts are in order and do not overlap: a binary search.
+    public func calloutIndex(touching selection: NSRange) -> Int? {
+        var lo = 0, hi = callouts.count
+        while lo < hi {                                   // the first callout that ends at or after the selection starts
+            let mid = (lo + hi) / 2
+            if NSMaxRange(callouts[mid].range) < selection.location { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo < callouts.count, callouts[lo].range.location <= NSMaxRange(selection) else { return nil }
+        return lo
+    }
+
+    /// Index into `callouts` of the callout that occupies source line `line`.
+    public func calloutIndex(containingLine line: Int) -> Int? {
+        var lo = 0, hi = callouts.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if callouts[mid].firstLine <= line { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo > 0, line <= callouts[lo - 1].lastLine else { return nil }
+        return lo - 1
+    }
+
+    /// The callout that occupies source line `line`.
+    public func callout(containingLine line: Int) -> CalloutInfo? {
+        calloutIndex(containingLine: line).map { callouts[$0] }
     }
 
     /// Index into `tables` of the grid table whose source contains `offset` (end of the last line included).

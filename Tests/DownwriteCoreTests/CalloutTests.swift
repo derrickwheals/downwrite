@@ -280,4 +280,210 @@ final class CalloutTests: XCTestCase {
         XCTAssertEqual(matches("> \n").count, 0)
         XCTAssertEqual(matches(">").count, 0)
     }
+
+    // MARK: The analysis record
+
+    private func analyze(_ s: String) -> MarkdownAnalysis { MarkdownAnalyzer.analyze(s) }
+
+    private func expected(_ a: MarkdownAnalysis, in text: String) -> [Expected] {
+        a.callouts.map { .callout($0.kind, title: $0.titleRange.map { slice(text, $0) }) }
+    }
+
+    func testAnalysisRecordsTheSameCalloutsAsTheRecogniserForEveryRow() throws {
+        for row in try Self.rows() {
+            for (label, text) in [("LF", row.source + "\n"), ("CRLF", row.source.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n")] {
+                let found = expected(analyze(text), in: text)
+                switch row.expected {
+                case .plain: XCTAssertEqual(found, [], "row \(row.id) (\(label))")
+                case .callout: XCTAssertEqual(found, [row.expected], "row \(row.id) (\(label))")
+                }
+            }
+        }
+    }
+
+    func testWholeFixtureRecordsExactlyTheExpectedCalloutsInOrder() throws {
+        let text = try Self.fixture()
+        let a = analyze(text)
+        let want = try Self.rows().compactMap { $0.expected == .plain ? nil : $0.expected }
+        XCTAssertEqual(expected(a, in: text), want)
+        var previousEnd = -1
+        for c in a.callouts {
+            XCTAssertGreaterThan(c.range.location, previousEnd, "callouts are in order and do not overlap")
+            previousEnd = NSMaxRange(c.range)
+        }
+    }
+
+    func testRecordFieldsOfATitledCallout() throws {
+        let s = "intro\n\n> [!NOTE] My title\n> body\n\nafter\n"
+        let a = analyze(s)
+        let c = try XCTUnwrap(a.callouts.first)
+        XCTAssertEqual(a.callouts.count, 1)
+        XCTAssertEqual(c.kind, .note)
+        XCTAssertEqual([c.firstLine, c.markerLine, c.lastLine], [2, 2, 3])
+        XCTAssertEqual(slice(s, c.range), "> [!NOTE] My title\n> body")
+        XCTAssertEqual(slice(s, c.markerRange), "[!NOTE] ")
+        XCTAssertEqual(c.titleRange.map { slice(s, $0) }, "My title")
+    }
+
+    func testTitleOnlyCalloutIsOneLine() throws {
+        let s = "> [!WARNING] Data loss"
+        let c = try XCTUnwrap(analyze(s).callouts.first)
+        XCTAssertEqual([c.firstLine, c.markerLine, c.lastLine], [0, 0, 0])
+        XCTAssertEqual(slice(s, c.range), s)
+    }
+
+    /// `>` / `> [!TIP]` / `> body`: the bar and the lookups cover the blank first line, the marker is on the second.
+    func testBlankFirstQuoteLineIsInsideTheCallout() throws {
+        let s = "x\n\n>\n> [!TIP]\n> body\n"
+        let a = analyze(s)
+        let c = try XCTUnwrap(a.callouts.first)
+        XCTAssertEqual([c.firstLine, c.markerLine, c.lastLine], [2, 3, 4])
+        XCTAssertEqual(slice(s, c.range), ">\n> [!TIP]\n> body")
+        XCTAssertEqual(slice(s, c.markerRange), "[!TIP]")
+        XCTAssertEqual(a.calloutIndex(containingLine: 2), 0)
+    }
+
+    func testLazyAndNestedBlocksBelongToTheCallout() throws {
+        let lazy = "> [!NOTE]\nbody\n\nafter\n"
+        XCTAssertEqual(try XCTUnwrap(analyze(lazy).callouts.first).lastLine, 1)
+        let blocks = "> [!NOTE]\n> - a\n> - b\n>\n> ```\n> x\n> ```\n\nafter\n"
+        let c = try XCTUnwrap(analyze(blocks).callouts.first)
+        XCTAssertEqual(c.lastLine, 6)
+        XCTAssertEqual(slice(blocks, c.range), "> [!NOTE]\n> - a\n> - b\n>\n> ```\n> x\n> ```")
+    }
+
+    func testRangeNeverIncludesTheFinalLineBreak() throws {
+        for s in ["> [!NOTE]\n> body\n", "> [!NOTE]\r\n> body\r\n", "> [!NOTE]\n> body"] {
+            let c = try XCTUnwrap(analyze(s).callouts.first)
+            XCTAssertEqual(slice(s, c.range).trimmingCharacters(in: .newlines), slice(s, c.range), s.debugDescription)
+        }
+    }
+
+    /// The rest of the line analysis is exactly what a plain quote gets: a callout adds a record, a marker and a title span only.
+    func testQuoteLinesAndQuoteMarkersAreUnchangedByTheCallout() {
+        let callout = "intro\n\n> [!NOTE] My title\n> body\n> > nested\n\nafter\n"
+        let plain = callout.replacingOccurrences(of: "[!NOTE]", with: "[?NOTE]")
+        let c = analyze(callout), p = analyze(plain)
+        XCTAssertEqual(c.callouts.count, 1)
+        XCTAssertEqual(p.callouts.count, 0)
+        XCTAssertEqual(c.lines, p.lines)
+        XCTAssertEqual(c.markers.filter { $0.flags.contains(.quote) }, p.markers.filter { $0.flags.contains(.quote) })
+        XCTAssertEqual(c.spans.filter { $0.flags.contains(.quote) }, p.spans.filter { $0.flags.contains(.quote) })
+        XCTAssertEqual(c.markers.count, p.markers.count + 1, "the only new marker is the callout's")
+    }
+
+    func testPlainQuotesCarryNoCalloutFlagsAndCalloutsCarryExactlyOneMarker() throws {
+        for row in try Self.rows() {
+            let a = analyze(row.source + "\n")
+            let runs = a.runs(in: NSRange(location: 0, length: row.source.utf16.count + 1), selection: NSRange(location: 0, length: 0))
+            switch row.expected {
+            case .plain:
+                XCTAssertTrue(a.callouts.isEmpty, row.id)
+                XCTAssertFalse(runs.contains { $0.flags.contains(.calloutMarker) || $0.flags.contains(.calloutTitle) }, row.id)
+            case .callout(_, let title):
+                XCTAssertEqual(a.markers.filter { $0.flags.contains(.calloutMarker) }.count, 1, row.id)
+                XCTAssertEqual(runs.contains { $0.flags.contains(.calloutTitle) }, title != nil, row.id)
+            }
+        }
+    }
+
+    // MARK: Lookups
+
+    func testLookupsByLine() {
+        let s = "> [!NOTE]\n> a\n\ntext\n\n>\n> [!TIP] t\n> b\n\nend\n"
+        let a = analyze(s)
+        XCTAssertEqual(a.callouts.count, 2)
+        let byLine = (-1...11).map { a.calloutIndex(containingLine: $0) }
+        XCTAssertEqual(byLine, [nil, 0, 0, nil, nil, nil, 1, 1, 1, nil, nil, nil, nil])
+        XCTAssertEqual(a.callout(containingLine: 1)?.kind, .note)
+        XCTAssertEqual(a.callout(containingLine: 6)?.kind, .tip)
+        XCTAssertNil(a.callout(containingLine: 3))
+    }
+
+    func testLookupsBySelectionAreInclusiveOfBothEnds() throws {
+        let s = "intro\n\n> [!NOTE]\n> a\n\ntext\n\n> [!TIP] t\n> b\n"
+        let a = analyze(s)
+        let first = a.callouts[0], second = a.callouts[1]
+        func at(_ offset: Int, _ length: Int = 0) -> Int? { a.calloutIndex(touching: NSRange(location: offset, length: length)) }
+        XCTAssertNil(at(0), "intro")
+        XCTAssertNil(at(first.range.location - 1), "the blank line before")
+        XCTAssertEqual(at(first.range.location), 0, "start of the quote")
+        XCTAssertEqual(at(NSMaxRange(first.range)), 0, "end of the quote's last line")
+        XCTAssertNil(at(NSMaxRange(first.range) + 1), "the blank line after")
+        XCTAssertEqual(at(second.range.location), 1)
+        XCTAssertEqual(at(NSMaxRange(second.range)), 1)
+        XCTAssertNil(at(NSMaxRange(second.range) + 1), "past the end")
+        XCTAssertNil(at(s.utf16.count + 5))
+        // A selection spanning both gives the first it touches; one that starts between them gives the second.
+        XCTAssertEqual(at(0, s.utf16.count), 0)
+        XCTAssertEqual(at(NSMaxRange(first.range) + 1, 10), 1)
+    }
+
+    func testLookupsWithNoCallouts() {
+        let a = analyze("> plain\n\ntext\n")
+        XCTAssertNil(a.calloutIndex(containingLine: 0))
+        XCTAssertNil(a.calloutIndex(touching: NSRange(location: 0, length: 3)))
+        XCTAssertNil(a.callout(containingLine: 0))
+    }
+
+    // MARK: Hiding and the style flags
+
+    private func calloutMarkerIndex(_ a: MarkdownAnalysis) throws -> Int {
+        try XCTUnwrap(a.markers.firstIndex { $0.flags.contains(.calloutMarker) })
+    }
+
+    func testMarkerHidesAwayFromTheMarkerLineAndRevealsOnItInclusiveOfBothEnds() throws {
+        let s = "intro\n\n> [!NOTE] T\n> body\n"
+        let a = analyze(s)
+        let i = try calloutMarkerIndex(a)
+        let marker = a.markers[i]
+        XCTAssertEqual(slice(s, marker.range), "[!NOTE] ")
+        XCTAssertEqual(slice(s, marker.reveal), "> [!NOTE] T", "the reveal range is the marker line, like the line's own `>`")
+        let lineStart = marker.reveal.location, lineEnd = NSMaxRange(marker.reveal)
+        func hidden(_ location: Int, _ length: Int = 0) -> Bool {
+            a.hiddenMarkerIndices(selection: NSRange(location: location, length: length)).contains(i)
+        }
+        XCTAssertTrue(hidden(0), "intro")
+        XCTAssertTrue(hidden(lineStart - 1), "the blank line above")
+        XCTAssertFalse(hidden(lineStart), "start of the marker line")
+        XCTAssertFalse(hidden(lineStart + 4), "inside the marker")
+        XCTAssertFalse(hidden(lineEnd), "end of the marker line")
+        XCTAssertTrue(hidden(lineEnd + 1), "start of the body line")
+        XCTAssertTrue(hidden(lineEnd + 3), "inside the body line")
+        XCTAssertFalse(hidden(lineStart - 1, 2), "a selection that reaches into the line")
+        XCTAssertFalse(hidden(0, s.utf16.count), "a selection over everything")
+    }
+
+    func testRunsFlagTheMarkerAndTheTitle() throws {
+        let s = "intro\n\n> [!NOTE] **Bold** t\n> body\n"
+        let a = analyze(s)
+        let c = try XCTUnwrap(a.callouts.first)
+        let away = NSRange(location: 0, length: 0)
+        let on = NSRange(location: c.markerRange.location + 2, length: 0)
+
+        let markerRuns = a.runs(in: c.markerRange, selection: away)
+        XCTAssertTrue(markerRuns.allSatisfy { $0.flags.isSuperset(of: [.calloutMarker, .marker, .hidden]) })
+        XCTAssertEqual(markerRuns.reduce(0) { $0 + $1.range.length }, c.markerRange.length)
+        let shown = a.runs(in: c.markerRange, selection: on)
+        XCTAssertTrue(shown.allSatisfy { $0.flags.isSuperset(of: [.calloutMarker, .marker]) && !$0.flags.contains(.hidden) })
+
+        let titleRange = try XCTUnwrap(c.titleRange)
+        let titleRuns = a.runs(in: titleRange, selection: away)
+        XCTAssertTrue(titleRuns.allSatisfy { $0.flags.contains(.calloutTitle) })
+        XCTAssertTrue(titleRuns.contains { $0.flags.contains(.bold) && !$0.flags.contains(.marker) }, "inline formatting still applies")
+        XCTAssertFalse(titleRuns.contains { $0.flags.contains(.calloutMarker) })
+
+        // Nothing else on the page carries either flag.
+        let all = a.runs(in: NSRange(location: 0, length: s.utf16.count), selection: away)
+        for r in all where r.flags.contains(.calloutMarker) { XCTAssertTrue(NSIntersectionRange(r.range, c.markerRange).length == r.range.length) }
+        for r in all where r.flags.contains(.calloutTitle) { XCTAssertTrue(NSIntersectionRange(r.range, titleRange).length == r.range.length) }
+    }
+
+    func testTheQuoteMarkerOfTheMarkerLineIsAnOrdinaryQuoteMarker() throws {
+        let s = "> [!NOTE]\n> body\n"
+        let a = analyze(s)
+        let quoteMarkers = a.markers.filter { $0.flags.contains(.quote) }
+        XCTAssertEqual(quoteMarkers.map { slice(s, $0.range) }, ["> ", "> "])
+        XCTAssertFalse(quoteMarkers.contains { $0.flags.contains(.calloutMarker) })
+    }
 }
