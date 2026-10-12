@@ -121,6 +121,12 @@ extension NSAttributedString.Key {
     static let dwFold = NSAttributedString.Key("dw.fold")
     /// On the last character of a folded header's last line: the same `FoldMark`, drawn as the ⋯ chip after it.
     static let dwFoldChip = NSAttributedString.Key("dw.foldChip")
+    /// On the first character of a hidden callout marker (`[!NOTE]`): a `CalloutMark` for the layout manager to draw as the icon and
+    /// the type name.
+    static let dwCallout = NSAttributedString.Key("dw.callout")
+    /// On every line of a callout: its colour. The layout manager draws the first level of the quote bar with it; deeper levels keep
+    /// `dwQuoteBarColor`, which every quote line carries.
+    static let dwCalloutBar = NSAttributedString.Key("dw.calloutBar")
 }
 
 /// What the layout manager draws for a foldable header: a chevron (always while the region is folded, otherwise only while
@@ -177,6 +183,51 @@ final class CheckboxMark: NSObject {
     override var hash: Int {
         var h = Hasher()
         h.combine(checked); h.combine(side); h.combine(centerAboveBaseline)
+        return h.finalize()
+    }
+}
+
+/// What the layout manager draws in place of a hidden callout marker: the kind's icon and its name, in the callout colour. Attached to
+/// the marker's first character together with a `.kern` that reserves the room for it when a title follows, so the title can never
+/// start under the label: the styler measures `nameWidth` once, from `font`, and the layout manager draws with the same numbers.
+final class CalloutMark: NSObject {
+    let kind: CalloutKind
+    let color: NSColor
+    /// "Note", "Tip" …
+    let name: String
+    /// The bold face the name is drawn in; the title is set in the same face.
+    let font: NSFont
+    /// Edge length of the square the icon is drawn in.
+    let iconSide: CGFloat
+    /// Space between the icon and the name.
+    let gap: CGFloat
+    let nameWidth: CGFloat
+    /// Space between the name and the title that follows it.
+    let titleGap: CGFloat
+
+    init(kind: CalloutKind, color: NSColor, font: NSFont, size: CGFloat) {
+        self.kind = kind; self.color = color; self.font = font
+        name = kind.title
+        iconSide = (size * 0.95).rounded()
+        gap = (size * 0.4).rounded()
+        titleGap = (size * 0.5).rounded()
+        nameWidth = (kind.title as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// Icon, gap and name.
+    var labelWidth: CGFloat { iconSide + gap + nameWidth }
+    /// The room the label and the gap before the title take: the advance of the marker's first character when a title follows.
+    var reservedWidth: CGFloat { labelWidth + titleGap }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let o = object as? CalloutMark else { return false }
+        return kind == o.kind && color == o.color && font == o.font && iconSide == o.iconSide && gap == o.gap
+            && nameWidth == o.nameWidth && titleGap == o.titleGap
+    }
+
+    override var hash: Int {
+        var h = Hasher()
+        h.combine(kind); h.combine(iconSide); h.combine(nameWidth)
         return h.finalize()
     }
 }
