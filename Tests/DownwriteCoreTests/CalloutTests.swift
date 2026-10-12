@@ -268,6 +268,33 @@ final class CalloutTests: XCTestCase {
         XCTAssertEqual(found.match.markerLine, 2)
     }
 
+    /// cmark-gfm gives the paragraph no source range when a table directly below splits it off, so the recogniser finds the marker from
+    /// the quote itself (the verifier's P1: these were plain quotes).
+    func testAMarkerRightAboveATableStillMarksACallout() throws {
+        let table = "> | a | b |\n> |---|---|\n> | 1 | 2 |"
+        for (text, line, title) in [
+            ("intro\n\n> [!NOTE]\n\(table)\n\nafter\n", 2, nil),
+            ("> [!TIP] My title\n> |---|---|\n", 0, "My title"),          // a title alone is enough, whatever follows
+            (">\n> [!WARNING]\n\(table)\n", 1, nil),                       // a blank quote line first (D2)
+            ("   > [!CAUTION]\n   \(table)\n", 0, nil),                    // three spaces before `>`
+            (">\t[!IMPORTANT]\n\(table)\n", 0, nil),                       // a tab after `>`
+            ("> [!NOTE]\n> intro\n> | a | b |\n> |---|---|\n", 0, nil),    // text between the marker and the table
+        ] {
+            for variant in [text, text.replacingOccurrences(of: "\n", with: "\r\n")] {
+                let found = try XCTUnwrap(matches(variant).first, variant.debugDescription)
+                XCTAssertEqual(found.match.markerLine, line, variant.debugDescription)
+                XCTAssertEqual(slice(variant, found.match.markerRange).trimmingCharacters(in: .whitespaces).hasPrefix("[!"), true, variant.debugDescription)
+                XCTAssertEqual(found.title, title, variant.debugDescription)
+                let a = analyze(variant)
+                XCTAssertEqual(a.callouts.count, 1, variant.debugDescription)
+                XCTAssertEqual(a.callouts.first?.markerLine, line)
+                XCTAssertTrue((a.callouts.first?.lastLine ?? 0) > line, "the table's lines belong to the callout: \(variant.debugDescription)")
+            }
+        }
+        XCTAssertEqual(matches("> [!NOTE]\n> | a | b |\n").count, 1, "a `|` line without a delimiter row is no table, just a line of text that follows the marker")
+        XCTAssertEqual(matches("> hello\n> | a | b |\n> |---|---|\n").count, 0, "text first: plain, table or not")
+    }
+
     func testSeveralCalloutsInOneDocument() {
         let text = "> [!NOTE]\n> a\n\ntext\n\n> [!TIP] t\n\n> plain\n\n> [!CAUTION]\n> c\n"
         XCTAssertEqual(matches(text).map(\.match.kind), [.note, .tip, .caution])

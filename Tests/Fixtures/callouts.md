@@ -130,6 +130,29 @@ body
 > [!NOTE]
 > body
 
+## table callout note
+
+> [!NOTE]
+> | a | b |
+> |---|---|
+> | 1 | 2 |
+
+## table-after-text callout note
+
+> [!NOTE]
+> intro
+> | a | b |
+> |---|---|
+> | 1 | 2 |
+
+## table-blank-first callout note
+
+>
+> [!NOTE]
+> | a | b |
+> |---|---|
+> | 1 | 2 |
+
 ## title callout note "My title"
 
 > [!NOTE] My title
@@ -168,6 +191,12 @@ body
 
 > [!NOTE] Héllo 😀 wörld
 > body
+
+## title-table callout note "with a title"
+
+> [!NOTE] with a title
+> | a | b |
+> |---|---|
 
 ## alone plain
 

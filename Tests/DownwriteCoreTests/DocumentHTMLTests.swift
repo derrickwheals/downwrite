@@ -104,6 +104,19 @@ final class DocumentHTMLTests: XCTestCase {
                        "<blockquote class=\"callout callout-note\">\n<p class=\"callout-title\"><span class=\"callout-type\">Note</span> <strong>a\nb</strong></p>\n</blockquote>\n")
     }
 
+    /// A table right below the marker splits the first paragraph off without a source range; it is still a callout, in the export too.
+    func testACalloutWhoseBodyIsATableIsStillACallout() {
+        for text in ["> [!NOTE]\n> | a | b |\n> |---|---|\n> | 1 | 2 |\n", "> [!NOTE]\r\n> | a | b |\r\n> |---|---|\r\n> | 1 | 2 |\r\n"] {
+            let out = body(text)
+            XCTAssertTrue(out.hasPrefix("<blockquote class=\"callout callout-note\">\n<p class=\"callout-title\"><span class=\"callout-type\">Note</span></p>\n"), out)
+            XCTAssertTrue(out.contains("<table") && out.hasSuffix("</table></div>\n</blockquote>\n"), out)
+            XCTAssertFalse(out.contains("[!"), "the marker text is gone: \(out)")
+        }
+        let titled = body("> [!NOTE] with a title\n> | a | b |\n> |---|---|\n")
+        XCTAssertTrue(titled.contains("<span class=\"callout-type\">Note</span> with a title</p>"), titled)
+        XCTAssertEqual(body("> intro\n> | a | b |\n> |---|---|\n").hasPrefix("<blockquote>\n"), true, "a quote that is not a callout is unchanged")
+    }
+
     func testPlainQuotesAreUnchanged() {
         XCTAssertEqual(body("> [!INFO]\n> body\n"), "<blockquote>\n<p>[!INFO]\nbody</p>\n</blockquote>\n")
         XCTAssertEqual(body("> [!NOTE]\n"), "<blockquote>\n<p>[!NOTE]</p>\n</blockquote>\n")

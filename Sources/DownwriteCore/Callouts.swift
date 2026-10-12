@@ -42,7 +42,7 @@ struct CalloutMatch: Equatable {
 /// two cannot disagree. cmark does the Markdown work (block structure, indentation, reference definitions); this reads the
 /// source only where the tree cannot tell (a trailing hard break, the exact characters of the marker).
 enum CalloutSyntax {
-    private static let openBracket: UInt16 = 91, bang: UInt16 = 33, closeBracket: UInt16 = 93
+    private static let openBracket: UInt16 = 91, bang: UInt16 = 33, closeBracket: UInt16 = 93, greater: UInt16 = 62
 
     /// The callout `quote` is, or nil. `src` must be the text the quote was parsed from.
     ///
@@ -56,10 +56,18 @@ enum CalloutSyntax {
     static func match(_ quote: BlockQuote, in src: SourceText) -> CalloutMatch? {
         guard quote.parent is Document,
               let paragraph = quote.child(at: 0) as? Paragraph,
-              paragraph.child(at: 0) is Text,
-              let start = paragraph.range?.lowerBound else { return nil }
+              paragraph.child(at: 0) is Text else { return nil }
 
-        let p = src.offset(line: start.line, column: start.column)
+        // Where the paragraph starts. cmark-gfm gives the paragraph no source range when its table extension splits it off from a table
+        // right below (`> [!NOTE]` then `> | a | b |`); then it is the first content of the quote itself.
+        let p: Int
+        if let start = paragraph.range?.lowerBound {
+            p = src.offset(line: start.line, column: start.column)
+        } else if let first = firstContent(of: quote, in: src) {
+            p = first
+        } else {
+            return nil
+        }
         let line = src.lineIndex(containing: p)
         let end = src.lineContentEnds[line]
         guard p + 2 < end, src.units[p] == openBracket, src.units[p + 1] == bang else { return nil }
@@ -78,6 +86,25 @@ enum CalloutSyntax {
 
         guard title != nil || quote.childCount > 1 || paragraph.childCount > 1 else { return nil }
         return CalloutMatch(kind: kind, markerLine: line, markerRange: NSRange(location: p, length: titleStart - p), titleRange: title)
+    }
+
+    /// The offset of the first character after the quote's `>` prefixes that is not a space or tab, scanning from the quote's first line
+    /// (blank `>` lines are skipped): the start of the quote's first block. Nil when a line does not start with `>`, or there is none.
+    private static func firstContent(of quote: BlockQuote, in src: SourceText) -> Int? {
+        guard let start = quote.range?.lowerBound, start.line >= 1 else { return nil }
+        var line = start.line - 1
+        while line < src.lineCount {
+            let end = src.lineContentEnds[line]
+            var p = src.lineStarts[line]
+            var spaces = 0
+            while p < end, src.units[p] == 32, spaces < 3 { p += 1; spaces += 1 }
+            guard p < end, src.units[p] == greater else { return nil }
+            p += 1
+            while p < end, src.isSpaceOrTab(p) { p += 1 }
+            if p < end { return p }
+            line += 1
+        }
+        return nil
     }
 
     private static func isASCIILetter(_ u: UInt16) -> Bool { (u >= 65 && u <= 90) || (u >= 97 && u <= 122) }
