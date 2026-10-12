@@ -65,4 +65,27 @@ final class ThemeLibraryTests: XCTestCase {
         builtin.id = ""
         XCTAssertNil(builtin.definition())
     }
+
+    /// R15: callout colours add no stored field. A record written before callouts existed loads as it is and gets them.
+    func testAThemeStoredBeforeCalloutsLoadsUnchangedAndGetsCalloutColours() throws {
+        let json = ##"{"version":1,"id":"custom-night-dark","name":"Night","appearance":"dark","source":"night.json","colors":{"background":"#101820","text":"#E0E8F0","secondaryText":"#9AA4B0","marker":"#5F6B78","accent":"#6AA9FF","link":"#7CB7FF","codeText":"#E0E8F0","codeBackground":"#17212B","inlineCodeBackground":"#223040","quoteBar":"#4488FF73","highlightBackground":"#F0C04059","rule":"#2C3948","selection":"#4488FF55"}}"##
+        let stored = try JSONDecoder().decode(StoredTheme.self, from: Data(json.utf8))
+        let theme = try XCTUnwrap(stored.definition())
+        let library = ThemeLibrary(imported: [theme])
+        let palette = library.palette(id: theme.id, for: .dark)
+        XCTAssertEqual(palette, theme.palette)
+        for kind in CalloutKind.allCases {
+            let c = palette.calloutColor(kind)
+            XCTAssertEqual(c.a, 1)
+            XCTAssertGreaterThanOrEqual(c.contrast(with: palette.background), 4.5, "\(kind)")
+        }
+        XCTAssertEqual(Set(CalloutKind.allCases.map { palette.calloutColor($0).hexString }).count, 5, "five different colours on this page")
+    }
+
+    func testStoredThemesStillWriteExactlyThePaletteKeys() throws {
+        let t = try VSCodeTheme.convert(##"{"colors": {"editor.background": "#101010"}}"##, fallbackName: "n")
+        let stored = StoredTheme(id: "custom-n-dark", name: "n", appearance: .dark, source: "n.json", palette: t.palette)
+        XCTAssertEqual(Set(stored.colors.keys), ["background", "text", "secondaryText", "marker", "accent", "link", "codeText", "codeBackground",
+                                                 "inlineCodeBackground", "quoteBar", "highlightBackground", "rule", "selection"])
+    }
 }

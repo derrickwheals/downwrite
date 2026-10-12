@@ -82,3 +82,31 @@ enum CalloutSyntax {
 
     private static func isASCIILetter(_ u: UInt16) -> Bool { (u >= 65 && u <= 90) || (u >= 97 && u <= 122) }
 }
+
+public extension Palette {
+    /// The colour of a callout's bar, icon, type name and title on this page. Pure, opaque, and a function of the page and the
+    /// text colour only, so no stored theme needs a new field and imported themes get callouts too.
+    ///
+    /// The kind's own hue is mixed 15 % toward the text colour (so it sits in the page's tone), then moved toward white or
+    /// black, whichever the page is further from, until it has at least 4.5:1 against the page. Either pole has at least 4.58:1
+    /// on any page, so the floor holds for every page, including random imported ones. On the six built-in themes the five
+    /// colours are also at least ΔE*ab 25 apart (`ThemeCatalogTests`); on an imported page near luminance 0.18 they can converge,
+    /// and the icon and the type name still tell them apart.
+    func calloutColor(_ kind: CalloutKind) -> RGBA {
+        kind.hue.mixed(with: text, 0.15)
+            .ensuringContrast(4.5, against: background, toward: VSCodeTheme.bestPole(for: background))
+    }
+}
+
+private extension CalloutKind {
+    /// Downwrite's own hues (blue, green, purple, amber, red); not taken from any third-party palette.
+    var hue: RGBA {
+        switch self {
+        case .note: return RGBA(hex: 0x2978E0)
+        case .tip: return RGBA(hex: 0x29AE55)
+        case .important: return RGBA(hex: 0x8F51D6)
+        case .warning: return RGBA(hex: 0xF59F0A)
+        case .caution: return RGBA(hex: 0xE42532)
+        }
+    }
+}

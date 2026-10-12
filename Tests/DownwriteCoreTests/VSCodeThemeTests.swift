@@ -176,6 +176,7 @@ final class VSCodeThemeTests: XCTestCase {
         """
         let t = try VSCodeTheme.convert(theme, fallbackName: "hostile")
         assertLegible(t.palette, "hostile")
+        assertCalloutColours(t.palette, "hostile")
     }
 
     func testRandomThemesAreAlwaysLegible() throws {
@@ -191,6 +192,25 @@ final class VSCodeThemeTests: XCTestCase {
             """
             let t = try VSCodeTheme.convert(theme, fallbackName: "random \(i)")
             assertLegible(t.palette, "random #\(i)")
+            assertCalloutColours(t.palette, "random #\(i)")
+        }
+    }
+
+    /// Callout colours are derived from the page (DW-006): every kind keeps 4.5:1 against it, however odd the page is.
+    private func assertCalloutColours(_ p: Palette, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+        for kind in CalloutKind.allCases {
+            let c = p.calloutColor(kind)
+            XCTAssertEqual(c.a, 1, "\(label) \(kind) is opaque", file: file, line: line)
+            XCTAssertGreaterThanOrEqual(c.contrast(with: p.background), 4.5, "\(label) \(kind)", file: file, line: line)
+        }
+    }
+
+    /// Pages around luminance 0.18, where white and black are equally far away, are the hardest for a colour that must clear 4.5.
+    func testCalloutColoursOnMidGreyPagesStillClearTheFloor() {
+        for grey in stride(from: 0x50, through: 0xA0, by: 0x04) {
+            let hex = String(format: "#%02X%02X%02X", grey, grey, grey)
+            let t = try! VSCodeTheme.convert("{ \"colors\": { \"editor.background\": \"\(hex)\" } }", fallbackName: hex)
+            assertCalloutColours(t.palette, hex)
         }
     }
 
