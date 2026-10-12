@@ -76,6 +76,36 @@ final class DWLayoutManager: NSLayoutManager {
         return NSRect(x: x, y: baseline - mark.centerAboveBaseline - mark.side / 2, width: mark.side, height: mark.side)
     }
 
+    /// Where the label of the callout mark on the character at `index` is drawn, in text container coordinates: the icon (a square
+    /// centred on the capital letters of the name), the origin of the name (its top left, baseline-aligned) and the box around both.
+    private func calloutLabelGeometry(forCharacterAt index: Int) -> (mark: CalloutMark, icon: NSRect, name: NSPoint, box: NSRect)? {
+        guard let storage = textStorage, index >= 0, index < storage.length,
+              let mark = storage.attribute(.dwCallout, at: index, effectiveRange: nil) as? CalloutMark else { return nil }
+        let glyph = glyphIndexForCharacter(at: index)
+        guard glyph < numberOfGlyphs else { return nil }
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let at = location(forGlyphAt: glyph)
+        let x = line.minX + at.x, baseline = line.minY + at.y
+        let font = mark.font
+        let icon = NSRect(x: x, y: baseline - font.capHeight / 2 - mark.iconSide / 2, width: mark.iconSide, height: mark.iconSide)
+        let name = NSPoint(x: x + mark.iconSide + mark.gap, y: baseline - font.ascender)
+        let nameBox = NSRect(x: name.x, y: name.y, width: mark.nameWidth, height: font.ascender - font.descender)
+        return (mark, icon, name, icon.union(nameBox))
+    }
+
+    /// Where the label of the callout mark on the character at `index` (the first character of a hidden `[!TYPE]` marker) is drawn, in
+    /// text container coordinates: the icon and the type name, from that character's x. `nil` if the character carries no mark.
+    func calloutLabelRect(forCharacterAt index: Int) -> NSRect? {
+        calloutLabelGeometry(forCharacterAt: index)?.box
+    }
+
+    private func drawCalloutLabel(forCharacterAt index: Int, origin: NSPoint) {
+        guard let g = calloutLabelGeometry(forCharacterAt: index) else { return }
+        CalloutIcon.draw(g.mark.kind, in: g.icon.offsetBy(dx: origin.x, dy: origin.y), color: g.mark.color)
+        (g.mark.name as NSString).draw(at: NSPoint(x: g.name.x + origin.x, y: g.name.y + origin.y),
+                                        withAttributes: [.font: g.mark.font, .foregroundColor: g.mark.color])
+    }
+
     // MARK: Fold controls
 
     /// Edge length of a chevron's click target, and the gap between it and the text.
@@ -336,6 +366,12 @@ final class DWLayoutManager: NSLayoutManager {
             self.drawCheckbox(mark, in: box.offsetBy(dx: origin.x, dy: origin.y))
         }
 
+        // Callout labels (they stand in for hidden `[!TYPE]` markers).
+        storage.enumerateAttribute(.dwCallout, in: charRange, options: []) { value, range, _ in
+            guard value is CalloutMark else { return }
+            self.drawCalloutLabel(forCharacterAt: range.location, origin: origin)
+        }
+
         // Block-quote bars: one bar per nesting level, spanning contiguous quoted lines.
         var barsDrawn = Set<Int>()
         storage.enumerateAttribute(.dwQuoteDepth, in: charRange, options: []) { value, range, _ in
@@ -350,10 +386,12 @@ final class DWLayoutManager: NSLayoutManager {
             }
             guard !rect.isNull else { return }
             let color = (storage.attribute(.dwQuoteBarColor, at: full.location, effectiveRange: nil) as? NSColor) ?? NSColor.tertiaryLabelColor
+            // The first level of a callout's bar is the callout colour; a quote nested inside keeps the ordinary colour for its own.
+            let firstLevel = (storage.attribute(.dwCalloutBar, at: full.location, effectiveRange: nil) as? NSColor) ?? color
             for level in 1...depth {
                 let x = rect.minX + origin.x + 2 + CGFloat(level - 1) * 16
                 let bar = NSRect(x: x, y: rect.minY + origin.y + 2, width: 3, height: max(0, rect.height - 4))
-                color.setFill()
+                (level == 1 ? firstLevel : color).setFill()
                 NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
             }
         }
