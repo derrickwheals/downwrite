@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-12-github-style-callouts
 intent: ./intent.md
 spec: ./spec.md
-status: in-progress    # draft | approved | in-progress | done
+status: done           # draft | approved | in-progress | done
 approved: 2026-10-13
 branch: change/2026-10-12-github-style-callouts
 ---
@@ -188,3 +188,4 @@ The `ai-sdlc:verifier` agent re-ran the proof on the committed branch (all green
 - **Small differences from GitHub, consistent with the spec's literal R1 and R2:** `> [!NOTE]` then `> <!-- c -->` is a callout here and plain on GitHub; a reference definition or an HTML comment before the marker leaves a callout on GitHub and a plain quote here (R1 needs the first block to be the paragraph).
 - **Cosmetic:** with `> [!NOTE] title\` and a line after it, the editor's title range includes the backslash and the export drops it.
 - **Claims tightened in this file:** only four of the five callouts are in the screenshots (Caution is not), the one-run source-view check differs in the real app, and some coverage is narrower than the requirement: R19 is the CSS rule, not a paginated PDF; R17 for a same-appearance switch is checked on attributes, not pixels; `isDocumentEdited` is asserted in the real-app step, not in the unit tests.
+- **Re-verified at `beee183`: PASS.** The verifier re-ran the Core tests (629, 0 failures) and the GitHub count (27), confirmed the four P1 repros and 15 further table cases are callouts in the editor and the export, fuzzed 240,000 random documents (GFM tables, table-like lines, blank `>` lines before the marker, tabs, up to three leading spaces, titles, mixed CRLF) with 0 editor/export disagreements, 0 marker leaks into the export, 0 changed plain quotes and 0 wrong marker offsets (about 75,800 callouts), matched GitHub on 260 fresh table-heavy documents (70 of them alerts), and read `firstContent`: a wrong offset always fails the `[!NAME]` check and gives a plain quote, never a wrong hide. What stays open is the contrived P2 and the small differences from GitHub above.
