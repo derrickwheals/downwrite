@@ -12,12 +12,17 @@ final class DocumentRenderer {
     private(set) var html = ""
     private(set) var diagrams: [String] = []
     private let headingIDs: [String?]
+    /// The exact text the tree was parsed from, which `CalloutSyntax` reads where cmark's tree cannot say (the marker's characters).
+    private let source: SourceText
     private var nextHeading = 0
 
     static let boundary = "\u{E002}"
     static func slot(_ number: Int) -> String { "\u{E000}D\(number)\u{E001}" }
 
-    init(headingIDs: [String?]) { self.headingIDs = headingIDs }
+    init(headingIDs: [String?], source: SourceText) {
+        self.headingIDs = headingIDs
+        self.source = source
+    }
 
     func render(_ document: Document) { blocks(of: document) }
 
@@ -59,8 +64,9 @@ final class DocumentRenderer {
 
     /// The children of a document, quote or list item. A run of headings is kept together with the block after it (R19), unless that
     /// block is raw HTML, which may open a tag that closes several blocks later.
-    private func blocks(of parent: Markup) {
-        let kids = Array(parent.children)
+    private func blocks(of parent: Markup) { blocks(Array(parent.children)) }
+
+    private func blocks(_ kids: [Markup]) {
         var i = 0
         while i < kids.count {
             guard kids[i] is Heading else { block(kids[i]); i += 1; continue }
@@ -110,11 +116,15 @@ final class DocumentRenderer {
         case let p as Paragraph:
             html += "<p>" + inlines(of: p) + "</p>\n"
             endBlock()
-        case is BlockQuote:
-            html += "<blockquote>\n"
-            blocks(of: node)
-            html += "</blockquote>\n"
-            endBlock()
+        case let q as BlockQuote:
+            if let match = CalloutSyntax.match(q, in: source) {
+                callout(q, match)
+            } else {
+                html += "<blockquote>\n"
+                blocks(of: node)
+                html += "</blockquote>\n"
+                endBlock()
+            }
         case is ThematicBreak:
             html += "<hr />\n"
             endBlock()
@@ -132,6 +142,41 @@ final class DocumentRenderer {
         default:
             blocks(of: node)
         }
+    }
+
+    /// A callout (decided by `CalloutSyntax`, the editor's own rule): a quote whose first line is the type name, in bold and the
+    /// callout's colour (see `PrintStyle`), then the title if there is one, then the body. The first paragraph is taken apart at its
+    /// first top-level break: what the marker line holds (without `[!TYPE]`) is the title, what follows is an ordinary paragraph, and
+    /// the quote's other blocks come as they are. An inline element that spans the marker line and the next one cannot be split, so it
+    /// stays whole in the title.
+    private func callout(_ quote: BlockQuote, _ match: CalloutMatch) {
+        html += "<blockquote class=\"callout callout-\(match.kind.rawValue)\">\n"
+        var title = ""
+        var body: Paragraph?
+        if let first = quote.child(at: 0) as? Paragraph {
+            var kids = Array(first.inlineChildren)
+            if let marker = kids.first as? Text {               // `[!NOTE] My title` is one text node: drop the marker and the space
+                var rest = Substring(marker.string)
+                rest = rest.firstIndex(of: "]").map { rest[rest.index(after: $0)...] } ?? ""
+                rest = rest.drop(while: { $0 == " " || $0 == "\t" })
+                kids.removeFirst()
+                if !rest.isEmpty { kids.insert(Text(String(rest)), at: 0) }
+            }
+            let end = kids.firstIndex { $0 is SoftBreak || $0 is LineBreak }
+            let titleKids = end.map { Array(kids[..<$0]) } ?? kids
+            let bodyKids = end.map { Array(kids[($0 + 1)...]) } ?? []
+            if !titleKids.isEmpty { title = inlines(of: Paragraph(titleKids)) }
+            if !bodyKids.isEmpty { body = Paragraph(bodyKids) }
+        }
+        html += "<p class=\"callout-title\"><span class=\"callout-type\">" + match.kind.title + "</span>" + (title.isEmpty ? "" : " " + title) + "</p>\n"
+        endBlock()
+        if let body {
+            html += "<p>" + inlines(of: body) + "</p>\n"
+            endBlock()
+        }
+        blocks(Array(quote.children.dropFirst()))
+        html += "</blockquote>\n"
+        endBlock()
     }
 
     private func codeBlock(_ c: CodeBlock) {

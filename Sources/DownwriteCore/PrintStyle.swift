@@ -55,6 +55,14 @@ public enum PrintStyle {
             ".done>.t{color:\(p.secondaryText.css);text-decoration:line-through}",
         ]
 
+        // A callout is a quote whose bar and first line (the type name, then the title) take the kind's colour from the same function the
+        // editor uses, on the fixed light palette. No icon: the name carries the type.
+        for kind in CalloutKind.allCases {
+            let colour = p.calloutColor(kind).css
+            rules.append("blockquote.callout-\(kind.rawValue){border-left-color:\(colour)}")
+            rules.append(".callout-\(kind.rawValue) .callout-title{color:\(colour);font-weight:700;margin:0 0 .35em}")
+        }
+
         // What the page may not do across a page break. A heading's `break-after: avoid` is only honoured by some engines, so a heading
         // is also wrapped with the block after it in `.keep` (R19).
         var paper = [

@@ -90,4 +90,75 @@ final class ThemeCatalogTests: XCTestCase {
     private func flatten(_ c: RGBA, over bg: RGBA) -> RGBA {
         RGBA(c.r * c.a + bg.r * (1 - c.a), c.g * c.a + bg.g * (1 - c.a), c.b * c.a + bg.b * (1 - c.a))
     }
+
+    // MARK: Callout colours (DW-006)
+
+    /// CIE L*a*b* of an opaque sRGB colour (D65), for the CIE76 distance ΔE*ab.
+    private func lab(_ c: RGBA) -> (l: Double, a: Double, b: Double) {
+        func lin(_ v: Double) -> Double { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        let r = lin(c.r), g = lin(c.g), b = lin(c.b)
+        let x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
+        let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+        let z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
+        func f(_ t: Double) -> Double { t > 216.0 / 24389.0 ? cbrt(t) : (24389.0 / 27.0 * t + 16) / 116 }
+        return (116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z)))
+    }
+
+    private func deltaE(_ p: RGBA, _ q: RGBA) -> Double {
+        let a = lab(p), b = lab(q)
+        return ((a.l - b.l) * (a.l - b.l) + (a.a - b.a) * (a.a - b.a) + (a.b - b.b) * (a.b - b.b)).squareRoot()
+    }
+
+    func testCalloutColoursAreOpaqueAndMeetContrastOnEveryBuiltInTheme() {
+        for t in ThemeCatalog.builtIn {
+            for kind in CalloutKind.allCases {
+                let c = t.palette.calloutColor(kind)
+                XCTAssertEqual(c.a, 1, "\(t.id) \(kind) is opaque")
+                XCTAssertGreaterThanOrEqual(c.contrast(with: t.palette.background), 4.5, "\(t.id) \(kind) against the page")
+            }
+        }
+    }
+
+    /// Any two of the five are told apart by colour alone on the six built-in themes: CIE76 ΔE*ab of at least 25 (the closest
+    /// pair, Note and Important, is about 31 at worst, so there is room). Imported pages near luminance 0.18 can converge; the
+    /// icon and the type name still tell those apart (spec R16).
+    func testCalloutColoursArePairwiseDistinctOnEveryBuiltInTheme() {
+        for t in ThemeCatalog.builtIn {
+            let kinds = CalloutKind.allCases
+            for i in kinds.indices {
+                for j in kinds.indices where j > i {
+                    let d = deltaE(t.palette.calloutColor(kinds[i]), t.palette.calloutColor(kinds[j]))
+                    XCTAssertGreaterThanOrEqual(d, 25, "\(t.id): \(kinds[i]) vs \(kinds[j]) ΔE*ab \(d)")
+                }
+            }
+        }
+    }
+
+    func testCalloutColoursAreAFunctionOfThePageAndTheTextOnly() {
+        let base = Palette.palette(for: .light)
+        var other = base
+        other.accent = RGBA(hex: 0xFF00FF); other.link = RGBA(hex: 0x00FFFF); other.quoteBar = RGBA(hex: 0x123456, alpha: 0.3)
+        other.rule = RGBA(hex: 0x654321); other.marker = RGBA(hex: 0x111111); other.selection = RGBA(hex: 0x00FF00, alpha: 0.4)
+        for kind in CalloutKind.allCases {
+            XCTAssertEqual(other.calloutColor(kind), base.calloutColor(kind), "\(kind)")
+            XCTAssertEqual(base.calloutColor(kind), base.calloutColor(kind), "pure")
+        }
+        var darker = base
+        darker.background = RGBA(hex: 0x101010)
+        XCTAssertNotEqual(darker.calloutColor(.note), base.calloutColor(.note), "the page matters")
+    }
+
+    /// Guards the table of hues against a swap: each kind keeps its family on both Downwrite pages.
+    func testCalloutColoursKeepTheirFamily() {
+        for theme in [Theme.light, .dark] {
+            let p = Palette.palette(for: theme)
+            let note = p.calloutColor(.note), tip = p.calloutColor(.tip), important = p.calloutColor(.important)
+            let warning = p.calloutColor(.warning), caution = p.calloutColor(.caution)
+            XCTAssertTrue(note.b > note.r && note.b > note.g * 0.9, "\(theme) note is blue")
+            XCTAssertTrue(tip.g > tip.r && tip.g > tip.b, "\(theme) tip is green")
+            XCTAssertTrue(important.b > important.g && important.r > important.g, "\(theme) important is purple")
+            XCTAssertTrue(warning.r > warning.b && warning.g > warning.b, "\(theme) warning is amber")
+            XCTAssertTrue(caution.r > caution.g && caution.r > caution.b, "\(theme) caution is red")
+        }
+    }
 }

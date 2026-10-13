@@ -421,6 +421,15 @@ final class HTMLSanitizerTests: XCTestCase {
         return s.trimmingCharacters(in: CharacterSet(charactersIn: "\u{0}"..."\u{20}")).lowercased()
     }
 
+    /// DW-006 R19: the markup a callout is written with (`class` on a quote and a paragraph, a `span`) passes through unchanged.
+    func testCalloutMarkupPassesThroughUnchanged() {
+        for kind in CalloutKind.allCases {
+            let markup = "<blockquote class=\"callout callout-\(kind.rawValue)\">\n<p class=\"callout-title\"><span class=\"callout-type\">\(kind.title)</span> A &amp; B</p>\n<p>body</p>\n</blockquote>\n"
+            XCTAssertEqual(clean(markup), markup)
+            XCTAssertEqual(clean(markup, openDetails: true), markup)
+        }
+    }
+
     func testEveryAdversarialInputPassesTheIndependentCheck() {
         let seeds = SanitizerCorpus.dangerous + SanitizerCorpus.benign
         for s in seeds { assertSafe(clean(s), from: s) ; assertSafe(clean(s, openDetails: true), from: s) }
@@ -469,6 +478,8 @@ enum SanitizerCorpus {
         "<p align=\"center\"><img src=\"local.png\"></p>", "<details><summary>More</summary><p>text</p></details>", "plain text with & and < and >",
         "<a href=\"https://example.com/?a=1&amp;b=2\" title=\"t\">link</a>", "<table><tr><td>1</td><td>2</td></tr></table>",
         "<svg viewBox=\"0 0 1 1\"><path d=\"M0 0\"/></svg>", "<b>b</b><i>i</i><u>u</u><sub>s</sub><sup>p</sup>", "<br/><hr><br />", "&lt;b&gt; &amp; &copy;",
+        "<blockquote class=\"callout callout-note\">\n<p class=\"callout-title\"><span class=\"callout-type\">Note</span> My <strong>title</strong></p>\n<p>body</p>\n</blockquote>\n",
+        "<blockquote class=\"callout callout-warning\">\n<p class=\"callout-title\"><span class=\"callout-type\">Warning</span></p>\n</blockquote>\n",
     ]
 }
 

@@ -72,6 +72,28 @@ final class SourceViewTests: XCTestCase {
         }
     }
 
+    /// R12: a callout is plain monospaced text in the source view: no label, bar colour, kern or styled title.
+    func testSourceViewHasNoCalloutLabelBarOrTitleStyle() throws {
+        let text = "intro\n\n> [!WARNING] Data **loss**\n> body\n\nafter\n"
+        let h = EditorHarness(text: text)
+        h.select(0)
+        XCTAssertNotNil(h.attrs(at: h.index(of: "[!WARNING]"))[.dwCallout], "precondition: the formatted editor draws the label")
+        h.coordinator.setSourceMode(true)
+        XCTAssertEqual(h.textView.string, text)
+        XCTAssertEqual(attributeRuns(h).count, 1, "one plain style, callout or not")
+        h.select(h.index(of: "body"))                          // moving around changes nothing
+        XCTAssertEqual(attributeRuns(h).count, 1)
+        XCTAssertFalse(h.isHidden(at: h.index(of: "[!WARNING]")))
+        for key in [NSAttributedString.Key.dwCallout, .dwCalloutBar, .dwQuoteBarColor, .dwQuoteDepth, .kern] {
+            h.storage.enumerateAttribute(key, in: fullRange(h), options: []) { value, range, _ in
+                XCTAssertNil(value, "\(key.rawValue) at \(range)")
+            }
+        }
+        h.coordinator.setSourceMode(false)
+        h.select(0)
+        XCTAssertNotNil(h.attrs(at: h.index(of: "[!WARNING]"))[.dwCallout], "the label is back in the formatted editor")
+    }
+
     func testSourceViewHasNoGridsCardsOrCheckboxes() {
         let h = EditorHarness(text: sample)
         h.select(0)

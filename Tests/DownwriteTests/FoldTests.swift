@@ -1158,4 +1158,37 @@ final class FoldTests: XCTestCase {
         h.coordinator.styler.style(lines: lines, storage: h.storage, analysis: a, selection: h.textView.selectedRange(), preview: p)
         XCTAssertTrue(unfolded.isEqual(to: h.storage), "an unfolded line looks exactly like one that was never folded")
     }
+
+    // MARK: Callouts (DW-006, R13)
+
+    private let calloutDoc = "# Head\n\nintro\n\n> [!NOTE] Title\n> body\n\n# Next\n\n> [!TIP]\n> tip body\n"
+
+    /// A callout is not a fold region of its own: it hides with the heading above it, with no label, bar or ink.
+    func testACalloutHidesWithItsHeadingAndDrawsNothing() throws {
+        let h = EditorHarness(text: calloutDoc)
+        h.select(0)
+        XCTAssertEqual(h.coordinator.analysis.foldRegions.map(\.headerLines.lowerBound), [0, 7], "the callouts add no fold region")
+        style(h, folded(h, 1))
+        let a = h.coordinator.analysis
+        let callout = try XCTUnwrap(a.callouts.first)
+        for i in callout.range.location..<NSMaxRange(callout.range) {
+            XCTAssertEqual(Set(h.attrs(at: i).keys), [.font, .foregroundColor, .paragraphStyle], "only the collapse attributes at \(i): \(h.attrs(at: i).keys)")
+        }
+        XCTAssertLessThan(h.font(at: h.index(of: "[!NOTE]")).pointSize, 1)
+        XCTAssertNotNil(h.attrs(at: h.index(of: "[!TIP]"))[.dwCallout], "the callout under the other heading still draws")
+    }
+
+    func testOpeningTheFoldBringsTheCalloutBackExactlyAsItWas() throws {
+        let h = EditorHarness(text: calloutDoc)
+        h.select(0)
+        style(h, folded(h, 1))
+        XCTAssertNil(h.attrs(at: h.index(of: "[!NOTE]"))[.dwCallout])
+        let reference = EditorHarness(text: calloutDoc)
+        reference.select(0)
+        style(reference, FoldState())
+        style(h, FoldState())
+        XCTAssertNotNil(h.attrs(at: h.index(of: "[!NOTE]"))[.dwCallout])
+        XCTAssertNotNil(h.attrs(at: h.index(of: "body"))[.dwCalloutBar])
+        XCTAssertTrue(NSAttributedString(attributedString: reference.storage).isEqual(to: h.storage), "never folded and unfolded look the same")
+    }
 }

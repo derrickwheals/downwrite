@@ -622,6 +622,9 @@ final class AnalyzerTests: XCTestCase {
             String(repeating: "- ", count: 100) + "x",
             "```\n", "```\r\nx\r\n```", "> ```\n> x", "- ```\n  x", "    x", "~~~\n\n~~~\n```\nx\n```", "```\n```\n```\n```",
             "```mermaid\nx", String(repeating: "```\nx\n```\n", count: 50),
+            "> [!NOTE]", "> [!NOTE]\n> x", ">\n> [!TIP] t\n> x", "> [!NOTE]\r\n> x", "   > [!WARNING] \u{1F600}\n> x", "> [!NOTE]\nlazy",
+            "> [!NOTE]\n> ```\n> x", "> [!NOTE]\n> - a\n>   - b", "[!NOTE]\n> [!NOTE]", "> [!", "> [!NOTE", "> [!NOTE]  ", "> > [!NOTE]\n> > x",
+            "> [!NOTE]: x\n> y", "> [!NOTE] **", "> [!NOTE] `", String(repeating: "> [!NOTE] t\n\n", count: 20),
         ]
         for s in inputs {
             let a = MarkdownAnalyzer.analyze(s)
@@ -636,6 +639,24 @@ final class AnalyzerTests: XCTestCase {
                 XCTAssertEqual(a.codeBlock(containing: b.range.location), b, s)
                 XCTAssertEqual(a.codeBlock(containingLine: b.lastLine), b, s)
                 previousEnd = NSMaxRange(b.range)
+            }
+            var previousCalloutEnd = -1
+            for (i, c) in a.callouts.enumerated() {
+                XCTAssertGreaterThan(c.range.location, previousCalloutEnd, "callouts are in order and do not overlap: \(s)")
+                XCTAssertLessThanOrEqual(NSMaxRange(c.range), s.utf16.count, s)
+                XCTAssertTrue(a.lines.indices.contains(c.firstLine) && a.lines.indices.contains(c.lastLine), s)
+                XCTAssertTrue(c.firstLine <= c.markerLine && c.markerLine <= c.lastLine, s)
+                let markerLine = a.lines[c.markerLine]
+                XCTAssertTrue(c.markerRange.location >= markerLine.range.location && NSMaxRange(c.markerRange) <= markerLine.contentEnd, s)
+                XCTAssertGreaterThan(c.markerRange.length, 0, s)
+                if let t = c.titleRange {
+                    XCTAssertTrue(t.location >= NSMaxRange(c.markerRange) && NSMaxRange(t) <= markerLine.contentEnd && t.length > 0, s)
+                }
+                XCTAssertEqual(c.range.location, a.lines[c.firstLine].range.location, s)
+                XCTAssertEqual(NSMaxRange(c.range), a.lines[c.lastLine].contentEnd, s)
+                XCTAssertEqual(a.calloutIndex(containingLine: c.markerLine), i, s)
+                XCTAssertEqual(a.calloutIndex(touching: NSRange(location: c.range.location, length: 0)), i, s)
+                previousCalloutEnd = NSMaxRange(c.range)
             }
             for m in a.markers {
                 XCTAssertGreaterThanOrEqual(m.range.location, 0, s)
@@ -669,6 +690,21 @@ final class AnalyzerTests: XCTestCase {
         XCTAssertEqual(a.codeBlocks.count, 6000)
         XCTAssertEqual(a.codeBlock(containing: a.codeBlocks[4321].range.location + 1), a.codeBlocks[4321])
         // ~280 KB; the same generous bound as above because this runs in an unoptimised debug build.
+        XCTAssertLessThan(elapsed, 4.0, "analysis took \(elapsed)s")
+    }
+
+    /// Every top-level quote is offered to the callout recogniser during the existing analysis, so many quotes must not make it slow.
+    func testManyCalloutsPerformance() {
+        var s = ""
+        for i in 0..<3000 { s += "> [!NOTE] Title \(i)\n> body **bold** \(i)\n\n> plain quote \(i)\n> second line\n\nText \(i)\n\n" }
+        let start = Date()
+        let a = MarkdownAnalyzer.analyze(s)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertEqual(a.callouts.count, 3000)
+        guard a.callouts.count == 3000 else { return }
+        XCTAssertEqual(a.calloutIndex(containingLine: a.callouts[1234].markerLine), 1234)
+        XCTAssertEqual(a.calloutIndex(touching: NSRange(location: a.callouts[2999].range.location + 3, length: 0)), 2999)
+        // ~270 KB; the same generous bound as above because this runs in an unoptimised debug build.
         XCTAssertLessThan(elapsed, 4.0, "analysis took \(elapsed)s")
     }
 }

@@ -515,4 +515,235 @@ final class DrawingTests: XCTestCase {
             XCTAssertGreaterThan(accentInk(render(h), h, box: box, accent: p.accent.nsColor), 8, "\(theme.id): the tick is the accent colour")
         }
     }
+
+    // MARK: Callouts (DW-006)
+
+    private let calloutText = "intro\n\n> [!NOTE] My title\n> body\n>\n> > nested\n\nplain after\n\n> plain quote\n\nend\n"
+
+    private func calloutHarness(dark: Bool = false, theme: String? = nil, text: String? = nil, font: FontChoice = .avenirNext) -> EditorHarness {
+        let h = EditorHarness(text: text ?? calloutText, dark: dark, size: NSSize(width: 900, height: 760), font: font)
+        if let theme {
+            h.coordinator.update(text: h.textView.string, settings: EditorSettings(font: font, size: 17, lineHeight: 1.45, width: 720,
+                                                                                   lightTheme: theme, darkTheme: theme))
+        }
+        makeKey(h)
+        h.select(h.textView.string.utf16.count)             // (away from the marker line: a caret on it shows the literal marker)
+        return h
+    }
+
+    /// The label's rectangle in view coordinates.
+    private func labelRect(_ h: EditorHarness, at index: Int) throws -> NSRect {
+        let o = h.textView.textContainerOrigin
+        return try XCTUnwrap(lm(h).calloutLabelRect(forCharacterAt: index), "no label at \(index)").offsetBy(dx: o.x, dy: o.y)
+    }
+
+    /// The line fragment that holds the character at `index`, in view coordinates.
+    private func fragment(_ h: EditorHarness, at index: Int) -> NSRect {
+        let layout = lm(h)
+        layout.ensureLayout(for: h.textView.textContainer!)
+        let o = h.textView.textContainerOrigin
+        return layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: index), effectiveRange: nil).offsetBy(dx: o.x, dy: o.y)
+    }
+
+    /// The page colour as the bitmap shows it, sampled in the empty margin at the right of `y`.
+    private func renderedPageColour(_ rep: NSBitmapImageRep, _ h: EditorHarness, y: CGFloat) -> NSColor {
+        color(rep, atViewPoint: NSPoint(x: h.textView.bounds.maxX - 24, y: y), in: h)
+    }
+
+    /// `c` drawn with its own alpha over `page`.
+    private func over(_ c: RGBA, _ page: NSColor) -> NSColor {
+        let p = page.usingColorSpace(.sRGB)!
+        return NSColor(srgbRed: CGFloat(c.r * c.a) + p.redComponent * CGFloat(1 - c.a), green: CGFloat(c.g * c.a) + p.greenComponent * CGFloat(1 - c.a),
+                       blue: CGFloat(c.b * c.a) + p.blueComponent * CGFloat(1 - c.a), alpha: 1)
+    }
+
+    /// Mean colour and count of the pixels in `r` that differ clearly from `page`.
+    private func ink(_ rep: NSBitmapImageRep, in r: NSRect, page: NSColor, _ h: EditorHarness, threshold: CGFloat = 0.3) -> (count: Int, mean: NSColor) {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, n = 0
+        var y = r.minY
+        while y < r.maxY {
+            var x = r.minX
+            while x < r.maxX {
+                let c = color(rep, atViewPoint: NSPoint(x: x, y: y), in: h)
+                if distance(c, page) > threshold { red += c.redComponent; green += c.greenComponent; blue += c.blueComponent; n += 1 }
+                x += 0.5
+            }
+            y += 0.5
+        }
+        guard n > 0 else { return (0, .clear) }
+        return (n, NSColor(srgbRed: red / CGFloat(n), green: green / CGFloat(n), blue: blue / CGFloat(n), alpha: 1))
+    }
+
+    func testTheLabelIsDrawnOnTheMarkerLineInTheCalloutColourInEveryBuiltInTheme() throws {
+        for theme in ThemeCatalog.builtIn {
+            let h = calloutHarness(dark: theme.appearance == .dark, theme: theme.id)
+            let p = h.coordinator.styler.palette
+            XCTAssertEqual(p, theme.palette, "\(theme.id): the editor uses the theme")
+            let marker = h.index(of: "[!NOTE]")
+            let label = try labelRect(h, at: marker), line = fragment(h, at: marker)
+            XCTAssertGreaterThanOrEqual(label.minY, line.minY - 1, "\(theme.id): the label is on the marker line")
+            XCTAssertLessThanOrEqual(label.maxY, line.maxY + 1, theme.id)
+            let rep = render(h)
+            let page = renderedPageColour(rep, h, y: line.midY)
+            let expected = p.calloutColor(.note).nsColor
+            let all = ink(rep, in: label, page: page, h)
+            XCTAssertGreaterThan(all.count, 80, "\(theme.id): the icon and the name leave ink")
+            XCTAssertLessThan(distance(all.mean, expected), distance(all.mean, p.text.nsColor), "\(theme.id): the ink is the callout colour, not the text colour")
+            let icon = NSRect(x: label.minX, y: label.minY, width: label.height, height: label.height)
+            let name = NSRect(x: label.maxX - 20, y: label.minY, width: 20, height: label.height)
+            XCTAssertGreaterThan(ink(rep, in: icon, page: page, h).count, 20, "\(theme.id): icon ink")
+            XCTAssertGreaterThan(ink(rep, in: name, page: page, h).count, 10, "\(theme.id): name ink")
+            // The label starts where the body text starts (the line's own `> ` is hidden on both lines), so it follows the text origin.
+            let bodyGlyph = lm(h).glyphIndexForCharacter(at: h.index(of: "body"))
+            let bodyX = lm(h).boundingRect(forGlyphRange: NSRange(location: bodyGlyph, length: 1), in: h.textView.textContainer!).minX + h.textView.textContainerOrigin.x
+            XCTAssertEqual(label.minX, bodyX, accuracy: 1.5, "\(theme.id): the label starts at the text origin")
+            // Left of the label there is only the bar.
+            let left = NSRect(x: line.minX + 8, y: line.minY + 4, width: max(0, label.minX - line.minX - 12), height: line.height - 8)
+            XCTAssertEqual(ink(rep, in: left, page: page, h).count, 0, "\(theme.id): nothing between the bar and the label")
+        }
+    }
+
+    func testTheTitleStartsAfterTheLabelInEveryFont() throws {
+        for font in FontChoice.allCases {
+            let h = calloutHarness(font: font)
+            let marker = h.index(of: "[!NOTE]")
+            let label = try labelRect(h, at: marker)
+            let layout = lm(h)
+            let o = h.textView.textContainerOrigin
+            let glyph = layout.glyphIndexForCharacter(at: h.index(of: "My title"))
+            let title = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: h.textView.textContainer!).offsetBy(dx: o.x, dy: o.y)
+            XCTAssertGreaterThanOrEqual(title.minX, label.maxX + 3, "\(font): the title's first glyph starts clear of the label (\(title.minX) vs \(label.maxX))")
+            XCTAssertLessThan(title.minX, label.maxX + 40, "\(font): …and not far from it")
+        }
+    }
+
+    /// An offscreen bitmap does not reproduce an exact colour (the page and the ink both shift a little), so a drawn colour is told
+    /// from another by which it is closer to, and by how close.
+    private func isCloser(_ c: NSColor, to a: NSColor, than b: NSColor) -> Bool { distance(c, a) < distance(c, b) && distance(c, a) < 0.4 }
+
+    func testFirstBarLevelIsTheCalloutColourAndANestedQuotesSecondBarKeepsTheQuoteColour() throws {
+        for theme in ThemeCatalog.builtIn {
+            let h = calloutHarness(dark: theme.appearance == .dark, theme: theme.id)
+            let p = h.coordinator.styler.palette
+            let rep = render(h)
+            let callout = p.calloutColor(.note).nsColor
+            func bar(_ word: String, level: Int) -> NSColor {
+                let line = fragment(h, at: h.index(of: word))
+                return color(rep, atViewPoint: NSPoint(x: line.minX + 3.5 + CGFloat(level - 1) * 16, y: line.midY), in: h)
+            }
+            let page = renderedPageColour(rep, h, y: fragment(h, at: h.index(of: "body")).midY)
+            let quote = over(p.quoteBar, page)
+            // The attributes carry the exact colours (the layout manager draws what they say) …
+            XCTAssertEqual(h.attrs(at: h.index(of: "body"))[.dwCalloutBar] as? NSColor, callout, "\(theme.id): the callout colour, exactly")
+            XCTAssertEqual(h.attrs(at: h.index(of: "nested"))[.dwQuoteBarColor] as? NSColor, p.quoteBar.nsColor, "\(theme.id): the quote colour, exactly")
+            // … and the pixels show them where they belong.
+            for word in ["[!NOTE]", "body", "nested"] {
+                XCTAssertTrue(isCloser(bar(word, level: 1), to: callout, than: quote), "\(theme.id): level 1 of the \(word) line is the callout colour")
+            }
+            XCTAssertTrue(isCloser(bar("nested", level: 2), to: quote, than: callout), "\(theme.id): the nested quote's own bar is the ordinary quote colour")
+            XCTAssertTrue(isCloser(bar("plain quote", level: 1), to: quote, than: callout), "\(theme.id): a plain quote keeps the quote colour")
+            XCTAssertGreaterThan(distance(callout, quote), 0.05, "\(theme.id): …and the two differ")
+        }
+    }
+
+    func testNoLabelWhileTheCaretIsOnTheMarkerLine() throws {
+        let h = calloutHarness()
+        let marker = h.index(of: "[!NOTE]")
+        XCTAssertNotNil(lm(h).calloutLabelRect(forCharacterAt: marker))
+        XCTAssertNil(lm(h).calloutLabelRect(forCharacterAt: marker + 1), "only the first character carries it")
+        XCTAssertNil(lm(h).calloutLabelRect(forCharacterAt: h.index(of: "body")))
+        h.select(marker + 3)
+        XCTAssertNil(lm(h).calloutLabelRect(forCharacterAt: marker), "the literal marker shows instead")
+        h.select(h.textView.string.utf16.count)
+        XCTAssertNotNil(lm(h).calloutLabelRect(forCharacterAt: marker), "…and the label returns")
+    }
+
+    func testAMarkerLineWithoutATitleStillDrawsItsLabelAndKeepsItsHeight() throws {
+        let h = calloutHarness(text: "intro\n\n> [!CAUTION]\n> body\n\nend\n")
+        let marker = h.index(of: "[!CAUTION]")
+        let label = try labelRect(h, at: marker), line = fragment(h, at: marker), body = fragment(h, at: h.index(of: "body"))
+        XCTAssertGreaterThan(line.height, body.height * 0.9)
+        let rep = render(h)
+        let page = renderedPageColour(rep, h, y: line.midY)
+        XCTAssertGreaterThan(ink(rep, in: label, page: page, h).count, 80)
+    }
+
+    func testAThemeSwitchRepaintsTheBarAndTheLabel() throws {
+        let h = calloutHarness(theme: "downwrite-light")
+        let marker = h.index(of: "[!NOTE]")
+        let line = fragment(h, at: marker)
+        let barPoint = NSPoint(x: line.minX + 3.5, y: line.midY)
+        func barColour(_ rep: NSBitmapImageRep) -> NSColor { color(rep, atViewPoint: barPoint, in: h) }
+        func labelMean(_ rep: NSBitmapImageRep) throws -> NSColor {
+            ink(rep, in: try labelRect(h, at: marker), page: renderedPageColour(rep, h, y: line.midY), h).mean
+        }
+        func settings(light: String, dark: String) -> EditorSettings {
+            EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720, lightTheme: light, darkTheme: dark)
+        }
+        let light = ThemeCatalog.palette(id: "downwrite-light", for: .light).calloutColor(.note).nsColor
+        XCTAssertEqual(h.attrs(at: h.index(of: "body"))[.dwCalloutBar] as? NSColor, light)
+        let oldBar = barColour(render(h))
+
+        // Another theme of the same appearance: the attributes (what the layout manager draws) take the new colour.
+        h.coordinator.update(text: h.textView.string, settings: settings(light: "catppuccin-latte", dark: "catppuccin-mocha"))
+        let latte = ThemeCatalog.palette(id: "catppuccin-latte", for: .light).calloutColor(.note).nsColor
+        XCTAssertEqual(h.attrs(at: h.index(of: "body"))[.dwCalloutBar] as? NSColor, latte, "the bar follows the theme")
+        XCTAssertEqual((h.attrs(at: marker)[.dwCallout] as? CalloutMark)?.color, latte, "…and so does the label")
+        XCTAssertNotEqual(latte, light)
+
+        // The other appearance: the pixels change too.
+        h.window.appearance = NSAppearance(named: .darkAqua)
+        h.coordinator.appearanceDidChange()
+        let mocha = ThemeCatalog.palette(id: "catppuccin-mocha", for: .dark).calloutColor(.note).nsColor
+        XCTAssertEqual(h.attrs(at: h.index(of: "body"))[.dwCalloutBar] as? NSColor, mocha)
+        let rep = render(h)
+        XCTAssertTrue(isCloser(barColour(rep), to: mocha, than: light), "the bar is drawn in the new colour")
+        XCTAssertGreaterThan(distance(barColour(rep), oldBar), 0.05, "…which is not the old one")
+        XCTAssertEqual((h.attrs(at: marker)[.dwCallout] as? CalloutMark)?.color, mocha, "the label takes the colour too")
+        let mocha_ = ThemeCatalog.palette(id: "catppuccin-mocha", for: .dark)
+        XCTAssertTrue(isCloser(try labelMean(rep), to: mocha, than: mocha_.text.nsColor), "…and is drawn in it, not in the text colour")
+    }
+
+    func testAFoldedCalloutLeavesNoInkAndNoHole() throws {
+        let text = "# Head\n\nintro\n\n> [!NOTE] Title\n> body\n\n# Next\n"
+        let h = calloutHarness(text: text)
+        let before = rect(of: NSRange(location: h.index(of: "Next"), length: 4), in: h).minY - rect(of: NSRange(location: h.index(of: "Head"), length: 4), in: h).minY
+        h.coordinator.setFoldState(folded(h, 1))
+        h.textView.layoutManager?.ensureLayout(for: h.textView.textContainer!)
+        XCTAssertNil(lm(h).calloutLabelRect(forCharacterAt: h.index(of: "[!NOTE]")), "a hidden line draws no label")
+        let head = rect(of: NSRange(location: h.index(of: "Head"), length: 4), in: h), next = rect(of: NSRange(location: h.index(of: "Next"), length: 4), in: h)
+        XCTAssertLessThan(next.minY - head.minY, before / 3, "the heading below follows directly")
+        let strip = NSRect(x: h.textView.textContainerOrigin.x, y: head.maxY + 12, width: 600, height: max(0, next.minY - head.maxY - 16))
+        XCTAssertEqual(inkPoints(render(h), in: strip, h).count, 0, "nothing is drawn where the callout was")
+    }
+
+    func testTheFiveIconsAreDifferentShapesEvenInOneColour() throws {
+        let side = 48
+        func alpha(_ kind: CalloutKind) throws -> [CGFloat] {
+            let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
+                                                     hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+            let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: rep))
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            CalloutIcon.draw(kind, in: NSRect(x: 0, y: 0, width: side, height: side), color: .black)
+            NSGraphicsContext.restoreGraphicsState()
+            return (0..<side * side).map { rep.colorAt(x: $0 % side, y: $0 / side)?.alphaComponent ?? 0 }
+        }
+        var shapes: [CalloutKind: [CGFloat]] = [:]
+        for kind in CalloutKind.allCases {
+            let a = try alpha(kind)
+            shapes[kind] = a
+            let covered = CGFloat(a.filter { $0 > 0.5 }.count) / CGFloat(a.count)
+            XCTAssertGreaterThan(covered, 0.05, "\(kind) draws something")
+            XCTAssertLessThan(covered, 0.6, "\(kind) is an outline, not a block")
+        }
+        let kinds = CalloutKind.allCases
+        for i in kinds.indices {
+            for j in kinds.indices where j > i {
+                let a = shapes[kinds[i]]!, b = shapes[kinds[j]]!
+                let differing = CGFloat(zip(a, b).filter { abs($0 - $1) > 0.3 }.count) / CGFloat(a.count)
+                XCTAssertGreaterThanOrEqual(differing, 0.05, "\(kinds[i]) and \(kinds[j]) differ in at least 5 % of the icon square (\(differing))")
+            }
+        }
+    }
 }

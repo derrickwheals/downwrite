@@ -214,4 +214,173 @@ final class StylerTests: XCTestCase {
         for i in 0..<50 { h.select(200 + i * 40) }
         XCTAssertLessThan(Date().timeIntervalSince(move), 3, "50 caret moves should stay interactive")
     }
+
+    // MARK: Callouts (DW-006)
+
+    private func palette(_ h: EditorHarness) -> Palette { AppearanceResolver.palette(for: h.textView.effectiveAppearance) }
+
+    /// The height of the line fragment that holds the character at `index`.
+    private func lineHeight(_ h: EditorHarness, at index: Int) -> CGFloat {
+        let layout = h.textView.layoutManager!
+        layout.ensureLayout(for: h.textView.textContainer!)
+        return layout.lineFragmentUsedRect(forGlyphAt: layout.glyphIndexForCharacter(at: index), effectiveRange: nil).height
+    }
+
+    func testEveryLineOfACalloutCarriesItsBarColourAndKeepsTheQuoteBar() {
+        let h = EditorHarness(text: "intro\n\n> [!WARNING] T\n> body\n>\n> > deeper\n\nafter\n")
+        h.select(0)
+        let p = palette(h)
+        for word in ["[!WARNING]", "body", "deeper"] {
+            let at = h.index(of: word)
+            XCTAssertEqual(h.attrs(at: at)[.dwCalloutBar] as? NSColor, p.calloutColor(.warning).nsColor, word)
+            XCTAssertEqual(h.attrs(at: at)[.dwQuoteBarColor] as? NSColor, p.quoteBar.nsColor, "\(word) keeps the quote bar colour for deeper levels")
+        }
+        let blank = h.index(of: ">\n> >")
+        XCTAssertEqual(h.attrs(at: blank)[.dwCalloutBar] as? NSColor, p.calloutColor(.warning).nsColor, "the empty `>` line too")
+        XCTAssertEqual(h.attrs(at: h.index(of: "deeper"))[.dwQuoteDepth] as? Int, 2)
+        for word in ["intro", "after"] { XCTAssertNil(h.attrs(at: h.index(of: word))[.dwCalloutBar], word) }
+    }
+
+    func testTheMarkerHidesAndTheLabelMarkSitsOnItsFirstCharacter() throws {
+        let h = EditorHarness(text: "intro\n\n> [!NOTE] My title\n> body text\n\nafter\n")
+        h.select(0)
+        let p = palette(h)
+        let marker = h.index(of: "[!NOTE]")
+        let mark = try XCTUnwrap(h.attrs(at: marker)[.dwCallout] as? CalloutMark)
+        XCTAssertEqual(mark.kind, .note)
+        XCTAssertEqual(mark.name, "Note")
+        XCTAssertEqual(mark.color, p.calloutColor(.note).nsColor)
+        XCTAssertTrue(mark.font.isBold)
+        XCTAssertGreaterThan(h.font(at: marker).pointSize, 10, "the mark's character keeps the line's real font")
+        XCTAssertEqual(h.color(at: marker), NSColor.clear, "…but draws nothing itself")
+        for offset in 1..<"[!NOTE] ".utf16.count {
+            XCTAssertTrue(h.isHidden(at: marker + offset), "marker character \(offset) is hidden")
+            XCTAssertNil(h.attrs(at: marker + offset)[.dwCallout], "only the first character carries the mark")
+        }
+        XCTAssertTrue(h.isHidden(at: h.index(of: "> [!NOTE]")), "the line's own `> ` hides too")
+        XCTAssertNotNil(h.attrs(at: marker)[.kern], "a title follows, so the label's room is reserved")
+        XCTAssertEqual(h.textView.string, "intro\n\n> [!NOTE] My title\n> body text\n\nafter\n", "nothing is deleted")
+        for word in ["body", "intro", "My title"] { XCTAssertNil(h.attrs(at: h.index(of: word))[.dwCallout], word) }
+    }
+
+    func testTheTitleIsBoldInTheCalloutColourWithItsInlineFormatting() {
+        let h = EditorHarness(text: "> [!TIP] Plain **strong** `code` end\n> body\n")
+        h.select(h.textView.string.utf16.count)
+        let tip = palette(h).calloutColor(.tip).nsColor
+        for word in ["Plain", "end"] {
+            XCTAssertTrue(h.font(at: h.index(of: word)).isBold, word)
+            XCTAssertEqual(h.color(at: h.index(of: word)), tip, word)
+        }
+        XCTAssertTrue(h.font(at: h.index(of: "strong")).isBold)
+        XCTAssertTrue(h.isHidden(at: h.index(of: "**")), "inline markers in the title still hide")
+        XCTAssertNotNil(h.attrs(at: h.index(of: "code"))[.dwPill], "inline code keeps its pill")
+        XCTAssertFalse(h.font(at: h.index(of: "body")).isBold, "the body is not part of the title")
+        XCTAssertNotEqual(h.color(at: h.index(of: "body")), tip)
+    }
+
+    func testBodyLinesLookExactlyLikeAPlainQuotesLines() {
+        let callout = EditorHarness(text: "> [!NOTE]\n> body **bold** text\n")
+        let plain = EditorHarness(text: "> [?NOTE]\n> body **bold** text\n")
+        callout.select(callout.textView.string.utf16.count); plain.select(plain.textView.string.utf16.count)
+        let a = callout.index(of: "body"), b = plain.index(of: "body")
+        for offset in [0, 1, 6, 7, 8, 12] {
+            XCTAssertEqual(callout.font(at: a + offset), plain.font(at: b + offset), "font at +\(offset)")
+            XCTAssertEqual(callout.color(at: a + offset), plain.color(at: b + offset), "colour at +\(offset)")
+            XCTAssertEqual(callout.paragraph(at: a + offset), plain.paragraph(at: b + offset), "paragraph style at +\(offset)")
+            XCTAssertEqual(callout.attrs(at: a + offset)[.dwQuoteDepth] as? Int, plain.attrs(at: b + offset)[.dwQuoteDepth] as? Int)
+            XCTAssertEqual(callout.attrs(at: a + offset)[.dwQuoteBarColor] as? NSColor, plain.attrs(at: b + offset)[.dwQuoteBarColor] as? NSColor)
+        }
+        XCTAssertEqual(callout.isHidden(at: callout.index(of: "> body")), plain.isHidden(at: plain.index(of: "> body")), "`> ` hides alike")
+    }
+
+    func testSelectionOnTheMarkerLineShowsTheLiteralLineAndTheLabelComesBack() throws {
+        let h = EditorHarness(text: "intro\n\n> [!NOTE] My title\n> body text\n\nafter\n")
+        let p = palette(h)
+        let marker = h.index(of: "[!NOTE]")
+        let lineStart = h.index(of: "> [!NOTE]"), lineEnd = h.index(of: "\n> body")
+        XCTAssertNotNil(h.attrs(at: marker)[.dwCallout], "precondition: the label shows while the caret is away")
+        for caret in [lineStart, marker + 3, lineEnd] {
+            h.select(caret)
+            XCTAssertNil(h.attrs(at: marker)[.dwCallout], "no label with the caret at \(caret)")
+            XCTAssertFalse(h.isHidden(at: marker), "the marker shows")
+            XCTAssertFalse(h.isHidden(at: lineStart), "…and the line's `> `")
+            XCTAssertEqual(h.color(at: marker), p.marker.nsColor)
+            XCTAssertEqual(h.color(at: lineStart), p.marker.nsColor)
+            XCTAssertNotNil(h.attrs(at: lineStart)[.dwCalloutBar], "the bar stays in the callout colour")
+            XCTAssertTrue(h.font(at: h.index(of: "My title")).isBold, "the title is still styled as a title")
+            XCTAssertEqual(h.color(at: h.index(of: "My title")), p.calloutColor(.note).nsColor)
+        }
+        h.select(marker + 3, 4)
+        XCTAssertNil(h.attrs(at: marker)[.dwCallout], "a selection inside counts too")
+        h.select(lineEnd + 3)                                  // body line
+        XCTAssertNotNil(h.attrs(at: marker)[.dwCallout], "the label returns when the selection leaves the line")
+        h.select(lineStart - 1)                                // the blank line above
+        XCTAssertNotNil(h.attrs(at: marker)[.dwCallout])
+    }
+
+    func testAMarkerLineWithoutATitleKeepsItsHeightAndReservesNoRoom() throws {
+        let h = EditorHarness(text: "intro\n\n> [!CAUTION]\n> body\n\nafter\n")
+        h.select(0)
+        let marker = h.index(of: "[!CAUTION]")
+        let mark = try XCTUnwrap(h.attrs(at: marker)[.dwCallout] as? CalloutMark)
+        XCTAssertEqual(mark.kind, .caution)
+        let body = lineHeight(h, at: h.index(of: "body"))
+        XCTAssertGreaterThan(lineHeight(h, at: marker), body * 0.9, "the marker line is not a sliver")
+        let width = ("[" as NSString).size(withAttributes: [.font: h.font(at: marker)]).width
+        XCTAssertEqual(((h.attrs(at: marker)[.kern] as? NSNumber)?.doubleValue ?? 99) + Double(width), 0, accuracy: 0.001, "nothing follows, so it advances by nothing")
+    }
+
+    func testTheKernReservesExactlyTheLabelAndTheGapBeforeATitle() throws {
+        let h = EditorHarness(text: "> [!IMPORTANT] Title\n> body\n")
+        h.select(h.textView.string.utf16.count)
+        let marker = h.index(of: "[!IMPORTANT]")
+        let mark = try XCTUnwrap(h.attrs(at: marker)[.dwCallout] as? CalloutMark)
+        let width = ("[" as NSString).size(withAttributes: [.font: h.font(at: marker)]).width
+        XCTAssertEqual(CGFloat((h.attrs(at: marker)[.kern] as? NSNumber)?.doubleValue ?? 0) + width, mark.reservedWidth, accuracy: 0.001)
+        XCTAssertGreaterThan(mark.reservedWidth, mark.labelWidth, "a gap separates the label from the title")
+        XCTAssertGreaterThan(mark.labelWidth, mark.nameWidth + mark.iconSide, "icon, gap and name")
+    }
+
+    func testEachKindGetsItsOwnMarkAndColour() throws {
+        let text = "> [!NOTE]\n> a\n\n> [!TIP]\n> a\n\n> [!IMPORTANT]\n> a\n\n> [!WARNING]\n> a\n\n> [!CAUTION]\n> a\n"
+        let h = EditorHarness(text: text)
+        h.select(text.utf16.count)
+        var colours: [NSColor] = []
+        for kind in CalloutKind.allCases {
+            let mark = try XCTUnwrap(h.attrs(at: h.index(of: "[!\(kind.rawValue.uppercased())]"))[.dwCallout] as? CalloutMark, kind.rawValue)
+            XCTAssertEqual(mark.kind, kind)
+            XCTAssertEqual(mark.name, kind.title)
+            colours.append(mark.color)
+        }
+        XCTAssertEqual(Set(colours.map { $0.hashValue }).count, 5)
+    }
+
+    func testPlainQuotesCarryNoCalloutAttributesAtAll() throws {
+        let rows = try CalloutFixture.rows().filter { !$0.isCallout }
+        for row in rows {
+            let h = EditorHarness(text: row.source + "\n")
+            h.select(h.textView.string.utf16.count)
+            h.storage.enumerateAttributes(in: NSRange(location: 0, length: h.storage.length), options: []) { attrs, range, _ in
+                XCTAssertNil(attrs[.dwCallout], "row \(row.id) at \(range)")
+                XCTAssertNil(attrs[.dwCalloutBar], "row \(row.id) at \(range)")
+            }
+        }
+    }
+
+    func testEveryCalloutRowOfTheFixtureIsStyledAsOneAndNothingElseIs() throws {
+        let h = EditorHarness(text: try CalloutFixture.text(), size: NSSize(width: 900, height: 760))
+        h.select(0)
+        let analysis = h.coordinator.analysis
+        var withMark = 0
+        h.storage.enumerateAttribute(.dwCallout, in: NSRange(location: 0, length: h.storage.length), options: []) { value, _, _ in
+            if value != nil { withMark += 1 }
+        }
+        XCTAssertEqual(withMark, analysis.callouts.count, "one label per callout, none for a plain quote")
+        XCTAssertEqual(analysis.callouts.count, try CalloutFixture.rows().filter(\.isCallout).count)
+        for c in analysis.callouts {
+            for line in c.firstLine...c.lastLine where analysis.lines[line].range.length > 0 {
+                XCTAssertNotNil(h.attrs(at: analysis.lines[line].range.location)[.dwCalloutBar], "line \(line + 1) of a \(c.kind) callout")
+            }
+        }
+    }
 }

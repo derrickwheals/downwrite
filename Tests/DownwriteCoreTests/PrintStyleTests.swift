@@ -118,6 +118,32 @@ final class PrintStyleTests: XCTestCase {
         }
     }
 
+    // MARK: Callouts (DW-006)
+
+    /// The five callout kinds are coloured from the fixed light palette through the same function the editor uses; the style never reads
+    /// the window's theme (it has no input but the target).
+    func testCalloutRulesUseTheLightPaletteForEveryKind() {
+        for css in [screen, print] {
+            for kind in CalloutKind.allCases {
+                let colour = light.calloutColor(kind).css
+                let bar = declarations("blockquote.callout-\(kind.rawValue)", in: css)
+                XCTAssertEqual(bar["border-left-color"], colour, "\(kind) bar")
+                let title = declarations(".callout-\(kind.rawValue) .callout-title", in: css)
+                XCTAssertEqual(title["color"], colour, "\(kind) title colour")
+                XCTAssertEqual(title["font-weight"], "700", "\(kind) title is bold")
+                XCTAssertEqual(title["margin"], "0 0 .35em", "\(kind) title spacing")
+                XCTAssertGreaterThanOrEqual(light.calloutColor(kind).contrast(with: light.background), 4.5, "\(kind) reads on the white page")
+            }
+        }
+    }
+
+    func testPlainQuotesKeepTheirRuleAndCalloutsStayWholeOnAPage() {
+        for css in [screen, print] {
+            XCTAssertTrue(declarations("blockquote", in: css)["border-left"]?.contains(light.quoteBar.css) == true)
+        }
+        XCTAssertEqual(declarations("blockquote", in: print)["break-inside"], "avoid", "a callout is a quote: it is kept whole on paper")
+    }
+
     // MARK: R8: task boxes
 
     func testTaskBoxesAreDrawnWithCSSAndTheTickHasTheSameContrastEverywhere() {

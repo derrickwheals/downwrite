@@ -79,8 +79,10 @@ extension PreviewState {
 /// find keep working) but take no space.
 final class MarkdownStyler {
     let typography: Typography
-    var palette: Palette
+    var palette: Palette { didSet { calloutColors.removeAll() } }
     private let hiddenFont = NSFont.systemFont(ofSize: 0.1)
+    /// `Palette.calloutColor` as an `NSColor`, per kind: asked for on every callout line, and it only changes with the palette.
+    private var calloutColors: [CalloutKind: NSColor] = [:]
 
     /// Line height of the lines a fold hides. Only the line height decides how much room a collapsed line leaves (the font
     /// size makes no difference), and the 0.1 pt used for collapsed sources leaves 0.1 pt per line — 100 pt for a
@@ -244,6 +246,8 @@ final class MarkdownStyler {
         var color: NSColor
         var paragraph = NSMutableParagraphStyle()
         var extra: [NSAttributedString.Key: Any] = [:]
+        /// The colour of the callout this line belongs to: its title is set in it.
+        var callout: NSColor?
     }
 
     private func applyLine(_ index: Int, analysis: MarkdownAnalysis, runs: ArraySlice<StyleRun>,
@@ -301,6 +305,12 @@ final class MarkdownStyler {
             // is taken out of the kern, which keeps the item's text exactly one `checkboxColumn` clear of the box.
             storage.addAttribute(.dwCheckbox, value: mark, range: NSRange(location: prefix.location, length: 1))
             keepLineMetrics(storage, at: prefix.location, font: font, advance: checkboxColumn(look.size))
+        } else if let callout = hiddenCallout(onLine: index, analysis: analysis, runs: runs), callout.markerRange.location < storage.length {
+            // The marker's first character carries the label and keeps the line's font (see `keepLineMetrics`); with a title its
+            // kern is exactly the room the label and the gap before the title take, and without one nothing follows it.
+            let mark = CalloutMark(kind: callout.kind, color: calloutColor(callout.kind), font: typography.font(size: look.size, bold: true), size: look.size)
+            storage.addAttribute(.dwCallout, value: mark, range: NSRange(location: callout.markerRange.location, length: 1))
+            keepLineMetrics(storage, at: callout.markerRange.location, font: font, advance: callout.titleRange == nil ? 0 : mark.reservedWidth)
         } else if line.contentEnd > r.location, NSMaxRange(line.contentRange) <= storage.length {
             // A line whose every character is hidden — an empty heading (`# `), a bare quote marker (`>`) — would otherwise shrink
             // to a sliver as well.
@@ -375,6 +385,21 @@ final class MarkdownStyler {
     /// Horizontal room a drawn checkbox takes: the box plus the gap before the item's text.
     func checkboxColumn(_ size: CGFloat) -> CGFloat { checkboxSide(size) + (size * 0.5).rounded() }
 
+    private func calloutColor(_ kind: CalloutKind) -> NSColor {
+        if let c = calloutColors[kind] { return c }
+        let c = palette.calloutColor(kind).nsColor
+        calloutColors[kind] = c
+        return c
+    }
+
+    /// The callout whose marker is on line `index` if the marker is currently hidden (so its label is drawn in place of it). A marker
+    /// the selection touches is shown as the literal `[!NOTE]` and the line has no label.
+    private func hiddenCallout(onLine index: Int, analysis: MarkdownAnalysis, runs: ArraySlice<StyleRun>) -> CalloutInfo? {
+        guard let callout = analysis.callout(containingLine: index), callout.markerLine == index,
+              runs.contains(where: { $0.flags.contains(.calloutMarker) && $0.flags.contains(.hidden) }) else { return nil }
+        return callout
+    }
+
     /// The task on line `index` if its `- [ ] ` prefix is currently hidden (so a checkbox is drawn for it).
     private func hiddenTask(onLine index: Int, analysis: MarkdownAnalysis, runs: ArraySlice<StyleRun>) -> TaskBox? {
         guard let box = analysis.taskBox(onLine: index), let prefix = box.prefix else { return nil }
@@ -428,6 +453,10 @@ final class MarkdownStyler {
             look.extra[.dwQuoteDepth] = line.quoteDepth
             look.extra[.dwQuoteBarColor] = palette.quoteBar.nsColor
             if case .body = line.kind { look.color = palette.text.nsColor.withAlphaComponent(0.82) }
+            if let callout = analysis.callout(containingLine: index) {
+                look.callout = calloutColor(callout.kind)
+                look.extra[.dwCalloutBar] = look.callout
+            }
         }
         if line.listPrefixLength > 0, case .body = line.kind {
             var prefixRange = NSRange(location: line.range.location, length: min(line.listPrefixLength, line.contentEnd - line.range.location))
@@ -453,7 +482,7 @@ final class MarkdownStyler {
         }
 
         let mono = look.mono || f.contains(.code) || f.contains(.math) || f.contains(.html)
-        let bold = look.bold || f.contains(.bold)
+        let bold = look.bold || f.contains(.bold) || f.contains(.calloutTitle)
         let italic = f.contains(.italic)
         var size = f.contains(.code) && !look.mono ? look.size * 0.9 : look.size
         if f.contains(.sub) || f.contains(.sup) { size = look.size * 0.75 }
@@ -486,6 +515,9 @@ final class MarkdownStyler {
             attrs[.foregroundColor] = palette.secondaryText.nsColor
         }
 
+        if f.contains(.calloutTitle), attrs[.foregroundColor] == nil, let color = look.callout {
+            attrs[.foregroundColor] = color                 // the title is bold in the callout colour unless something else colours it
+        }
         if f.contains(.strike) {
             attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }

@@ -46,7 +46,7 @@ public enum MarkdownAnalyzer {
         let line = LineStyle(range: NSRange(location: 0, length: units.count), contentEnd: units.count)
         return MarkdownAnalysis(length: units.count, spans: spans, markers: markers, lines: [line], links: links, images: [],
                                 taskBoxes: [], mermaid: [], tables: [], headings: [], imageBlocks: [], htmlBlocks: [], codeBlocks: [],
-                                foldRegions: [])
+                                callouts: [], foldRegions: [])
     }
 }
 
@@ -71,6 +71,7 @@ private struct Builder {
     var headings: [HeadingInfo] = []
     var htmlBlocks: [RawHTMLBlock] = []
     var codeBlocks: [CodeBlockInfo] = []
+    var callouts: [CalloutInfo] = []
     /// Top-level headings in document order, with every line each one occupies (`finish` turns them into fold regions).
     var foldHeadings: [(level: Int, lines: ClosedRange<Int>)] = []
     /// List items with content after their first paragraph: the header lines (the paragraph) and the item's last line.
@@ -111,7 +112,7 @@ private struct Builder {
         return MarkdownAnalysis(
             length: src.length, spans: spans, markers: markers, lines: lines, links: links, images: images,
             taskBoxes: taskBoxes, mermaid: mermaid, tables: tables, headings: withPlainTitles(headings), imageBlocks: blocks,
-            htmlBlocks: htmlBlocks, codeBlocks: codeBlocks, foldRegions: cellMode ? [] : foldRegions()
+            htmlBlocks: htmlBlocks, codeBlocks: codeBlocks, callouts: callouts, foldRegions: cellMode ? [] : foldRegions()
         )
     }
 
@@ -334,14 +335,29 @@ private struct Builder {
 
     private mutating func blockQuote(_ q: BlockQuote, _ ctx: Context) {
         if let r = range(of: q) {
-            for l in lineSpan(r) {
+            let ls = lineSpan(r)
+            for l in ls {
                 lines[l].quoteDepth = ctx.quoteDepth + 1
                 if ctx.quoteDepth == 0 { quoteMarkers(line: l) }
             }
             addSpan(r, .quote)
+            callout(q, lines: ls)
         }
         var inner = ctx; inner.quoteDepth += 1
         for c in q.children { walk(c, inner) }
+    }
+
+    /// Records the quote as a callout when `CalloutSyntax` says it is one (only top-level quotes can be). The `[!TYPE]` marker
+    /// hides like the line's own `>` does: it reveals when the selection touches the marker line, and only then.
+    private mutating func callout(_ q: BlockQuote, lines span: ClosedRange<Int>) {
+        guard let m = CalloutSyntax.match(q, in: src), span.contains(m.markerLine) else { return }
+        let start = lines[span.lowerBound].range.location
+        callouts.append(CalloutInfo(
+            kind: m.kind, range: NSRange(location: start, length: lines[span.upperBound].contentEnd - start),
+            firstLine: span.lowerBound, lastLine: span.upperBound, markerLine: m.markerLine,
+            markerRange: m.markerRange, titleRange: m.titleRange))
+        addMarker(m.markerRange, reveal: lineReveal(m.markerLine), flags: .calloutMarker)
+        if let title = m.titleRange { addSpan(title, .calloutTitle) }
     }
 
     private mutating func quoteMarkers(line l: Int) {

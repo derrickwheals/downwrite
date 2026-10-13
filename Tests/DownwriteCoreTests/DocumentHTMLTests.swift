@@ -34,6 +34,140 @@ final class DocumentHTMLTests: XCTestCase {
         XCTAssertEqual(body("> - item\n> ```\n> code\n> ```\n"), "<blockquote>\n<ul>\n<li>item</li>\n</ul>\n<pre><code>code\n</code></pre>\n</blockquote>\n")
     }
 
+    // MARK: Callouts (DW-006)
+
+    /// The markup of a callout with an empty title line and one body paragraph.
+    private func calloutHTML(_ kind: String, _ name: String, title: String = "", blocks: String = "<p>body</p>\n") -> String {
+        "<blockquote class=\"callout callout-\(kind)\">\n<p class=\"callout-title\"><span class=\"callout-type\">\(name)</span>"
+            + (title.isEmpty ? "" : " " + title) + "</p>\n" + blocks + "</blockquote>\n"
+    }
+
+    func testEveryKindIsAClassedQuoteWhoseFirstLineNamesIt() {
+        for (marker, kind, name) in [("NOTE", "note", "Note"), ("TIP", "tip", "Tip"), ("IMPORTANT", "important", "Important"),
+                                     ("WARNING", "warning", "Warning"), ("CAUTION", "caution", "Caution")] {
+            XCTAssertEqual(body("> [!\(marker)]\n> body\n"), calloutHTML(kind, name), marker)
+            XCTAssertEqual(body("> [!\(marker.lowercased())]\n> body\n"), calloutHTML(kind, name), "\(marker) in lower case")
+        }
+        XCTAssertEqual(body("> [!wArNiNg]\n> body\n"), calloutHTML("warning", "Warning"))
+    }
+
+    func testTheTitleFollowsTheTypeNameAndAloneItIsACallout() {
+        XCTAssertEqual(body("> [!WARNING] Data loss\n> body\n"), calloutHTML("warning", "Warning", title: "Data loss"))
+        XCTAssertEqual(body("> [!WARNING] Data loss\n"), calloutHTML("warning", "Warning", title: "Data loss", blocks: ""))
+        XCTAssertEqual(body("> [!NOTE]  \t Spaced title \t \n> body\n"), calloutHTML("note", "Note", title: "Spaced title"))
+    }
+
+    func testTheTitleKeepsItsInlineFormattingAndIsEscaped() {
+        XCTAssertEqual(body("> [!TIP] **Bold** and `code` and [link](https://example.com)\n> body\n"),
+                       calloutHTML("tip", "Tip", title: "<strong>Bold</strong> and <code>code</code> and <a href=\"https://example.com\">link</a>"))
+        XCTAssertEqual(body("> [!NOTE] a < b & \"c\" <i>x</i>\n> body\n"), calloutHTML("note", "Note", title: "a &lt; b &amp; \"c\" <i>x</i>"))
+        XCTAssertEqual(body("> [!NOTE] ==hi== there\n> body\n"), calloutHTML("note", "Note", title: "<mark>hi</mark> there"))
+        XCTAssertEqual(body("> [!NOTE] Héllo 😀 wörld\n> body\n"), calloutHTML("note", "Note", title: "Héllo 😀 wörld"))
+    }
+
+    func testTheBodyStartsOnTheLineAfterTheMarkerLine() {
+        XCTAssertEqual(body("> [!NOTE]\n> line one\n> line two\n"), calloutHTML("note", "Note", blocks: "<p>line one\nline two</p>\n"))
+        XCTAssertEqual(body("> [!NOTE] T\n> line one\n> line two\n"), calloutHTML("note", "Note", title: "T", blocks: "<p>line one\nline two</p>\n"))
+        XCTAssertEqual(body("> [!NOTE]\nlazy line\n"), calloutHTML("note", "Note", blocks: "<p>lazy line</p>\n"))
+        XCTAssertEqual(body(">\n> [!NOTE]\n> body\n"), calloutHTML("note", "Note"), "a blank quote line before the marker")
+        XCTAssertEqual(body("   > [!NOTE]\n   > body\n"), calloutHTML("note", "Note"))
+    }
+
+    /// Two trailing spaces after the marker line are a hard break in cmark's tree; the export must not show it as a `<br />`.
+    func testNoLineBreakAppearsAfterTheMarkerLine() {
+        XCTAssertEqual(body("> [!NOTE]  \n> body\n"), calloutHTML("note", "Note"))
+        XCTAssertEqual(body("> [!NOTE] My title   \n> body\n"), calloutHTML("note", "Note", title: "My title"))
+        XCTAssertEqual(body("> [!NOTE]\n> a  \n> b\n"), calloutHTML("note", "Note", blocks: "<p>a<br />\nb</p>\n"), "later breaks are kept")
+    }
+
+    func testOtherBlocksFollowTheTitleLine() {
+        XCTAssertEqual(body("> [!NOTE]\n> text\n>\n> - item\n>\n> ```\n> code\n> ```\n"),
+                       calloutHTML("note", "Note", blocks: "<p>text</p>\n<ul>\n<li>item</li>\n</ul>\n<pre><code>code\n</code></pre>\n"))
+        XCTAssertEqual(body("> [!NOTE]\n> - one\n> - two\n"), calloutHTML("note", "Note", blocks: "<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n"))
+        XCTAssertEqual(body("> [!NOTE]\n> a\n>\n> b\n"), calloutHTML("note", "Note", blocks: "<p>a</p>\n<p>b</p>\n"))
+        XCTAssertEqual(body("> [!NOTE]\n> body\n>\n> > inner\n"),
+                       calloutHTML("note", "Note", blocks: "<p>body</p>\n<blockquote>\n<p>inner</p>\n</blockquote>\n"), "a plain quote inside a callout")
+        XCTAssertEqual(body("> [!NOTE]\n> [!TIP]\n> body\n"), calloutHTML("note", "Note", blocks: "<p>[!TIP]\nbody</p>\n"), "a second marker is text")
+    }
+
+    func testAHeadingInsideACalloutKeepsItsPlaceInTheNumbering() {
+        let out = body("# A\n\n> [!NOTE]\n> ## Inside\n\n# B\n")
+        XCTAssertTrue(out.contains("<h1 id=\"a\">A</h1>"), out)
+        XCTAssertTrue(out.contains("<h2 id=\""), out)
+        XCTAssertTrue(out.contains("<h1 id=\"b\">B</h1>"), "the heading after the callout still gets its own id: \(out)")
+        XCTAssertTrue(body("> [!NOTE]\n> # H\n>\n> text\n").contains("<div class=\"keep\">\n<h1 id="), "a heading run is still kept with the block after it")
+    }
+
+    /// The edge D8 leaves alone: an inline element that spans the marker line and the next one cannot be split.
+    func testAnInlineElementSpanningTheMarkerLineStaysWhole() {
+        XCTAssertEqual(body("> [!NOTE] **a\n> b**\n"),
+                       "<blockquote class=\"callout callout-note\">\n<p class=\"callout-title\"><span class=\"callout-type\">Note</span> <strong>a\nb</strong></p>\n</blockquote>\n")
+    }
+
+    /// A table right below the marker splits the first paragraph off without a source range; it is still a callout, in the export too.
+    func testACalloutWhoseBodyIsATableIsStillACallout() {
+        for text in ["> [!NOTE]\n> | a | b |\n> |---|---|\n> | 1 | 2 |\n", "> [!NOTE]\r\n> | a | b |\r\n> |---|---|\r\n> | 1 | 2 |\r\n"] {
+            let out = body(text)
+            XCTAssertTrue(out.hasPrefix("<blockquote class=\"callout callout-note\">\n<p class=\"callout-title\"><span class=\"callout-type\">Note</span></p>\n"), out)
+            XCTAssertTrue(out.contains("<table") && out.hasSuffix("</table></div>\n</blockquote>\n"), out)
+            XCTAssertFalse(out.contains("[!"), "the marker text is gone: \(out)")
+        }
+        let titled = body("> [!NOTE] with a title\n> | a | b |\n> |---|---|\n")
+        XCTAssertTrue(titled.contains("<span class=\"callout-type\">Note</span> with a title</p>"), titled)
+        XCTAssertEqual(body("> intro\n> | a | b |\n> |---|---|\n").hasPrefix("<blockquote>\n"), true, "a quote that is not a callout is unchanged")
+    }
+
+    func testPlainQuotesAreUnchanged() {
+        XCTAssertEqual(body("> [!INFO]\n> body\n"), "<blockquote>\n<p>[!INFO]\nbody</p>\n</blockquote>\n")
+        XCTAssertEqual(body("> [!NOTE]\n"), "<blockquote>\n<p>[!NOTE]</p>\n</blockquote>\n")
+        XCTAssertEqual(body("> [!NOTE]\n>\n"), "<blockquote>\n<p>[!NOTE]</p>\n</blockquote>\n")
+        XCTAssertEqual(body("> [!NOTE]+\n> body\n"), "<blockquote>\n<p>[!NOTE]+\nbody</p>\n</blockquote>\n")
+        XCTAssertEqual(body("> hello\n> [!NOTE]\n> body\n"), "<blockquote>\n<p>hello\n[!NOTE]\nbody</p>\n</blockquote>\n")
+        XCTAssertEqual(body("> **[!NOTE]**\n> body\n"), "<blockquote>\n<p><strong>[!NOTE]</strong>\nbody</p>\n</blockquote>\n")
+    }
+
+    func testQuotesNestedInOtherBlocksAreNeverCallouts() {
+        for text in ["- item\n  > [!NOTE]\n  > body\n", "> > [!NOTE]\n> > body\n", "1. one\n\n   > [!NOTE]\n   > body\n"] {
+            let out = body(text)
+            XCTAssertFalse(out.contains("callout"), text.debugDescription)
+            XCTAssertTrue(out.contains("[!NOTE]"), "the literal text stays for a quote that is not a callout: \(text.debugDescription)")
+        }
+    }
+
+    func testAReferenceDefinitionMakesTheMarkerALinkSoTheQuoteStaysPlain() {
+        let out = body("> [!NOTE]\n> body\n\n[!note]: https://example.com\n")
+        XCTAssertFalse(out.contains("callout"), out)
+    }
+
+    func testCalloutsSurviveFrontMatterFootnoteDefinitionsAndCRLF() {
+        XCTAssertEqual(body("---\ntitle: x\n---\n\n> [!TIP] t\n> body\n"), calloutHTML("tip", "Tip", title: "t"))
+        XCTAssertEqual(body("[^1]: a footnote\n\n> [!TIP] t\n> body\n"), "<p>[^1]: a footnote</p>\n" + calloutHTML("tip", "Tip", title: "t"))
+        XCTAssertEqual(body("> [!TIP] t\r\n> body\r\n"), calloutHTML("tip", "Tip", title: "t"))
+        XCTAssertEqual(body("> [!NOTE]  \r\n> body\r\n"), calloutHTML("note", "Note"))
+    }
+
+    func testSeveralCalloutsAndQuotesKeepTheirOrder() {
+        let out = body("> [!NOTE]\n> a\n\n> plain\n\n> [!CAUTION] c\n> b\n")
+        XCTAssertEqual(out, calloutHTML("note", "Note", blocks: "<p>a</p>\n") + "<blockquote>\n<p>plain</p>\n</blockquote>\n"
+                       + calloutHTML("caution", "Caution", title: "c", blocks: "<p>b</p>\n"))
+    }
+
+    func testTheReservedCharactersCannotComeOutOfACalloutTitle() {
+        let out = body("> [!NOTE] a\u{E000}b\u{E001}c\u{E002}d\n> body\n")
+        XCTAssertFalse(out.unicodeScalars.contains { (0xE000...0xE002).contains($0.value) }, out.debugDescription)
+        XCTAssertTrue(out.contains("a&#xE000;b&#xE001;c&#xE002;d"), out.debugDescription)
+    }
+
+    func testRawHTMLInATitleIsSanitisedLikeAnywhereElse() {
+        let script = body("> [!NOTE] <script>alert(1)</script> x\n> body\n")
+        XCTAssertFalse(script.contains("<script") || script.contains("alert(1)"), script)
+        XCTAssertTrue(script.contains("callout-note"), script)
+        let image = body("> [!NOTE] <img src=\"x.png\" onerror=\"alert(1)\">\n> body\n")
+        XCTAssertFalse(image.contains("onerror"), image)
+        let link = body("> [!NOTE] [x](javascript:alert(1))\n> body\n")
+        XCTAssertFalse(link.contains("javascript"), link)
+    }
+
     func testThematicBreaks() {
         XCTAssertEqual(body("a\n\n***\n\nb\n"), "<p>a</p>\n<hr />\n<p>b</p>\n")
         XCTAssertEqual(body("a\n\n- - -\n\nb\n"), "<p>a</p>\n<hr />\n<p>b</p>\n")
