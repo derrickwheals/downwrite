@@ -6,7 +6,7 @@ track: feature
 status: accepted
 raised: 2026-10-12
 accepted: 2026-10-12
-merged:
+merged: 2026-10-13
 backlog: "DW-006 (docs/ROADMAP.md#dw-006--github-style-callouts)"
 ---
 
