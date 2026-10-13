@@ -76,7 +76,7 @@ App, in the order that keeps the risky unknowns early:
 - [x] 12. Drag: `acceptableDragTypes` and the four overrides; tests in `ImageDropTests` with the fake `NSDraggingInfo` for one and two files, an image already in the tree (no write, link built from the real path), one already in `assets/`, a symlink in the tree that points outside it (copied), a sibling folder with the same prefix, HEIC and TIFF, mixed files, a drop with no images (path inserted as text, as today), a text drag inside the editor, a file promise, raw image data, a drop on a preview card, and a drop into a table cell. Then the drop-point marker (P6 fallback if the probe said so).
 - [x] 13. R24: the export test in `DocumentOutputTests` (paste into a harness editor on a temporary folder, hand its text and file to the rig, export HTML, find `<img src="data:image/png`), and the preview-card test in `ImagePasteTests`.
 - [x] 14. `SelfTestImagePaste` and its two hooks: pastes and drops into the real window on a private named pasteboard, checks the files, the link, the card, a folded section, an undo, the untitled sheet and the announcement, and writes into `selftest-report.txt`.
-- [ ] 15. Docs (R25): the README Images note (how to add one, `assets/`, that location metadata is kept, that very large images are scaled), the `CLAUDE.md` bullet, the ROADMAP status.
+- [x] 15. Docs (R25): the README Images note (how to add one, `assets/`, that location metadata is kept, that very large images are scaled), the `CLAUDE.md` bullet, the ROADMAP status.
 - [ ] 16. The whole proof below, then the verifier. Hand checks that need a desktop session are listed under Proof as owed until done.
 
 ## Risks

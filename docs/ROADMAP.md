@@ -15,7 +15,7 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 | Ref                                                                  | Item                                                  | Tier            | Status            | Todoist ID       |
 | -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | ----------------- | ---------------- |
 | [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3) | —                |
-| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed          | 6hjfjGvqJXxhJqrH |
+| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | In progress       | 6hjfjGvqJXxhJqrH |
 | [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          | 6hjfjGxrHHghQ9QH |
 | [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          | 6hjfjGw57MpVp2gq |
 | [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          | 6hjfjH3Q4pH554Pq |
@@ -72,10 +72,10 @@ Two agents can work on two items at once, each in its own git worktree and branc
 ## DW-002 — Paste and drop images
 
 - **Todoist:** https://app.todoist.com/app/task/6hjfjGvqJXxhJqrH
-- **Status:** Proposed
+- **Status:** In progress. Plan approved on 2026-10-14 and built on the branch `change/2026-10-13-paste-and-drop-images`, awaiting review ([`docs/changes/2026-10-13-paste-and-drop-images/`](changes/2026-10-13-paste-and-drop-images/intent.md))
 - **Why add it:** Images already preview inline, but getting one into a document is manual: save the file somewhere, then type its path. Pasting a screenshot or dragging a photo in is how people actually add images, and users of other Markdown editors expect it. Without it, the image preview feature is only half used.
 - **Why not, or what to watch:** The image has to be saved somewhere, normally in an assets folder next to the document, and an untitled, unsaved document has no folder. That needs a decision (ask to save first, or hold the image in a temporary place and move it on save). It also needs rules for file naming and collisions, for converting pasteboard formats (TIFF, HEIC) to PNG or JPEG, and for what happens to very large images. The app is not sandboxed, so writing next to the document is possible.
-- **What the code has today:** The `paste` override in `EditorTextView` only handles a URL pasted over selected text. There is no image pasteboard handling and no drag destination for files. The preview side exists: `ImageLoader` turns local images into `data:` URIs with an 8 MB cap.
+- **What the code has today:** Pasting an image (⌘V) or dropping image files, photos or browser pictures saves them in `assets/` next to the document and inserts the link as a paragraph of its own (`ImageInsertion.swift` in `DownwriteCore`; `ImageIntake.swift`, `EditorImages.swift` and `EditorImageDrag.swift` in the app). The preview and the exports use the link like a hand-typed one (`ImageLoader`, 8 MB cap, unchanged). Left for later: alt text entry, downloading a pasted address, moving `assets/` with a document.
 - **Related:** DW-001.
 
 ## DW-003 — Syntax highlighting in code blocks
