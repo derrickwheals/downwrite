@@ -122,3 +122,7 @@ Always update `FEATURE-LIST.md` (repo root) after a new feature has been fully r
 - CSS `max-height` with `height:auto` squashes an element that has its own width: add `object-fit: contain` and measure the shape in a real PDF, not in the CSS.
 - Tests that create a named `NSPasteboard` must release it in a teardown (`addTeardownBlock { pb.releaseGlobally() }`), as `SelfTestCodeCopy` does; a fresh name per test otherwise leaves one pasteboard in the pasteboard server per test until logout.
 - A `selectionChanged` branch that re-analyses and returns early (the table-source one) skips everything after it, and `reanalyze` records per-caret state silently (`syncActiveCallout`), so per-move work such as an announcement must run before such a return, and a test must move the caret through that branch (`CalloutEditorTests.testLeavingATableShownAsMarkdownIntoACalloutIsAnnounced`).
+
+## Agent backlog
+
+Backlog items for this project live in Todoist: project `Downwrite` under `Agent backlogs`, keys `DW-NNN`. Use the `todoist-agent-backlog` skill to add, read, refine or move them. Items are my product decisions: don't start an intent, spec, plan or build for an item until I ask for it by key, and don't move one into Ready, Done or Cancelled unless I say. When an ai-sdlc stage for an item (intent, spec, plan, build, review, merge) reaches a gate, update its card as that skill describes.
