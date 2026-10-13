@@ -60,7 +60,7 @@ Docs:
 Core first, each step a commit with its tests (test before code where it reads naturally):
 
 - [x] 1. `ImageFormat.sniff`, `saved`, `fileExtension`, `ImageLimits`: tests for PNG, JPEG, GIF, WebP, HEIC/HEIF, TIFF (both byte orders), BMP, SVG (plain, with an XML prolog, a BOM, a comment first), and bytes that are none of them.
-- [ ] 2. `ImageNaming`: `pastedName` (zero padding, the given time zone, not the machine's), `droppedName` (every character class in R9, NFC, 60-character cut that never splits a scalar, empty stem to `image`, leading dots), `firstFree` (`-2`, `-3`, bounded).
+- [x] 2. `ImageNaming`: `pastedName` (zero padding, the given time zone, not the machine's), `droppedName` (every character class in R9, NFC, 60-character cut that never splits a scalar, empty stem to `image`, leading dots), `firstFree` (`-2`, `-3`, bounded).
 - [ ] 3. `ImageLink`: `markdown(path:)` for a space, `( ) # ? % é 日本`, a segment per component; `relativePath` inside, outside, the same folder, the root `/Docs` against `/Docs2`, and the file being the folder itself.
 - [ ] 4. `ImageShrink.nextLongEdge`: strictly decreasing, always ends (`nil` at the floor), a huge ratio, a ratio near 1.
 - [ ] 5. `PasteboardImageContent` + `ImagePasteRule.prefersImages`: every combination named in the spec's verification (screenshot, Safari "Copy Image" with its URL, Finder copy with a file name, spreadsheet text with an image preview, files with a PDF, nothing).
@@ -148,3 +148,5 @@ Owed until done by hand, in a real desktop session (the plan does not close whil
 ## Deviations
 
 <Filled during build. One line per departure from this plan, added in the same commit as the code that departs.>
+
+- Step 2: `ImageNaming.firstFree` returns `String?` and takes `limit: Int = 10_000` (the spec sketched `-> String`). "Bounded" needs a way to say "gave up"; the caller reports it as a failure for that file (R21). A mark that belongs to a letter (Unicode Mn/Mc) is kept in a dropped name, so scripts such as Devanagari are not broken apart; variation selectors are not. The spec's "letter, digit" is read that way.

@@ -117,3 +117,78 @@ public enum ImageLimits {
     /// Shrinking stops here: an image that still does not fit at this long edge cannot be added.
     public static let minLongEdge = 320
 }
+
+// MARK: - Names
+
+/// File names for images written to `assets/` (R8, R9). Pure: the clock, the time zone and "is this name taken" are arguments.
+public enum ImageNaming {
+    /// A stem is cut to this many Unicode scalars. Four UTF-8 bytes each keeps the longest name (stem, `-10000`, `.webp`) under
+    /// the 255 bytes a file system allows.
+    public static let maxStemLength = 60
+
+    /// `image-YYYYMMDD-HHMMSS.<ext>` from the wall-clock time in `timeZone`. The time zone is passed in, never read from the
+    /// machine, so a test names the same file everywhere.
+    public static func pastedName(at date: Date, timeZone: TimeZone, fileExtension: String) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        func pad(_ value: Int?, _ width: Int) -> String {
+            let digits = String(value ?? 0)
+            return String(repeating: "0", count: max(0, width - digits.count)) + digits
+        }
+        let stamp = "\(pad(c.year, 4))\(pad(c.month, 2))\(pad(c.day, 2))-\(pad(c.hour, 2))\(pad(c.minute, 2))\(pad(c.second, 2))"
+        return "image-\(stamp).\(fileExtension.lowercased())"
+    }
+
+    /// A dropped or Finder-copied file keeps its own name, made safe: every character that is not a letter, a digit, `.`, `_` or
+    /// `-` becomes `-` (a mark that belongs to a letter counts as part of it), runs of `-` collapse, leading `.` and `-` go, the
+    /// name is normalised to NFC and cut to ``maxStemLength`` scalars, and an empty result is `image`. `stem` is the file name
+    /// without its extension; `fileExtension` is the saved format's.
+    public static func droppedName(stem: String, fileExtension: String) -> String {
+        var scalars: [Unicode.Scalar] = []
+        var lastWasDash = false
+        for scalar in stem.precomposedStringWithCanonicalMapping.unicodeScalars {
+            let isDash = scalar == "-" || !isKept(scalar)       // a dropped character becomes a dash, and a dash after a dash is one
+            if isDash {
+                if !lastWasDash { scalars.append("-") }
+                lastWasDash = true
+            } else {
+                scalars.append(scalar)
+                lastWasDash = false
+            }
+        }
+        while let first = scalars.first, first == "." || first == "-" { scalars.removeFirst() }
+        if scalars.count > maxStemLength { scalars.removeSubrange(maxStemLength...) }
+        var safe = String.UnicodeScalarView()
+        safe.append(contentsOf: scalars)
+        let name = String(safe)
+        return "\(name.isEmpty ? "image" : name).\(fileExtension.lowercased())"
+    }
+
+    private static func isKept(_ scalar: Unicode.Scalar) -> Bool {
+        if scalar == "." || scalar == "_" || scalar == "-" { return true }
+        if (0xFE00...0xFE0F).contains(scalar.value) { return false }          // variation selectors ride on emoji
+        switch scalar.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+             .nonspacingMark, .spacingMark, .decimalNumber:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// `name` if `isTaken` says it is free, otherwise `name-2`, `name-3` … (the number goes before the last extension) up to
+    /// `limit` candidates in all, then nil. The caller still creates the file exclusively: a name that was free here can be
+    /// taken a moment later, and the exclusive write is what makes R8 true.
+    public static func firstFree(_ name: String, limit: Int = 10_000, isTaken: (String) -> Bool) -> String? {
+        let dot = name.lastIndex(of: ".").flatMap { $0 > name.startIndex ? $0 : nil }
+        let stem = dot.map { String(name[..<$0]) } ?? name
+        let tail = dot.map { String(name[$0...]) } ?? ""
+        guard limit >= 1 else { return nil }
+        for n in 1...limit {
+            let candidate = n == 1 ? name : "\(stem)-\(n)\(tail)"
+            if !isTaken(candidate) { return candidate }
+        }
+        return nil
+    }
+}
