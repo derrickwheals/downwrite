@@ -632,3 +632,101 @@ extension ImagePasteFlowTests {
                           method_getImplementation(class_getInstanceMethod(EditorTextView.self, #selector(NSText.paste(_:)))!))
     }
 }
+
+// MARK: - Untitled documents (step 11)
+
+extension ImagePasteFlowTests {
+    /// A rig whose document has no file yet. `save` stands in for the Save… button and the save panel: it is told the rig and
+    /// answers with the file the person "saved" (or nil for a cancelled panel).
+    private func untitled(_ text: String = "Hello world\n", save: @escaping (Rig) async -> URL?) throws -> (Rig, SaveCounter) {
+        let r = try rig(text, saved: false)
+        let counter = SaveCounter()
+        r.h.coordinator.requestSave = {
+            counter.asked += 1
+            return await save(r)
+        }
+        addTeardownBlock { r.h.coordinator.requestSave = nil }       // the closure holds the rig, which holds the coordinator
+        return (r, counter)
+    }
+
+    final class SaveCounter { var asked = 0 }
+
+    func testAnUntitledDocumentAsksToSaveThenCompletesThePasteAtTheRememberedPlace() async throws {
+        let (r, counter) = try untitled { rig in rig.doc }
+        r.h.select(5)                                             // between "Hello" and " world"
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(counter.asked, 1)
+        XCTAssertEqual(r.text, "Hello\n\n\(link(pastedName))\n\n world\n")
+        XCTAssertEqual(files(r), [pastedName], "written next to the file that was saved")
+    }
+
+    func testCancellingTheSaveWritesAndInsertsNothing() async throws {
+        let (r, counter) = try untitled { _ in nil }
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(counter.asked, 1)
+        XCTAssertEqual(r.text, "Hello world\n")
+        XCTAssertFalse(fm.fileExists(atPath: r.assets.path))
+        XCTAssertTrue(r.rec.announcements.isEmpty)
+        XCTAssertTrue(r.rec.notices.isEmpty, "a cancel is a choice, not an error")
+    }
+
+    func testTheFolderComesFromTheSavedFileNotFromAnythingElse() async throws {
+        let elsewhere = fm.temporaryDirectory.appendingPathComponent("downwrite-saved-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        addTeardownBlock { [fm] in try? fm.removeItem(at: elsewhere) }
+        let (r, _) = try untitled { _ in elsewhere.appendingPathComponent("saved.md") }
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertTrue(fm.fileExists(atPath: elsewhere.appendingPathComponent("assets/\(pastedName)").path))
+        XCTAssertFalse(fm.fileExists(atPath: r.assets.path))
+    }
+
+    func testASecondPasteQueuedBehindTheSheetWaitsAndIsAskedAboutOnce() async throws {
+        var release: CheckedContinuation<Void, Never>?
+        let (r, counter) = try untitled { rig in
+            await withCheckedContinuation { release = $0 }             // the sheet is up
+            rig.h.coordinator.fileURL = rig.doc                         // the save completed: SwiftUI hands the new URL over
+            return rig.doc
+        }
+        putPNG(r.pb, ImageFixtures.png(width: 20, height: 20))
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        putPNG(r.pb, ImageFixtures.png(width: 30, height: 30))
+        XCTAssertTrue(r.h.coordinator.pasteImages(), "a second paste while the sheet is up is queued")
+        let up = await waitUntil { release != nil }
+        XCTAssertTrue(up)
+        XCTAssertEqual(r.text, "Hello world\n", "nothing yet")
+        release?.resume()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(counter.asked, 1, "the second paste finds the saved document")
+        XCTAssertEqual(r.text, "Hello world\n\n\(link(pastedName))\n\n\(link("image-20261013-094112-2.png"))\n\n")
+    }
+
+    // The sheet itself (the Save… path needs a real NSDocument and is checked in the real app)
+
+    func testTheSheetSaysWhatItIsAndCancelEndsIt() async throws {
+        let r = try rig("Hello world\n", saved: false)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        let shown = await waitUntil { r.h.window.attachedSheet != nil }
+        XCTAssertTrue(shown, "the save-first sheet appears on the window")
+        let sheet = try XCTUnwrap(r.h.window.attachedSheet)
+        func buttons(in view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        func labels(in view: NSView) -> [String] { (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap(labels) }
+        let all = buttons(in: sheet.contentView!)
+        XCTAssertEqual(all.map(\.title).sorted(), ["Cancel", "Save…"])
+        let text = labels(in: sheet.contentView!)
+        XCTAssertTrue(text.contains("Save the document first"), "\(text)")
+        XCTAssertTrue(text.contains { $0.contains("“assets” folder next to the document") && $0.contains("the image will be added") }, "\(text)")
+        XCTAssertEqual(sheet.defaultButtonCell?.title, "Save…", "Save… is the default")
+        try XCTUnwrap(all.first { $0.title == "Cancel" }).performClick(nil)
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertNil(r.h.window.attachedSheet)
+        XCTAssertEqual(r.text, "Hello world\n")
+        XCTAssertFalse(fm.fileExists(atPath: r.assets.path))
+    }
+}

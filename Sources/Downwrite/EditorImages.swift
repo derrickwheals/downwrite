@@ -93,7 +93,7 @@ extension EditorCoordinator {
 
         var folder = imageDocumentFolder()
         if folder == nil {
-            guard let saved = await requestImageSave() else { return }
+            guard let saved = await requestImageSave(count: job.sources.count) else { return }       // Cancel: nothing is written (R17)
             folder = saved.deletingLastPathComponent()
         }
         guard let folder, isImageWindowOpen else { return }
@@ -192,8 +192,21 @@ extension EditorCoordinator {
         return (document?.fileURL ?? fileURL)?.deletingLastPathComponent()
     }
 
-    /// An untitled document cannot have an images folder: the person is asked to save first (step 11 gives this its sheet).
-    private func requestImageSave() async -> URL? { await requestSave?() }
+    /// An untitled document cannot have an images folder: the person is asked to save first (R17). The sheet is shown once per
+    /// paste or drop; the images are already in memory. Save… runs the normal save panel, and the folder is taken from the file it
+    /// saved (SwiftUI's binding updates later). nil: Cancel, or a cancelled save panel.
+    private func requestImageSave(count: Int) async -> URL? {
+        if let requestSave { return await requestSave() }
+        guard let window = textView?.window else { return nil }
+        let alert = NSAlert()
+        alert.messageText = "Save the document first"
+        alert.informativeText = "Downwrite keeps pasted and dropped images in an “assets” folder next to the document. Save this document, and \(count == 1 ? "the image" : "the images") will be added."
+        alert.addButton(withTitle: "Save…")
+        alert.addButton(withTitle: "Cancel")
+        guard await alert.beginSheetModal(for: window) == .alertFirstButtonReturn,
+              let document = NSDocumentController.shared.document(for: window) else { return nil }
+        return await DocumentSaveWaiter().save(document)
+    }
 
     // MARK: Feedback (R21–R23)
 
@@ -219,5 +232,24 @@ extension EditorCoordinator {
         guard let tv = textView else { return }
         NSAccessibility.post(element: tv, notification: .announcementRequested,
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+}
+
+/// Runs the document's normal save (the panel, for an untitled one) and waits for the answer: the saved file, or nil if the person
+/// cancelled or the save failed.
+@MainActor
+private final class DocumentSaveWaiter: NSObject {
+    private var continuation: CheckedContinuation<URL?, Never>?
+
+    func save(_ document: NSDocument) async -> URL? {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            document.save(withDelegate: self, didSave: #selector(document(_:didSave:contextInfo:)), contextInfo: nil)
+        }
+    }
+
+    @objc func document(_ document: NSDocument, didSave: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        continuation?.resume(returning: didSave ? document.fileURL : nil)
+        continuation = nil
     }
 }
