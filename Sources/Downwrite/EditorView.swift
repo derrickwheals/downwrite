@@ -85,6 +85,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var onCopyControlInvalidated: ((NSRect) -> Void)?
     /// Where Copy Code Block puts the code. Tests use a private named pasteboard so the person's clipboard is left alone.
     var codeCopyPasteboard = NSPasteboard.general
+    /// The pasteboard Edit ▸ Paste reads for what Downwrite handles itself (a URL over a selection, and pasted images). Tests use a
+    /// private named pasteboard so the person's clipboard is left alone.
+    var imagePasteboard = NSPasteboard.general
     /// How long the tick stays on a copied block's control (a test shortens it).
     var codeCopyTickDuration: TimeInterval = 1.5
     var codeCopyTickTimer: Timer?

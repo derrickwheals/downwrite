@@ -358,7 +358,8 @@ final class EditorTextView: NSTextView {
     /// Pasting a URL over selected text turns the selection into a link.
     override func paste(_ sender: Any?) {
         let sel = selectedRange()
-        if sel.length > 0, let s = NSPasteboard.general.string(forType: .string), Formatter.looksLikeURL(s),
+        let pasteboard = coordinator?.imagePasteboard ?? .general
+        if sel.length > 0, let s = pasteboard.string(forType: .string), Formatter.looksLikeURL(s),
            !(string as NSString).substring(with: sel).contains("\n") {
             let text = (string as NSString).substring(with: sel)
             let link = "[\(text)](\(s.trimmingCharacters(in: .whitespacesAndNewlines)))"
