@@ -422,6 +422,18 @@ final class ImageIntakeTests: XCTestCase {
         XCTAssertNil(properties[kCGImagePropertyGPSDictionary], "no location appears")
     }
 
+    func testNoOrientationTagIsAddedToAPhotoThatHadNone() throws {
+        let folder = try makeFolder()
+        let photo = ImageFixtures.jpeg(width: 800, height: 600, noise: true, quality: 1.0)
+        XCTAssertNil(ImageFixtures.properties(of: photo)[kCGImagePropertyOrientation])
+        let result = try prepare(.pasted(photo), in: folder, maxBytes: photo.count / 3)
+        XCTAssertFalse(result.notes.isEmpty)
+        let properties = ImageFixtures.properties(of: try Data(contentsOf: result.fileURL))
+        XCTAssertNil(properties[kCGImagePropertyOrientation], "nothing is added (R13)")
+        XCTAssertNil(properties[kCGImagePropertyTIFFDictionary])
+        XCTAssertNil(properties[kCGImagePropertyGPSDictionary])
+    }
+
     func testAConvertedHEICCarriesItsMetadataOver() throws {
         let heic = try XCTUnwrap(ImageFixtures.heic(properties: ImageFixtures.photoMetadata), "this system has no HEIC encoder")
         let folder = try makeFolder()

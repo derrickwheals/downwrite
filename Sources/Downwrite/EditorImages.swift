@@ -15,17 +15,11 @@ struct ImageJob {
     /// Files promised by the drag (Photos, some browsers), being received into a temporary folder of their own.
     var promised: PromisedFiles?
     var skippedFiles: [String]
-    /// The selection (paste) or the insertion point (drop) in `snapshot`.
+    /// Where the images go: the selection (paste) or the insertion point (drop), kept current as the text is edited while the work runs
+    /// (`textView(_:shouldChangeTextIn:replacementString:)` moves it through every edit).
     var position: NSRange
-    var snapshot: String
     /// An earlier job that was waiting for the same place: this one goes after what that one inserts, so a quick ⌘V⌘V keeps its order.
     var follows: Int?
-}
-
-/// Where a finished job left the text and the caret.
-struct ImageInsertion {
-    var text: String
-    var caret: NSRange
 }
 
 extension EditorCoordinator {
@@ -57,7 +51,7 @@ extension EditorCoordinator {
         guard analysis.length == tv.textStorage?.length,
               ImagePlacement.edit(links: ["![](assets/x.png)"], in: analysis, text: tv.string, selection: position) != nil else { return false }
         watchWindowClosing(tv.window)
-        let job = ImageJob(id: nextImageJobID, kind: kind, sources: sources, promised: promised, skippedFiles: skipped, position: position, snapshot: tv.string,
+        let job = ImageJob(id: nextImageJobID, kind: kind, sources: sources, promised: promised, skippedFiles: skipped, position: position,
                            follows: pendingImageJobs.last.flatMap { $0.position == position ? $0.id : nil })
         nextImageJobID += 1
         pendingImageJobs.append(job)
@@ -87,10 +81,7 @@ extension EditorCoordinator {
     // MARK: Running a job
 
     private func runImageJob(_ job: ImageJob) async {
-        defer {
-            pendingImageJobs.removeAll { $0.id == job.id }
-            if pendingImageJobs.isEmpty { imageInsertions.removeAll() }
-        }
+        defer { pendingImageJobs.removeAll { $0.id == job.id } }
         guard isImageWindowOpen else { job.promised?.discard(); return }
 
         var folder = imageDocumentFolder()
@@ -131,7 +122,7 @@ extension EditorCoordinator {
 
         flushPendingAnalysis()
         let text = tv.string
-        let position = rememberedPosition(of: job, in: text)
+        let position = pendingImageJobs.first { $0.id == job.id }.map { clamp($0.position, to: text.utf16.count) } ?? job.position
         guard analysis.length == text.utf16.count,
               let edit = ImagePlacement.edit(links: prepared.map(\.link), in: analysis, text: text, selection: position) else {
             // The place turned into something R5 refuses while the files were being made (P1): nothing is inserted.
@@ -145,7 +136,8 @@ extension EditorCoordinator {
         openFoldsHidingImages(at: edit.range.location)
         tv.apply(edit)
         tv.undoManager?.setActionName(actionName(for: job.kind, count: prepared.count))
-        imageInsertions[job.id] = ImageInsertion(text: tv.string, caret: edit.selection)
+        // A job queued at the same place goes after this one's links, not before them (the tracking above leaves it before).
+        for index in pendingImageJobs.indices where pendingImageJobs[index].follows == job.id { pendingImageJobs[index].position = edit.selection }
 
         announceImages(prepared)
         var lines: [String] = []
@@ -166,13 +158,45 @@ extension EditorCoordinator {
 
     private var isImageWindowOpen: Bool { textView?.window != nil && !imageWindowClosed }
 
-    /// Where the job's images go now: the remembered place moved through whatever was typed since (R20), or, for a job queued
-    /// behind another at the same place, the caret that one left.
-    private func rememberedPosition(of job: ImageJob, in text: String) -> NSRange {
-        if let earlier = job.follows, let done = imageInsertions[earlier] {
-            return TextDiff.replacement(from: done.text, to: text).map { TextDiff.map(done.caret, through: $0) } ?? done.caret
+    private func clamp(_ range: NSRange, to length: Int) -> NSRange {
+        let location = min(max(0, range.location), length)
+        return NSRange(location: location, length: min(range.length, length - location))
+    }
+
+    // MARK: Following the edits made while the work runs (R20)
+
+    /// Every edit the text system is about to make (typing, paste, undo, a command) moves the places the waiting jobs are aimed at,
+    /// exactly: a caret before the edit stays, one after it shifts by its length change, one inside keeps its distance. A target
+    /// selection that is typed over or into collapses to just after what was typed, so the person's text is never replaced by an
+    /// image that was asked for earlier.
+    func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
+        guard !pendingImageJobs.isEmpty else { return true }
+        let inserted = replacementString?.utf16.count ?? 0
+        for index in pendingImageJobs.indices {
+            pendingImageJobs[index].position = Self.movedThrough(edit: range, inserted: inserted, position: pendingImageJobs[index].position)
         }
-        return TextDiff.replacement(from: job.snapshot, to: text).map { TextDiff.map(job.position, through: $0) } ?? job.position
+        return true
+    }
+
+    static func movedThrough(edit: NSRange, inserted: Int, position: NSRange) -> NSRange {
+        let editEnd = NSMaxRange(edit)
+        if position.length > 0 {
+            if edit.length == 0 {                                                           // text typed without replacing anything
+                if edit.location <= position.location { return NSRange(location: position.location + inserted, length: position.length) }
+                if edit.location < NSMaxRange(position) { return NSRange(location: edit.location + inserted, length: 0) }
+                return position
+            }
+            if editEnd > position.location, edit.location < NSMaxRange(position) {           // typed over, or into, the target
+                return NSRange(location: edit.location + inserted, length: 0)
+            }
+        }
+        func point(_ p: Int) -> Int {
+            if p <= edit.location { return p }
+            if p >= editEnd { return p + inserted - edit.length }
+            return edit.location + min(p - edit.location, inserted)
+        }
+        let start = point(position.location)
+        return NSRange(location: start, length: max(0, point(NSMaxRange(position)) - start))
     }
 
     /// The links are never left hidden (R6): folds hiding the place open, and so does the fold of a heading the paragraph goes

@@ -394,7 +394,10 @@ final class EditorTextView: NSTextView {
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        coordinator?.imageDragOperation(sender) ?? super.draggingUpdated(sender)
+        guard let operation = coordinator?.imageDragOperation(sender) else { return super.draggingUpdated(sender) }
+        // AppKit scrolls for a text drag near the edge; an image drag does not go through `super`, so it scrolls here.
+        if let event = NSApp.currentEvent, event.type == .leftMouseDragged { _ = autoscroll(with: event) }
+        return operation
     }
 
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {

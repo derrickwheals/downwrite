@@ -108,7 +108,6 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var promiseStarter: PromisedFiles.Starter = PromisedFiles.appKit
     var imageQueueTail: Task<Void, Never>?
     var pendingImageJobs: [ImageJob] = []
-    var imageInsertions: [Int: ImageInsertion] = [:]
     var nextImageJobID = 0
     var imageWindowClosed = false
     var imageCloseObserver: NSObjectProtocol?
@@ -139,6 +138,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     init(text: Binding<String>) {
         self.text = text
         super.init()
+    }
+
+    deinit {
+        if let observer = imageCloseObserver { NotificationCenter.default.removeObserver(observer) }
     }
 
     // MARK: Setup

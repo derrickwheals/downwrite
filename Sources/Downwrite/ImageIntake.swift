@@ -254,8 +254,9 @@ enum ImageIntake {
                     kCGImagePropertyHasAlpha, kCGImagePropertyIsIndexed, kCGImagePropertyIsFloat, kCGImagePropertyFileSize] {
             properties.removeValue(forKey: key)
         }
-        properties[kCGImagePropertyOrientation] = 1
-        if var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+        // Only where the source has one: an orientation tag the source never had would be metadata added (R13).
+        if properties[kCGImagePropertyOrientation] != nil { properties[kCGImagePropertyOrientation] = 1 }
+        if var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any], tiff[kCGImagePropertyTIFFOrientation] != nil {
             tiff[kCGImagePropertyTIFFOrientation] = 1
             properties[kCGImagePropertyTIFFDictionary] = tiff
         }

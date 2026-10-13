@@ -910,3 +910,45 @@ final class ImagePlacementTests: XCTestCase {
         XCTAssertEqual(edit.range, NSRange(location: 4, length: 3))
     }
 }
+
+// MARK: - Found by the independent verification
+
+extension ImagePlacementTests {
+    func testTheEmptyLastLineAfterAnUnclosedFenceIsStillCode() {
+        for text in ["```\ncode\n|", "```swift\nlet x = 1\n|", "~~~\na\n|", "```\n|"] { assertRefused(text) }
+        assertPlaces("```\ncode\n```\n|", "```\ncode\n```\n\n\(link)\n\n|")            // a closed one is not
+        assertPlaces("```\ncode\n```\n\n|", "```\ncode\n```\n\n\(link)\n\n|")
+    }
+
+    func testBlanksBeforeTheCaretGoWithItSoTheLinkIsNeverIndentedIntoCode() {
+        assertPlaces("A\n\n\t|", "A\n\n\(link)\n\n|")
+        assertPlaces("A\n\n    |", "A\n\n\(link)\n\n|")
+        assertPlaces("A\n\n  |", "A\n\n\(link)\n\n|")
+        assertPlaces("A\n  |B", "A\n\n\(link)\n\n|B")
+        assertPlaces("|", "\(link)\n\n|")
+    }
+
+    func testTheResultOfEveryBlankLedCaseIsAStandaloneImage() {
+        for text in ["A\n\n\t|", "A\n\n    |", "A\n\n   |", "A\n   |B"] {
+            let marked = text.replacingOccurrences(of: "|", with: "")
+            let analysis = MarkdownAnalyzer.analyze(marked)
+            let edit = ImagePlacement.edit(links: [link], in: analysis, text: marked, selection: NSRange(location: marked.utf16.count - (text.hasSuffix("B") ? 1 : 0), length: 0))!
+            XCTAssertEqual(MarkdownAnalyzer.analyze(edit.apply(to: marked)).imageBlocks.count, 1, text.debugDescription)
+        }
+    }
+
+    func testACaretInsideACalloutMarkerAnImageOrALinkIsRefused() {
+        assertRefused("> [!NO|TE]\n> body")
+        assertRefused("> |[!NOTE]\n> body")
+        assertRefused("> [!TIP]|\n> body")
+        assertRefused("see ![al|t](b.png) here")
+        assertRefused("see [li|nk](http://x.test)")
+        assertRefused("see [link](http://x.te|st)")
+    }
+
+    func testJustOutsideAnImageOrALinkOrACalloutLineIsFine() {
+        assertPlaces("see [link](http://x.test)|", "see [link](http://x.test)\n\n\(link)\n\n|")
+        assertPlaces("|see [link](http://x.test)", "\(link)\n\n|see [link](http://x.test)")
+        assertPlaces("> [!NOTE]\n> body|", "> [!NOTE]\n> body \(link)|")
+    }
+}

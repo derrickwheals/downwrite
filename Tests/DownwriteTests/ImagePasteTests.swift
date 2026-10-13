@@ -670,3 +670,92 @@ extension ImagePasteFlowTests {
         XCTAssertFalse(fm.fileExists(atPath: r.assets.path))
     }
 }
+
+// MARK: - Found by the independent verification
+
+extension ImagePasteFlowTests {
+    func testEditsOnBothSidesWhileWorkingKeepTheLinkAfterItsParagraph() async throws {
+        let r = try rig("AAA\n\nBBB\n\nCCC\n", selection: NSRange(location: 8, length: 0))        // the end of BBB
+        let gate = DispatchSemaphore(value: 0)
+        slow(r, gate: gate)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        r.h.select(0)
+        r.h.textView.insertText("front ", replacementRange: NSRange(location: NSNotFound, length: 0))
+        r.h.select(r.text.utf16.count)
+        r.h.textView.insertText("tail", replacementRange: NSRange(location: NSNotFound, length: 0))
+        gate.signal()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "front AAA\n\nBBB\n\n\(link(pastedName))\n\nCCC\ntail")
+    }
+
+    func testTypingOverThePendingSelectionKeepsWhatWasTyped() async throws {
+        let r = try rig("Hello world", selection: NSRange(location: 6, length: 5))
+        let gate = DispatchSemaphore(value: 0)
+        slow(r, gate: gate)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        r.h.textView.insertText("bar", replacementRange: NSRange(location: 6, length: 5))
+        gate.signal()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Hello bar\n\n\(link(pastedName))\n\n", "the person's text is not replaced by an image asked for earlier")
+    }
+
+    func testUndoingWhileTheWorkRunsMovesTheTargetToo() async throws {
+        let r = try rig("Hello\n", selection: NSRange(location: 5, length: 0))
+        r.h.textView.insertText("X", replacementRange: NSRange(location: 5, length: 0))             // "HelloX", caret 6
+        let gate = DispatchSemaphore(value: 0)
+        slow(r, gate: gate)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        r.h.textView.undoManager?.undo()                                                           // takes the X away again
+        gate.signal()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Hello\n\n\(link(pastedName))\n\n")
+    }
+
+    func testTheRealNoticeSheetAppearsWhenNothingElseIsListening() async throws {
+        let r = try rig("Keep\n")
+        r.h.coordinator.onImageNotice = nil
+        let bad = r.folder.deletingLastPathComponent().appendingPathComponent("bad.png")
+        try Data("nope".utf8).write(to: bad)
+        r.pb.clearContents()
+        r.pb.writeObjects([bad as NSURL])
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        let shown = await waitUntil { r.h.window.attachedSheet != nil }
+        XCTAssertTrue(shown, "failures are explained in a sheet on the window, not only through the test seam")
+        let sheet = try XCTUnwrap(r.h.window.attachedSheet)
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        func texts(_ view: NSView) -> [String] { (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap(texts) }
+        let found = texts(sheet.contentView!)
+        XCTAssertTrue(found.contains("The image was not added"), "\(found)")
+        XCTAssertTrue(found.contains { $0.contains("“bad.png” isn't an image Downwrite can read.") }, "\(found)")
+        XCTAssertEqual(buttons(sheet.contentView!).map(\.title), ["OK"])
+        buttons(sheet.contentView!).first?.performClick(nil)
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertNil(r.h.window.attachedSheet)
+        XCTAssertEqual(r.text, "Keep\n")
+    }
+
+    func testMovingAPositionThroughAnEdit() {
+        func moved(_ position: (Int, Int), edit: (Int, Int), inserted: Int) -> (Int, Int) {
+            let r = EditorCoordinator.movedThrough(edit: NSRange(location: edit.0, length: edit.1), inserted: inserted,
+                                                   position: NSRange(location: position.0, length: position.1))
+            return (r.location, r.length)
+        }
+        // A caret: before an edit it stays, after it it shifts, at it it stays.
+        XCTAssertTrue(moved((10, 0), edit: (20, 0), inserted: 5) == (10, 0))
+        XCTAssertTrue(moved((10, 0), edit: (0, 0), inserted: 5) == (15, 0))
+        XCTAssertTrue(moved((10, 0), edit: (10, 0), inserted: 5) == (10, 0))
+        XCTAssertTrue(moved((10, 0), edit: (0, 4), inserted: 1) == (7, 0), "a delete before it")
+        // A selection: wholly before, wholly after, at its edges, typed over, typed into.
+        XCTAssertTrue(moved((10, 5), edit: (0, 0), inserted: 3) == (13, 5))
+        XCTAssertTrue(moved((10, 5), edit: (20, 0), inserted: 3) == (10, 5))
+        XCTAssertTrue(moved((10, 5), edit: (10, 0), inserted: 3) == (13, 5), "typed just before it")
+        XCTAssertTrue(moved((10, 5), edit: (15, 0), inserted: 3) == (10, 5), "typed just after it")
+        XCTAssertTrue(moved((10, 5), edit: (10, 5), inserted: 3) == (13, 0), "typed over it: the images go after what was typed")
+        XCTAssertTrue(moved((10, 5), edit: (12, 0), inserted: 3) == (15, 0), "typed into it")
+        XCTAssertTrue(moved((10, 5), edit: (8, 4), inserted: 0) == (8, 0), "a delete that covers its start")
+        XCTAssertTrue(moved((10, 5), edit: (0, 2), inserted: 0) == (8, 5), "a delete before it")
+    }
+}

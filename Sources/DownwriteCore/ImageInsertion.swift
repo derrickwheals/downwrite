@@ -313,6 +313,9 @@ public enum ImagePlacement {
     /// on any line the selection touches), when the caret or selection starts inside the leading syntax of a list item or
     /// quote line (a `-`, `1.`, `>` or task box: the link would break the block), or when `analysis` is not of `text`.
     ///
+    /// A caret strictly inside an image or a link, or in a callout's `[!TYPE]` marker, is refused too, and so is the empty last line after an
+    /// unclosed code fence.
+    ///
     /// - A body line: the links become paragraphs of their own, blank line before and after (`prefix + links.joined("\n\n") + "\n\n"`),
     ///   absorbing a blank remainder of the line and one blank line below so none pile up.
     /// - A heading: the position first moves to the end of its last line and the selection is not replaced.
@@ -333,6 +336,14 @@ public enum ImagePlacement {
             default: return nil
             }
         }
+        // An unclosed fence runs to the end of the text, but the analyzer calls the empty last line after it plain body: still code.
+        let fences = lines.indices.filter { lines[$0].kind == .fence }
+        if fences.count % 2 == 1, let open = fences.last, last == lines.count - 1, last > open { return nil }
+        // A caret inside something that must stay whole (a callout's `[!NOTE]`, an image, a link) would split it.
+        let place = selection.location
+        func strictlyInside(_ range: NSRange) -> Bool { place > range.location && place < NSMaxRange(range) }
+        if analysis.callouts.contains(where: { place >= $0.markerRange.location && place <= NSMaxRange($0.markerRange) })
+            || analysis.images.contains(where: { strictlyInside($0.range) }) || analysis.links.contains(where: { strictlyInside($0.range) }) { return nil }
         let line = lines[first]
         if line.quoteDepth > 0 || line.listDepth > 0 || line.listPrefixLength > 0 {
             return inlineEdit(links: links, line: line, ns: ns, selection: selection)
@@ -361,6 +372,10 @@ public enum ImagePlacement {
         }
 
         var replaced = range
+        if !hasTextBefore, range.location > before.range.location {
+            // Only blanks before the caret on its line: they go with it, or a tab or four spaces would make the link a code line.
+            replaced = NSRange(location: before.range.location, length: range.length + (range.location - before.range.location))
+        }
         let after = lines[lastLine]
         if isBlank(ns, NSRange(location: NSMaxRange(range), length: after.contentEnd - NSMaxRange(range))) {
             // Nothing but white space follows on the line: take its terminator, and a blank line below, so the "\n\n" added
