@@ -150,6 +150,7 @@ final class EditorTextView: NSTextView {
         super.draw(dirtyRect)
         // After the text, so the copy control covers whatever the first line of its card puts under it.
         (layoutManager as? DWLayoutManager)?.drawCodeCopyControls(in: dirtyRect, origin: textContainerOrigin)
+        (layoutManager as? DWLayoutManager)?.drawDropMarker(in: dirtyRect, origin: textContainerOrigin)
         guard string.isEmpty, !hasMarkedText(), let coordinator, let styler = coordinator.styler else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: coordinator.typography.font(),
@@ -380,6 +381,38 @@ final class EditorTextView: NSTextView {
             return
         }
         super.paste(sender)
+    }
+
+    // MARK: Dropping images (DW-002)
+
+    // An image drag (image files, file promises, image data: `ImagePasteRule`, in a place R5 allows) is handled by the coordinator;
+    // AppKit refuses image data outright, and would insert a file's path as text. Every other drag, text dragged within the editor
+    // included, goes to AppKit unchanged.
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        coordinator?.imageDragOperation(sender) ?? super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        coordinator?.imageDragOperation(sender) ?? super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        coordinator?.setDropMarker(nil)
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        coordinator?.isImageDrag(sender) == true ? true : super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        coordinator?.performImageDrop(sender) ?? super.performDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: (any NSDraggingInfo)?) {
+        coordinator?.setDropMarker(nil)
+        super.concludeDragOperation(sender)
     }
 
     // MARK: Mouse

@@ -6,6 +6,8 @@ final class FakeDraggingInfo: NSObject, NSDraggingInfo {
     let window: NSWindow?
     var location: NSPoint
     var operationMask: NSDragOperation = [.copy, .generic, .move, .link]
+    /// What the drag started from: the editor itself for text dragged within it, nil for another app.
+    var source: Any?
 
     /// `location` is in the window's coordinates, as `draggingLocation` is.
     init(pasteboard: NSPasteboard, window: NSWindow?, location: NSPoint) {
@@ -20,7 +22,7 @@ final class FakeDraggingInfo: NSObject, NSDraggingInfo {
     var draggedImageLocation: NSPoint { location }
     var draggedImage: NSImage? { nil }
     var draggingPasteboard: NSPasteboard { pasteboard }
-    var draggingSource: Any? { nil }
+    var draggingSource: Any? { source }
     var draggingSequenceNumber: Int { 1 }
     var draggingFormation: NSDraggingFormation = .default
     var animatesToDestination = false

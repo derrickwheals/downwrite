@@ -12,6 +12,8 @@ struct ImageJob {
     var id: Int
     var kind: Kind
     var sources: [ImageSource]
+    /// Files promised by the drag (Photos, some browsers), being received into a temporary folder of their own.
+    var promised: PromisedFiles?
     var skippedFiles: [String]
     /// The selection (paste) or the insertion point (drop) in `snapshot`.
     var position: NSRange
@@ -49,13 +51,13 @@ extension EditorCoordinator {
     }
 
     /// Remembers the place and queues the work. False when R5 refuses the place (the text is analysed afresh first).
-    func enqueueImages(kind: ImageJob.Kind, sources: [ImageSource], skipped: [String], at position: NSRange) -> Bool {
+    func enqueueImages(kind: ImageJob.Kind, sources: [ImageSource], promised: PromisedFiles? = nil, skipped: [String], at position: NSRange) -> Bool {
         guard let tv = textView, tv.window != nil else { return false }
         flushPendingAnalysis()
         guard analysis.length == tv.textStorage?.length,
               ImagePlacement.edit(links: ["![](assets/x.png)"], in: analysis, text: tv.string, selection: position) != nil else { return false }
         watchWindowClosing(tv.window)
-        let job = ImageJob(id: nextImageJobID, kind: kind, sources: sources, skippedFiles: skipped, position: position, snapshot: tv.string,
+        let job = ImageJob(id: nextImageJobID, kind: kind, sources: sources, promised: promised, skippedFiles: skipped, position: position, snapshot: tv.string,
                            follows: pendingImageJobs.last.flatMap { $0.position == position ? $0.id : nil })
         nextImageJobID += 1
         pendingImageJobs.append(job)
@@ -89,23 +91,33 @@ extension EditorCoordinator {
             pendingImageJobs.removeAll { $0.id == job.id }
             if pendingImageJobs.isEmpty { imageInsertions.removeAll() }
         }
-        guard isImageWindowOpen else { return }
+        guard isImageWindowOpen else { job.promised?.discard(); return }
 
         var folder = imageDocumentFolder()
         if folder == nil {
-            guard let saved = await requestImageSave(count: job.sources.count) else { return }       // Cancel: nothing is written (R17)
+            guard let saved = await requestImageSave(count: job.sources.count + (job.promised == nil ? 0 : 1)) else {      // Cancel: nothing is written (R17)
+                job.promised?.discard()
+                return
+            }
             folder = saved.deletingLastPathComponent()
         }
-        guard let folder, isImageWindowOpen else { return }
+        guard let folder, isImageWindowOpen else { job.promised?.discard(); return }
 
-        let (now, zone, cap, prepare, sources) = (imageClock(), imageTimeZone, imageMaxBytes, imagePrepare, job.sources)
+        var sources = job.sources
+        var problems: [String] = []
+        if let promised = job.promised {
+            let received = await promised.wait()
+            sources += received.urls.map(ImageSource.file)
+            if received.failures > 0 { problems.append("\(received.failures == 1 ? "A file" : "\(received.failures) files") could not be received from the app it was dragged from.") }
+        }
+        let (now, zone, cap, prepare) = (imageClock(), imageTimeZone, imageMaxBytes, imagePrepare)
         let outcomes: [Result<PreparedImage, Error>] = await Task.detached(priority: .userInitiated) {
             sources.map { source in Result { try prepare(source, folder, now, zone, cap) } }
         }.value
+        job.promised?.discard()                                         // the promised files have been copied (or refused) by now
         guard isImageWindowOpen, let tv = textView else { return }                    // the files stay in assets/ (R20)
 
         var prepared: [PreparedImage] = []
-        var problems: [String] = []
         for outcome in outcomes {
             switch outcome {
             case .success(let image): prepared.append(image)

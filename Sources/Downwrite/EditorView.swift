@@ -104,6 +104,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// the standard sheet (see `EditorImages.swift`).
     var requestSave: (() async -> URL?)?
     /// Paste and drop jobs: a serial queue (the tail), the ones still waiting or running, and where each finished one left the caret.
+    /// How a dragged-in file promise is received (see `PromisedFiles`): AppKit's, except in tests.
+    var promiseStarter: PromisedFiles.Starter = PromisedFiles.appKit
     var imageQueueTail: Task<Void, Never>?
     var pendingImageJobs: [ImageJob] = []
     var imageInsertions: [Int: ImageInsertion] = [:]

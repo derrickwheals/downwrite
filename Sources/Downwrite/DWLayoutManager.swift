@@ -257,6 +257,48 @@ final class DWLayoutManager: NSLayoutManager {
         return NSRect(x: line.maxX - Self.copyControlInset - side, y: line.minY - Self.cardPad + Self.copyControlInset, width: side, height: side)
     }
 
+    // MARK: Drop marker
+
+    /// Where an image dragged over the editor would go (a character index), marked with a thin bar like the caret's. The editor
+    /// draws it itself for an image drag because AppKit does not mark one (it refuses image data, and there is no way to see whether
+    /// it marks a file). nil: no image drag is over the text.
+    var dropMarkerIndex: Int?
+    var dropMarkerColor = NSColor.controlAccentColor
+    static let dropMarkerWidth: CGFloat = 2
+
+    /// The marker's rectangle (text container coordinates): a bar as tall as the line, centred on the left edge of the character at
+    /// `index`, or on the end of the text.
+    func dropMarkerRect(forCharacterAt index: Int) -> NSRect? {
+        guard let storage = textStorage, textContainers.first != nil else { return nil }
+        let at = min(max(index, 0), storage.length)
+        let width = Self.dropMarkerWidth
+        if at < storage.length {
+            let glyph = glyphIndexForCharacter(at: at)
+            let used = lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+            let x = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minX + location(forGlyphAt: glyph).x
+            return NSRect(x: x - width / 2, y: used.minY, width: width, height: used.height)
+        }
+        if numberOfGlyphs > 0 {
+            let glyph = numberOfGlyphs - 1
+            let used = lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+            let atEndOfLine = extraLineFragmentRect.height > 0
+            if atEndOfLine { return NSRect(x: extraLineFragmentRect.minX - width / 2, y: extraLineFragmentRect.minY, width: width, height: extraLineFragmentRect.height) }
+            let x = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainers[0]).maxX
+            return NSRect(x: x - width / 2, y: used.minY, width: width, height: used.height)
+        }
+        let extra = extraLineFragmentRect
+        return extra.height > 0 ? NSRect(x: extra.minX - width / 2, y: extra.minY, width: width, height: extra.height) : nil
+    }
+
+    /// Draws the marker over the text; the text view calls this after the text. `rect` is the dirty rectangle in view coordinates.
+    func drawDropMarker(in rect: NSRect, origin: NSPoint) {
+        guard let index = dropMarkerIndex, let box = dropMarkerRect(forCharacterAt: index) else { return }
+        let target = box.offsetBy(dx: origin.x, dy: origin.y)
+        guard target.intersects(rect) else { return }
+        dropMarkerColor.setFill()
+        NSBezierPath(roundedRect: target, xRadius: 1, yRadius: 1).fill()
+    }
+
     /// Draws the control of every block that shows one on top of everything else, so it covers the code that runs under it. The text
     /// view calls this after the text; `rect` is the dirty rectangle in view coordinates.
     func drawCodeCopyControls(in rect: NSRect, origin: NSPoint) {
