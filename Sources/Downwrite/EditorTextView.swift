@@ -355,8 +355,21 @@ final class EditorTextView: NSTextView {
         return ListEditing.isListLine(in: string, selection: sel)
     }
 
-    /// Pasting a URL over selected text turns the selection into a link.
+    /// Images on the pasteboard are saved next to the document and linked (DW-002); the coordinator takes the paste or leaves it to
+    /// the code below. Paste and Match Style and rich-text paste are other commands and never come here.
     override func paste(_ sender: Any?) {
+        if coordinator?.pasteImages() == true { return }
+        pasteOtherThanImages(sender)
+    }
+
+    /// Edit ▸ Paste is available for an image-only pasteboard too: the text view alone cannot read one and would disable it.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSText.paste(_:)), coordinator?.canPasteImages() == true { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    /// Pasting a URL over selected text turns the selection into a link.
+    private func pasteOtherThanImages(_ sender: Any?) {
         let sel = selectedRange()
         let pasteboard = coordinator?.imagePasteboard ?? .general
         if sel.length > 0, let s = pasteboard.string(forType: .string), Formatter.looksLikeURL(s),

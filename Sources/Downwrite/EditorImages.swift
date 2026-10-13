@@ -39,6 +39,15 @@ extension EditorCoordinator {
         return enqueueImages(kind: .paste, sources: pasted.sources, skipped: pasted.skippedFiles, at: tv.selectedRange())
     }
 
+    /// Whether Edit ▸ Paste should be available for what is on the pasteboard: images that win (R3) and a place R5 allows. The text
+    /// view alone would disable Paste for an image-only pasteboard (it cannot read one), so ⌘V would never arrive. Only the types
+    /// are looked at; no image data is copied.
+    func canPasteImages() -> Bool {
+        guard let tv = textView, !tv.hasMarkedText(), ImagePasteRule.prefersImages(ImageIntake.read(imagePasteboard, copyingData: false).content) else { return false }
+        guard analysis.length == tv.textStorage?.length else { return true }             // an analysis that is a moment behind: let the paste decide
+        return ImagePlacement.edit(links: ["![](assets/x.png)"], in: analysis, text: tv.string, selection: tv.selectedRange()) != nil
+    }
+
     /// Remembers the place and queues the work. False when R5 refuses the place (the text is analysed afresh first).
     func enqueueImages(kind: ImageJob.Kind, sources: [ImageSource], skipped: [String], at position: NSRange) -> Bool {
         guard let tv = textView, tv.window != nil else { return false }

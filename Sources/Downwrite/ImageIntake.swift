@@ -379,16 +379,17 @@ extension ImageIntake {
     ]
 
     /// The bytes of image data are copied now (the pasteboard may change); files are only named, and read later off the main
-    /// thread. Files win over data when both are present (Finder's copy of a file may carry a preview of it).
-    static func read(_ pasteboard: NSPasteboard) -> PasteboardImages {
+    /// thread. Files win over data when both are present (Finder's copy of a file may carry a preview of it). `copyingData: false`
+    /// only looks at the types, which is all a menu needs to know whether Paste is available.
+    static func read(_ pasteboard: NSPasteboard, copyingData: Bool = true) -> PasteboardImages {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         let imageFiles = urls.filter(isImageFile)
         let otherFiles = urls.filter { !isImageFile($0) }
         var dataSources: [ImageSource] = []
         for item in pasteboard.pasteboardItems ?? [] {
-            if let type = dataTypes.first(where: { item.types.contains($0) }), let data = item.data(forType: type) {
-                dataSources.append(.pasted(data))
-            }
+            guard let type = dataTypes.first(where: { item.types.contains($0) }) else { continue }
+            if !copyingData { dataSources.append(.pasted(Data())); continue }
+            if let data = item.data(forType: type) { dataSources.append(.pasted(data)) }
         }
         let content = PasteboardImageContent(plainText: pasteboard.string(forType: .string), hasImageData: !dataSources.isEmpty,
                                              imageFileNames: imageFiles.map(\.lastPathComponent), hasOtherFiles: !otherFiles.isEmpty)

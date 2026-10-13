@@ -551,3 +551,84 @@ final class ImagePasteFlowTests: XCTestCase {
         XCTAssertEqual(data, png, "PNG comes before TIFF")
     }
 }
+
+// MARK: - The paste command (step 10)
+
+extension ImagePasteFlowTests {
+    func testThePasteCommandTakesAnImagePaste() async throws {
+        let r = try rig("Hello world\n")
+        putPNG(r.pb)
+        r.h.textView.paste(nil)
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Hello world\n\n\(link(pastedName))\n\n")
+        XCTAssertEqual(files(r), [pastedName])
+    }
+
+    func testAnImageWithItsURLBeatsMakingALinkThroughThePasteCommand() async throws {
+        let r = try rig("Hello world", selection: NSRange(location: 6, length: 5))
+        r.pb.clearContents()
+        r.pb.declareTypes([.png, .string], owner: nil)
+        r.pb.setData(ImageFixtures.png(), forType: .png)
+        r.pb.setString("https://example.com/cat.png", forType: .string)
+        r.h.textView.paste(nil)
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Hello \n\n\(link(pastedName))\n\n")
+    }
+
+    func testAURLAloneOverASelectionStillMakesALinkAndWritesNothing() async throws {
+        let r = try rig("Hello world\n", selection: NSRange(location: 6, length: 5))
+        r.pb.clearContents()
+        r.pb.setString("https://example.com/page", forType: .string)
+        r.h.textView.paste(nil)
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Hello [world](https://example.com/page)\n")
+        XCTAssertFalse(fm.fileExists(atPath: r.assets.path))
+    }
+
+    func testThePasteMenuItemIsAvailableForAnImagePasteboardOnly() throws {
+        let r = try rig("Hello\n")
+        let item = NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.textView.validateUserInterfaceItem(item), "an image-only pasteboard: the text view alone would disable Paste")
+        XCTAssertTrue(r.h.coordinator.canPasteImages())
+        r.pb.clearContents()
+        r.pb.setString("just text", forType: .string)
+        XCTAssertFalse(r.h.coordinator.canPasteImages())
+        r.pb.clearContents()
+        r.pb.declareTypes([.png, .string], owner: nil)
+        r.pb.setData(ImageFixtures.png(), forType: .png)
+        r.pb.setString("Name\tQty\n1\t2", forType: .string)
+        XCTAssertFalse(r.h.coordinator.canPasteImages(), "spreadsheet text wins")
+    }
+
+    func testThePasteMenuItemIsNotOfferedWhereImagesCannotGo() throws {
+        let r = try rig("```\ncode\n```\n", selection: NSRange(location: 6, length: 0))
+        putPNG(r.pb)
+        XCTAssertFalse(r.h.coordinator.canPasteImages())
+    }
+
+    func testLookingAtThePasteboardForTheMenuCopiesNoData() throws {
+        let r = try rig("")
+        putPNG(r.pb, ImageFixtures.png(width: 200, height: 200, noise: true))
+        let cheap = ImageIntake.read(r.pb, copyingData: false)
+        let full = ImageIntake.read(r.pb)
+        XCTAssertEqual(cheap.content, full.content)
+        guard case .bytes(let placeholder)? = cheap.sources.first?.origin else { return XCTFail("bytes expected") }
+        XCTAssertTrue(placeholder.isEmpty, "the menu check never holds the image")
+    }
+
+    func testPasteAndMatchStyleAndTheOtherPastesAreStillAppKits() {
+        for selector in [#selector(NSTextView.pasteAsPlainText(_:)), #selector(NSTextView.pasteAsRichText(_:)),
+                         #selector(NSTextView.pasteFont(_:)), #selector(NSTextView.pasteRuler(_:))] {
+            let ours = method_getImplementation(class_getInstanceMethod(EditorTextView.self, selector)!)
+            let appkits = method_getImplementation(class_getInstanceMethod(NSTextView.self, selector)!)
+            XCTAssertEqual(ours, appkits, "\(selector) is not overridden, so it never inserts an image (R1)")
+        }
+    }
+
+    func testATableCellIsNotTheEditorAndSoNeverTakesAnImagePaste() {
+        XCTAssertFalse(TableCellView.self.isSubclass(of: EditorTextView.self), "its paste (R4) is its own and untouched")
+        XCTAssertNotEqual(method_getImplementation(class_getInstanceMethod(TableCellView.self, #selector(NSText.paste(_:)))!),
+                          method_getImplementation(class_getInstanceMethod(EditorTextView.self, #selector(NSText.paste(_:)))!))
+    }
+}
