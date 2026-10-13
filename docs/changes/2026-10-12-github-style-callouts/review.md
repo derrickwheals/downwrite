@@ -6,7 +6,7 @@ reviewed: 2026-10-13
 base: main
 head: 8429e9eb9e0f7f11484953c461c126d1614d613a
 reproven: e0bdc5edfe756e5414756ffb3a1bd3f6602a7bdb
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/21
 ---
 
 # Review: Show GitHub-style callouts (> [!NOTE]) as callouts
