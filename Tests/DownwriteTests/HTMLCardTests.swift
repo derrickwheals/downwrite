@@ -130,12 +130,13 @@ final class HTMLCardTests: XCTestCase {
         let words = Array(repeating: "wrapping words", count: 60).joined(separator: " ")
         let h = EditorHarness(text: "<p>\(words)</p>\n\nafter\n")
         h.select(h.index(of: "after"))
-        let ok = await waitUntil { self.reserved(h, 0) > 40 }
-        XCTAssertTrue(ok)
+        // (A web view on a shared CI runner can need a good deal longer than the 25 s default for its first load, so wait up to a minute.)
+        let ok = await waitUntil(timeout: 60) { self.reserved(h, 0) > 40 }
+        XCTAssertTrue(ok, "the HTML card never reported a height: reserved \(h.coordinator.overlay.reservedHeights), \(cards(h).count) card view(s), column \(h.textView.frame.width) pt")
         let wide = reserved(h, 0)
         h.window.setContentSize(NSSize(width: 500, height: 760))
         h.textView.setFrameSize(NSSize(width: 500, height: h.textView.frame.height))      // (schedules the reposition that measures again)
-        let again = await waitUntil { self.reserved(h, 0) > wide + 20 }
+        let again = await waitUntil(timeout: 60) { self.reserved(h, 0) > wide + 20 }
         XCTAssertTrue(again, "a narrower column wraps more: \(wide) → \(reserved(h, 0))")
         let settled = await waitUntil { h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis).isEmpty }
         XCTAssertTrue(settled, "\(h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis))")
