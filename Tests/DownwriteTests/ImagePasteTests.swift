@@ -759,3 +759,72 @@ extension ImagePasteFlowTests {
         XCTAssertTrue(moved((10, 5), edit: (0, 2), inserted: 0) == (8, 5), "a delete before it")
     }
 }
+
+// MARK: - A document moved with its assets folder (found by hand)
+
+extension ImagePasteFlowTests {
+    private var settings: EditorSettings { EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720) }
+
+    /// A folder holding `doc.md` and `assets/pic.png` (a 300 × 150 image) and the editor text that links it.
+    private func movableDocument() throws -> (folder: URL, text: String) {
+        let root = fm.temporaryDirectory.appendingPathComponent("downwrite-move-\(UUID().uuidString)", isDirectory: true)
+        let folder = root.appendingPathComponent("Original", isDirectory: true)
+        try fm.createDirectory(at: folder.appendingPathComponent("assets"), withIntermediateDirectories: true)
+        try ImageFixtures.png(width: 300, height: 150).write(to: folder.appendingPathComponent("assets/pic.png"))
+        addTeardownBlock { [fm] in try? fm.removeItem(at: root) }
+        let text = "intro\n\n![](assets/pic.png)\n\nafter\n"
+        try text.write(to: folder.appendingPathComponent("doc.md"), atomically: true, encoding: .utf8)
+        return (folder, text)
+    }
+
+    /// The card is showing the picture (its room is the image's, not the 56 pt of an error line).
+    private func showsPicture(_ h: EditorHarness) async -> Bool {
+        await waitUntil(timeout: 10) { (h.coordinator.overlay.reservedHeights[2] ?? 0) > 100 }
+    }
+
+    func testAnImageIsFoundWhenTheDocumentsURLArrivesAfterTheViewIsMade() async throws {
+        // SwiftUI makes the editor first and hands it the file's URL in the update that follows.
+        let (folder, text) = try movableDocument()
+        let h = EditorHarness(text: text, fileURL: nil)
+        h.window.makeKeyAndOrderFront(nil)
+        h.coordinator.fileURL = folder.appendingPathComponent("doc.md")
+        h.coordinator.update(text: text, settings: settings)
+        let found = await showsPicture(h)
+        XCTAssertTrue(found, "the picture appears once the URL is known; reserved \(String(describing: h.coordinator.overlay.reservedHeights))")
+    }
+
+    func testTheImagesAreFoundAgainWhenTheDocumentAndItsAssetsFolderMove() async throws {
+        let (folder, text) = try movableDocument()
+        let h = EditorHarness(text: text, fileURL: folder.appendingPathComponent("doc.md"))
+        h.window.makeKeyAndOrderFront(nil)
+        let before = await showsPicture(h)
+        XCTAssertTrue(before)
+        // Move the document and its assets folder, together, to a folder with another name, as Finder does.
+        let moved = folder.deletingLastPathComponent().appendingPathComponent("Moved here", isDirectory: true)
+        try fm.moveItem(at: folder, to: moved)
+        h.coordinator.fileURL = moved.appendingPathComponent("doc.md")            // SwiftUI hands over the new URL
+        h.coordinator.update(text: text, settings: settings)
+        // Something later makes the card render again (a theme change, the window resizing wide, a new Mermaid run …).
+        h.coordinator.appearanceDidChange()
+        h.window.appearance = NSAppearance(named: .darkAqua)
+        h.coordinator.appearanceDidChange()
+        let stillThere = await waitUntil(timeout: 10) { (h.coordinator.overlay.reservedHeights[2] ?? 0) > 100 }
+        XCTAssertTrue(stillThere, "after the move, a fresh render must find assets/pic.png next to the moved document")
+    }
+
+    func testAnOpenDocumentWhoseFolderChangesRendersItsCardsAgainFromTheNewFolder() async throws {
+        let (folder, text) = try movableDocument()
+        // First rendered from a folder where the picture does not exist (an error card) ...
+        let empty = folder.deletingLastPathComponent().appendingPathComponent("Empty", isDirectory: true)
+        try fm.createDirectory(at: empty, withIntermediateDirectories: true)
+        let h = EditorHarness(text: text, fileURL: empty.appendingPathComponent("doc.md"))
+        h.window.makeKeyAndOrderFront(nil)
+        let errored = await waitUntil(timeout: 10) { h.coordinator.overlay.reservedHeights[2] == 56 }
+        XCTAssertTrue(errored, "an image that is not there is an error card")
+        // ... then the document is where the picture is.
+        h.coordinator.fileURL = folder.appendingPathComponent("doc.md")
+        h.coordinator.update(text: text, settings: settings)
+        let found = await showsPicture(h)
+        XCTAssertTrue(found, "a change of the document's folder renders the cards again")
+    }
+}

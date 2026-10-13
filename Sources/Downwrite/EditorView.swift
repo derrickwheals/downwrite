@@ -48,7 +48,20 @@ struct EditorView: NSViewRepresentable {
 final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
     var text: Binding<String>
     var fileURL: URL? {
-        didSet { if fileURL != oldValue { watchedDate = Self.modificationDate(of: fileURL) } }
+        didSet {
+            guard fileURL != oldValue else { return }
+            watchedDate = Self.modificationDate(of: fileURL)
+            refreshPreviewBase()
+        }
+    }
+
+    /// The document's folder is what relative image paths mean, so when the document gets a URL (SwiftUI hands it over after the view is
+    /// made) or a different one (it was moved with its images, or saved elsewhere) the cards are rendered again from it, without
+    /// waiting for the next edit.
+    private func refreshPreviewBase() {
+        guard let overlay, styler != nil, textView != nil else { return }
+        overlay.baseURL = fileURL?.deletingLastPathComponent()
+        overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark, style: htmlStyle)
     }
     private(set) weak var textView: EditorTextView?
     private weak var scroll: NSScrollView?
