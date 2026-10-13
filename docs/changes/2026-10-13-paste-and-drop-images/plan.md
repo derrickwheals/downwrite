@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-13-paste-and-drop-images
 intent: ./intent.md
 spec: ./spec.md
-status: approved       # draft | approved | in-progress | done
+status: in-progress    # draft | approved | in-progress | done
 approved: 2026-10-14
 branch: change/2026-10-13-paste-and-drop-images
 ---
@@ -59,7 +59,7 @@ Docs:
 
 Core first, each step a commit with its tests (test before code where it reads naturally):
 
-- [ ] 1. `ImageFormat.sniff`, `saved`, `fileExtension`, `ImageLimits`: tests for PNG, JPEG, GIF, WebP, HEIC/HEIF, TIFF (both byte orders), BMP, SVG (plain, with an XML prolog, a BOM, a comment first), and bytes that are none of them.
+- [x] 1. `ImageFormat.sniff`, `saved`, `fileExtension`, `ImageLimits`: tests for PNG, JPEG, GIF, WebP, HEIC/HEIF, TIFF (both byte orders), BMP, SVG (plain, with an XML prolog, a BOM, a comment first), and bytes that are none of them.
 - [ ] 2. `ImageNaming`: `pastedName` (zero padding, the given time zone, not the machine's), `droppedName` (every character class in R9, NFC, 60-character cut that never splits a scalar, empty stem to `image`, leading dots), `firstFree` (`-2`, `-3`, bounded).
 - [ ] 3. `ImageLink`: `markdown(path:)` for a space, `( ) # ? % é 日本`, a segment per component; `relativePath` inside, outside, the same folder, the root `/Docs` against `/Docs2`, and the file being the folder itself.
 - [ ] 4. `ImageShrink.nextLongEdge`: strictly decreasing, always ends (`nil` at the floor), a huge ratio, a ratio near 1.
