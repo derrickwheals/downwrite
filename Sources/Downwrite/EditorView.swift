@@ -88,6 +88,28 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// The pasteboard Edit ▸ Paste reads for what Downwrite handles itself (a URL over a selection, and pasted images). Tests use a
     /// private named pasteboard so the person's clipboard is left alone.
     var imagePasteboard = NSPasteboard.general
+    /// Names a pasted image (`image-YYYYMMDD-HHMMSS`) from this clock and time zone. Tests fix them.
+    var imageClock: () -> Date = { Date() }
+    var imageTimeZone: TimeZone = .current
+    /// The size the preview and the export accept. A test lowers it instead of making a huge image.
+    var imageMaxBytes = ImageLoader.maxEmbeddedBytes
+    /// Reads, converts and writes one image (source, document folder, now, time zone, size cap); it runs off the main thread. A
+    /// test swaps in a slow one.
+    var imagePrepare: @Sendable (ImageSource, URL, Date, TimeZone, Int) throws -> PreparedImage = {
+        try ImageIntake.prepare($0, documentFolder: $1, now: $2, timeZone: $3, maxBytes: $4)
+    }
+    /// Shows the sheet that says what happened to an image (R21, R22). Tests record the title and message instead.
+    var onImageNotice: ((_ title: String, _ message: String) -> Void)?
+    /// Asks the person to save an untitled document first (R17); returns the saved file, or nil if they cancelled. nil here means
+    /// the standard sheet (see `EditorImages.swift`).
+    var requestSave: (() async -> URL?)?
+    /// Paste and drop jobs: a serial queue (the tail), the ones still waiting or running, and where each finished one left the caret.
+    var imageQueueTail: Task<Void, Never>?
+    var pendingImageJobs: [ImageJob] = []
+    var imageInsertions: [Int: ImageInsertion] = [:]
+    var nextImageJobID = 0
+    var imageWindowClosed = false
+    var imageCloseObserver: NSObjectProtocol?
     /// How long the tick stays on a copied block's control (a test shortens it).
     var codeCopyTickDuration: TimeInterval = 1.5
     var codeCopyTickTimer: Timer?

@@ -360,3 +360,47 @@ enum ImageIntake {
         return text.prefix(1).lowercased() + text.dropFirst().replacingOccurrences(of: ".", with: "")
     }
 }
+
+// MARK: - Reading a pasteboard
+
+/// What an image paste (or drop) holds, read at the moment it happens: the summary `ImagePasteRule` decides on, what to add, and
+/// the files that are not images and will be skipped (R16).
+struct PasteboardImages {
+    var content: PasteboardImageContent
+    var sources: [ImageSource]
+    var skippedFiles: [String]
+}
+
+extension ImageIntake {
+    /// Image data in the order R12 takes it: PNG, JPEG, GIF, WebP, HEIC, TIFF.
+    static let dataTypes: [NSPasteboard.PasteboardType] = [
+        .png, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("com.compuserve.gif"),
+        NSPasteboard.PasteboardType("org.webmproject.webp"), NSPasteboard.PasteboardType("public.heic"), .tiff,
+    ]
+
+    /// The bytes of image data are copied now (the pasteboard may change); files are only named, and read later off the main
+    /// thread. Files win over data when both are present (Finder's copy of a file may carry a preview of it).
+    static func read(_ pasteboard: NSPasteboard) -> PasteboardImages {
+        let urls = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let imageFiles = urls.filter(isImageFile)
+        let otherFiles = urls.filter { !isImageFile($0) }
+        var dataSources: [ImageSource] = []
+        for item in pasteboard.pasteboardItems ?? [] {
+            if let type = dataTypes.first(where: { item.types.contains($0) }), let data = item.data(forType: type) {
+                dataSources.append(.pasted(data))
+            }
+        }
+        let content = PasteboardImageContent(plainText: pasteboard.string(forType: .string), hasImageData: !dataSources.isEmpty,
+                                             imageFileNames: imageFiles.map(\.lastPathComponent), hasOtherFiles: !otherFiles.isEmpty)
+        return PasteboardImages(content: content, sources: imageFiles.isEmpty ? dataSources : imageFiles.map(ImageSource.file),
+                                skippedFiles: otherFiles.map(\.lastPathComponent))
+    }
+
+    /// Whether the file's name says it is an image (a PDF is not one here). The bytes are checked when it is read.
+    static func isImageFile(_ url: URL) -> Bool {
+        let ext = url.pathExtension
+        if ImageFormat.isImageFileExtension(ext) { return true }
+        guard let type = UTType(filenameExtension: ext) else { return false }
+        return type.conforms(to: .image) && !type.conforms(to: .pdf)
+    }
+}
