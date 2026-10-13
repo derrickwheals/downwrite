@@ -525,3 +525,91 @@ final class ImageShrinkTests: XCTestCase {
         XCTAssertTrue(zip(edges, edges.dropFirst()).allSatisfy { $0 > $1 }, "\(edges)")
     }
 }
+
+// MARK: - Step 5: image or text?
+
+final class ImagePasteRuleTests: XCTestCase {
+    private func content(text: String? = nil, data: Bool = false, files: [String] = [], other: Bool = false) -> PasteboardImageContent {
+        PasteboardImageContent(plainText: text, hasImageData: data, imageFileNames: files, hasOtherFiles: other)
+    }
+
+    // The named combinations of the spec's verification
+
+    func testAScreenshotHasImageDataAndNoText() {
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(data: true)))
+    }
+
+    func testSafarisCopyImageCarriesTheImageAndItsURL() {
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "https://example.com/images/cat.jpg", data: true)))
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "https://example.com/render?id=7&w=200", data: true)),
+                      "a URL names the image whether or not it ends in an extension")
+    }
+
+    func testAFinderCopyHasAFileAndItsNameAsText() {
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "photo.png", files: ["photo.png"])))
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "My Holiday Photo.JPEG", files: ["My Holiday Photo.JPEG"])),
+                      "a name with spaces is not a URL but ends in an image extension")
+    }
+
+    func testSpreadsheetTextWithAnImagePreviewIsText() {
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "Name\tQty\nApples\t3", data: true)))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "42", data: true)), "a single cell is still text")
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "Total", data: true)))
+    }
+
+    func testFilesWithAPDFAreNotAnImagePasteUnlessOneIsAnImage() {
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(other: true)), "only a PDF")
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(files: ["a.png"], other: true)), "an image among other files")
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(files: ["a.png", "b.heic"], other: true)))
+    }
+
+    func testNothingAtAll() {
+        XCTAssertFalse(ImagePasteRule.prefersImages(content()))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "just words")))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "")))
+    }
+
+    // The rule's edges
+
+    func testAnyOtherTextBesideAnImageWins() {
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "a caption", data: true)))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "a caption", files: ["a.png"])))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "https://example.com/page and more", data: true)),
+                       "a space makes it not a URL; it does not end in an image extension either")
+    }
+
+    func testTextWithALineBreakIsNeverTheImagesName() {
+        for text in ["a.png\nb.png", "https://x.test/a.png\nhttps://x.test/b.png", "line one\r\nphoto.png", "a\u{2028}b.png", "a\u{2029}b.png", "x\u{85}y.png"] {
+            XCTAssertFalse(ImagePasteRule.prefersImages(content(text: text, data: true)), text.debugDescription)
+        }
+    }
+
+    func testSurroundingWhitespaceAndATrailingNewlineDoNotCount() {
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "  https://example.com/cat.jpg  ", data: true)))
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "photo.png\n", files: ["photo.png"])))
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "\n", data: true)), "text that is only white space is no text")
+        XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "   ", data: true)))
+    }
+
+    func testEveryImageExtensionNamesAnImageInAnyCase() {
+        for ext in ["png", "jpg", "jpeg", "gif", "webp", "svg", "tif", "tiff", "heic", "heif", "bmp"] {
+            XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "shot one.\(ext)", data: true)), ext)
+            XCTAssertTrue(ImagePasteRule.prefersImages(content(text: "shot one.\(ext.uppercased())", data: true)), ext.uppercased())
+        }
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "notes.pdf", data: true)))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "notes.md", data: true)))
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "png", data: true)), "an extension needs a dot before it")
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "photo.", data: true)))
+    }
+
+    func testAnImageIsNeededForImagesToWin() {
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "https://example.com/cat.jpg")), "a bare URL is a URL")
+        XCTAssertFalse(ImagePasteRule.prefersImages(content(text: "photo.png")))
+    }
+
+    func testTheSummaryIsAPlainValue() {
+        XCTAssertEqual(content(text: "a", data: true, files: ["b.png"], other: true),
+                       PasteboardImageContent(plainText: "a", hasImageData: true, imageFileNames: ["b.png"], hasOtherFiles: true))
+        XCTAssertEqual(PasteboardImageContent(), PasteboardImageContent(plainText: nil, hasImageData: false, imageFileNames: [], hasOtherFiles: false))
+    }
+}

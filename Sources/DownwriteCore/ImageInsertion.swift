@@ -131,6 +131,45 @@ fileprivate func isLetterOrDigit(_ scalar: Unicode.Scalar) -> Bool {
     }
 }
 
+// MARK: - Image or text?
+
+/// What a pasteboard (or a drag) holds, reduced to what the image-or-text rule needs, so the rule is tested without AppKit.
+public struct PasteboardImageContent: Sendable, Equatable {
+    /// The plain text on the pasteboard, if any.
+    public var plainText: String?
+    /// Whether image data (PNG, JPEG, GIF, WebP, HEIC or TIFF) is present.
+    public var hasImageData: Bool
+    /// The file names of the image files present (the names ending in an image extension; the bytes are checked later).
+    public var imageFileNames: [String]
+    /// Whether files that are not images are present too.
+    public var hasOtherFiles: Bool
+
+    public init(plainText: String? = nil, hasImageData: Bool = false, imageFileNames: [String] = [], hasOtherFiles: Bool = false) {
+        self.plainText = plainText
+        self.hasImageData = hasImageData
+        self.imageFileNames = imageFileNames
+        self.hasOtherFiles = hasOtherFiles
+    }
+}
+
+/// R3: one rule for paste and drop alike. Images win when image data or image files are present and the plain text is absent
+/// or names an image: one line that looks like a URL (Safari's "Copy Image" puts the image's address beside it) or ends in an
+/// image extension (Finder puts the file's name beside the file). Any other text beside an image (spreadsheet cells, a web
+/// selection) wins, and files that are all not images are not an image paste.
+public enum ImagePasteRule {
+    public static func prefersImages(_ content: PasteboardImageContent) -> Bool {
+        guard content.hasImageData || !content.imageFileNames.isEmpty else { return false }
+        guard let text = content.plainText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return true }
+        if text.rangeOfCharacter(from: .newlines) != nil { return false }
+        return Formatter.looksLikeURL(text) || endsInImageExtension(text)
+    }
+
+    private static func endsInImageExtension(_ text: String) -> Bool {
+        guard let dot = text.lastIndex(of: "."), dot != text.startIndex else { return false }
+        return ImageFormat.isImageFileExtension(String(text[text.index(after: dot)...]))
+    }
+}
+
 // MARK: - Names
 
 /// File names for images written to `assets/` (R8, R9). Pure: the clock, the time zone and "is this name taken" are arguments.
