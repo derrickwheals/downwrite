@@ -62,7 +62,7 @@ Core first, each step a commit with its tests (test before code where it reads n
 - [x] 1. `ImageFormat.sniff`, `saved`, `fileExtension`, `ImageLimits`: tests for PNG, JPEG, GIF, WebP, HEIC/HEIF, TIFF (both byte orders), BMP, SVG (plain, with an XML prolog, a BOM, a comment first), and bytes that are none of them.
 - [x] 2. `ImageNaming`: `pastedName` (zero padding, the given time zone, not the machine's), `droppedName` (every character class in R9, NFC, 60-character cut that never splits a scalar, empty stem to `image`, leading dots), `firstFree` (`-2`, `-3`, bounded).
 - [x] 3. `ImageLink`: `markdown(path:)` for a space, `( ) # ? % é 日本`, a segment per component; `relativePath` inside, outside, the same folder, the root `/Docs` against `/Docs2`, and the file being the folder itself.
-- [ ] 4. `ImageShrink.nextLongEdge`: strictly decreasing, always ends (`nil` at the floor), a huge ratio, a ratio near 1.
+- [x] 4. `ImageShrink.nextLongEdge`: strictly decreasing, always ends (`nil` at the floor), a huge ratio, a ratio near 1.
 - [ ] 5. `PasteboardImageContent` + `ImagePasteRule.prefersImages`: every combination named in the spec's verification (screenshot, Safari "Copy Image" with its URL, Finder copy with a file name, spreadsheet text with an image preview, files with a PDF, nothing).
 - [ ] 6. `ImagePlacement.edit`: each row of the spec's table as a test, then heading (selection kept), list item and block quote (spaces, no blank lines), a selection that spans body and fence (nil), setext heading, a document whose text contains an emoji before the caret (UTF-16 offsets), a trailing blank line, two and three links. Run `scripts/linux-test.sh` and commit.
 

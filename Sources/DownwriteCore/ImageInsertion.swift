@@ -244,3 +244,23 @@ public enum ImageLink {
         return Array(file.dropFirst(folder.count))
     }
 }
+
+// MARK: - Shrinking
+
+/// How an image that is over the preview cap is made smaller (R14). The app decodes once through ImageIO's thumbnail path at
+/// the edge this returns, encodes, measures, and asks again; this type only does the arithmetic, so the loop's guarantees
+/// (every step smaller, it ends) are tested without an image.
+public enum ImageShrink {
+    /// Encoded size does not fall exactly with the pixel count, so the estimate is pulled in a little.
+    public static let safetyMargin = 0.9
+
+    /// The long edge, in pixels, to try after an encoding of `bytes` at `current` came out over `limit`: `current` scaled by
+    /// the square root of `limit / bytes` (size follows area) times ``safetyMargin``, at least one pixel less than
+    /// `current` and never below ``ImageLimits/minLongEdge``. Nil means give up: `current` is already at or under that floor,
+    /// or the arguments describe nothing to shrink (`bytes` not over `limit`).
+    public static func nextLongEdge(current: Int, bytes: Int, limit: Int) -> Int? {
+        guard current > ImageLimits.minLongEdge, limit > 0, bytes > limit else { return nil }
+        let scaled = Double(current) * (Double(limit) / Double(bytes)).squareRoot() * safetyMargin
+        return max(ImageLimits.minLongEdge, min(current - 1, Int(scaled)))
+    }
+}

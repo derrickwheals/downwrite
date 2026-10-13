@@ -426,3 +426,102 @@ final class ImageLinkTests: XCTestCase {
         XCTAssertEqual(relative.map(ImageLink.markdown(path:)), "![](My%20Photos/a%20b.png)")
     }
 }
+
+// MARK: - Step 4: the shrink schedule
+
+final class ImageShrinkTests: XCTestCase {
+    private let limit = 8_000_000
+
+    func testTheNextEdgeFollowsTheSquareRootOfTheRatioWithAMargin() {
+        // 12 MB at 4000 px: pixels (and roughly bytes) go with the square of the edge, so 4000 × √(8/12) × 0.9.
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 4000, bytes: 12_000_000, limit: limit), 2939)
+        // Twice the limit: 3000 × √(1/2) × 0.9.
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 3000, bytes: 16_000_000, limit: limit), 1909)
+    }
+
+    func testJustOverTheLimitStillGetsSmaller() {
+        let next = ImageShrink.nextLongEdge(current: 3000, bytes: limit + 1, limit: limit)
+        XCTAssertNotNil(next)
+        XCTAssertLessThan(next!, 3000)
+        XCTAssertGreaterThanOrEqual(next!, 2600, "a step of about the margin, not a collapse")
+        // Even a one-pixel image of the ratio's limit shrinks by at least a pixel.
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 322, bytes: limit + 1, limit: limit), 320)
+    }
+
+    func testAHugeRatioStopsAtTheFloorNotBelowIt() {
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 6000, bytes: 1_000_000_000, limit: limit), 482, "125 times over: 6000 × √(1/125) × 0.9")
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 6000, bytes: 100_000_000_000, limit: limit), ImageLimits.minLongEdge)
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 321, bytes: 9_000_000, limit: limit), 320)
+        XCTAssertEqual(ImageShrink.nextLongEdge(current: 400, bytes: 9_000_000, limit: limit), 339)
+    }
+
+    func testAtOrBelowTheFloorThereIsNoNextStep() {
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 320, bytes: 9_000_000, limit: limit), "320 px was the last try")
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 319, bytes: 9_000_000, limit: limit))
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 100, bytes: 9_000_000, limit: limit), "a small image that is still too big")
+    }
+
+    func testNothingToShrinkIsNotASchedule() {
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 4000, bytes: limit, limit: limit), "it already fits")
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 4000, bytes: 100, limit: limit))
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 4000, bytes: 9_000_000, limit: 0))
+        XCTAssertNil(ImageShrink.nextLongEdge(current: 0, bytes: 9_000_000, limit: limit))
+        XCTAssertNil(ImageShrink.nextLongEdge(current: -5, bytes: 9_000_000, limit: limit))
+    }
+
+    func testEveryStepIsStrictlySmallerAndNeverBelowTheFloor() {
+        for current in stride(from: 321, through: 20_000, by: 37) {
+            for bytes in [limit + 1, limit + 1000, 8_800_000, 10_000_000, 16_000_000, 100_000_000, 5_000_000_000] {
+                let next = ImageShrink.nextLongEdge(current: current, bytes: bytes, limit: limit)
+                XCTAssertNotNil(next, "current \(current), bytes \(bytes)")
+                if let next {
+                    XCTAssertLessThan(next, current, "current \(current), bytes \(bytes)")
+                    XCTAssertGreaterThanOrEqual(next, ImageLimits.minLongEdge, "current \(current), bytes \(bytes)")
+                }
+            }
+        }
+    }
+
+    /// Walks the schedule the way the encoder does, with `size(edge)` standing in for "encode and measure".
+    private func walk(from start: Int, size: (Int) -> Int) -> [Int] {
+        var edges = [start]
+        var bytes = size(start)
+        var guardCount = 0
+        while bytes > limit, let next = ImageShrink.nextLongEdge(current: edges.last!, bytes: bytes, limit: limit) {
+            edges.append(next)
+            bytes = size(next)
+            guardCount += 1
+            XCTAssertLessThan(guardCount, 200, "the schedule must end")
+            if guardCount >= 200 { break }
+        }
+        return edges
+    }
+
+    func testAnImageWhoseSizeFollowsItsPixelsFitsInAFewSteps() {
+        // 24 MB at 6000 px, bytes ∝ edge².
+        let edges = walk(from: 6000) { Int(24_000_000.0 * pow(Double($0) / 6000.0, 2)) }
+        XCTAssertLessThanOrEqual(edges.count, 3, "\(edges)")
+        XCTAssertTrue(zip(edges, edges.dropFirst()).allSatisfy { $0 > $1 })
+    }
+
+    func testAnImageThatNeverGetsSmallerStillEndsAtTheFloor() {
+        let edges = walk(from: 20_000) { _ in 9_000_000 }                   // the encoder keeps returning the same size
+        XCTAssertEqual(edges.last, ImageLimits.minLongEdge)
+        XCTAssertTrue(zip(edges, edges.dropFirst()).allSatisfy { $0 > $1 }, "\(edges)")
+        XCTAssertLessThanOrEqual(edges.count, 60)
+    }
+
+    func testAnImageThatShrinksSlowlyStillEnds() {
+        // Bytes fall only with the edge itself (not its square): the loop needs more steps but must not stall.
+        let edges = walk(from: 12_000) { $0 * 1_000 }
+        XCTAssertTrue(zip(edges, edges.dropFirst()).allSatisfy { $0 > $1 }, "\(edges)")
+        XCTAssertLessThanOrEqual(edges.count, 60)
+    }
+
+    func testNoisyEncodersCannotMakeItGrow() {
+        var seed: UInt64 = 12345
+        func next() -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int(seed >> 33) }
+        let edges = walk(from: 9000) { _ in 8_000_001 + next() % 40_000_000 }
+        XCTAssertTrue(zip(edges, edges.dropFirst()).allSatisfy { $0 > $1 }, "\(edges)")
+    }
+}
