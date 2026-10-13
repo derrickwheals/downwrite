@@ -222,6 +222,22 @@ final class CalloutEditorTests: XCTestCase {
         XCTAssertEqual(log.messages, ["Tip callout"])
     }
 
+    /// "Edit as Markdown" on a table ends with a re-analysis the moment the caret leaves the table; that re-analysis is silent (it
+    /// cannot tell a move from an edit), so the move into the callout has to be announced before it runs.
+    func testLeavingATableShownAsMarkdownIntoACalloutIsAnnounced() {
+        let text = "| a | b |\n| - | - |\n| 1 | 2 |\n\n> [!WARNING] Data loss\n> body\n\nend\n"
+        let h = EditorHarness(text: text)
+        let log = announcements(h)
+        h.coordinator.showTableSource(order: 0, at: TableCellPosition(row: 1, column: 0))
+        XCTAssertNotNil(h.coordinator.sourceTableFirstLine, "the table is showing its Markdown")
+        XCTAssertEqual(log.messages, [], "the caret is in the table")
+        h.select(h.index(of: "body") + 1)
+        XCTAssertNil(h.coordinator.sourceTableFirstLine, "leaving the table put it back")
+        XCTAssertEqual(log.messages, ["Warning callout"], "the move into the callout is announced although a re-analysis ran")
+        h.select(h.index(of: "body"))
+        XCTAssertEqual(log.messages, ["Warning callout"], "and not again while the caret stays inside")
+    }
+
     func testNothingIsAnnouncedInTheSourceView() {
         let text = "intro\n\n> [!NOTE]\n> a\n\nend\n"
         let h = EditorHarness(text: text)

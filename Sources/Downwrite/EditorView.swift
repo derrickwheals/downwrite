@@ -484,6 +484,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
            let t = analysis.tables.first(where: { $0.isGrid && $0.firstLine == first }),
            !MarkdownAnalysis.isRevealed(t.range, by: sel) {
             sourceTableFirstLine = nil
+            announceCalloutIfEntered(selection: sel)      // (before the re-analysis, which records the callout silently)
             reanalyze()
             tableOverlay.scheduleHandOff()
             return

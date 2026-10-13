@@ -39,8 +39,9 @@ struct CalloutMatch: Equatable {
 }
 
 /// The one rule for "is this block quote a callout", used by the analyzer (the editor) and the renderer (the export), so the
-/// two cannot disagree. cmark does the Markdown work (block structure, indentation, reference definitions); this reads the
-/// source only where the tree cannot tell (a trailing hard break, the exact characters of the marker).
+/// two agree on what a callout is (the one known exception: the export's footnote-definition pre-parse can change the tree it
+/// reads, plan P2). cmark does the Markdown work (block structure, indentation, reference definitions); this reads the source
+/// only where the tree cannot tell (a trailing hard break, the exact characters of the marker).
 enum CalloutSyntax {
     private static let openBracket: UInt16 = 91, bang: UInt16 = 33, closeBracket: UInt16 = 93, greater: UInt16 = 62
 
