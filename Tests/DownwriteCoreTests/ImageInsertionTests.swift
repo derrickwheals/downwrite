@@ -613,3 +613,300 @@ final class ImagePasteRuleTests: XCTestCase {
         XCTAssertEqual(PasteboardImageContent(), PasteboardImageContent(plainText: nil, hasImageData: false, imageFileNames: [], hasOtherFiles: false))
     }
 }
+
+// MARK: - Step 6: placement
+
+final class ImagePlacementTests: XCTestCase {
+    private let link = "![](assets/x.png)"
+    private let link2 = "![](assets/y.png)"
+    private let link3 = "![](assets/z.png)"
+
+    /// Applies `ImagePlacement.edit` to `marked`, where `|` is the caret and `«…»` marks a selection (both removed before the
+    /// edit). Returns the text after the edit with `|` where the caret ends up, or nil when the edit is refused.
+    private func place(_ marked: String, links: [String]? = nil, file: StaticString = #filePath, line: UInt = #line) -> String? {
+        var text = marked
+        var selection = NSRange(location: 0, length: 0)
+        if let open = text.firstIndex(of: "«"), let close = text.firstIndex(of: "»"), open < close {
+            let start = text[..<open].utf16.count
+            let length = text[text.index(after: open)..<close].utf16.count
+            text.removeSubrange(close...close)
+            text.removeSubrange(open...open)
+            selection = NSRange(location: start, length: length)
+        } else if let bar = text.firstIndex(of: "|") {
+            selection = NSRange(location: text[..<bar].utf16.count, length: 0)
+            text.remove(at: bar)
+        }
+        let analysis = MarkdownAnalyzer.analyze(text)
+        guard let edit = ImagePlacement.edit(links: links ?? [link], in: analysis, text: text, selection: selection) else { return nil }
+        let applied = edit.apply(to: text)
+        let ns = NSString(string: applied)
+        XCTAssertLessThanOrEqual(NSMaxRange(edit.selection), ns.length, "the caret is inside the text", file: file, line: line)
+        XCTAssertEqual(edit.selection.length, 0, "the caret is a caret", file: file, line: line)
+        return ns.replacingCharacters(in: NSRange(location: edit.selection.location, length: 0), with: "|")
+    }
+
+    private func assertPlaces(_ before: String, _ after: String, links: [String]? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(place(before, links: links, file: file, line: line), after, "from \(before.debugDescription)", file: file, line: line)
+    }
+
+    private func assertRefused(_ before: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertNil(place(before, file: file, line: line), "\(before.debugDescription) is refused", file: file, line: line)
+    }
+
+    // MARK: the spec's pinned table
+
+    func testEmptyDocument() { assertPlaces("|", "\(link)\n\n|") }
+    func testBlankLineBetweenParagraphs() { assertPlaces("A\n|\nB", "A\n\n\(link)\n\n|B") }
+    func testStartOfALineWithTextAbove() { assertPlaces("A\n|B", "A\n\n\(link)\n\n|B") }
+    func testEndOfTheLastLineWithoutANewline() { assertPlaces("A|", "A\n\n\(link)\n\n|") }
+    func testMidLineSplitsTheParagraph() { assertPlaces("Hello |world", "Hello \n\n\(link)\n\n|world") }
+    func testASelectionIsReplaced() { assertPlaces("Hello «world»", "Hello \n\n\(link)\n\n|") }
+    func testAfterATrailingNewlineAtTheEnd() { assertPlaces("A\n|", "A\n\n\(link)\n\n|") }
+    func testTwoImages() { assertPlaces("|", "\(link)\n\n\(link2)\n\n|", links: [link, link2]) }
+    func testAListItemCaretAtTheEnd() { assertPlaces("- item|", "- item \(link)|") }
+    func testHeadingCaretAnywhere() {
+        assertPlaces("# Ti|tle\nText", "# Title\n\n\(link)\n\n|Text")
+        assertPlaces("|# Title\nText", "# Title\n\n\(link)\n\n|Text")
+        assertPlaces("# Title|\nText", "# Title\n\n\(link)\n\n|Text")
+    }
+
+    // MARK: the rest of the body cases
+
+    func testThreeImages() {
+        assertPlaces("A|", "A\n\n\(link)\n\n\(link2)\n\n\(link3)\n\n|", links: [link, link2, link3])
+    }
+
+    func testTheDocumentStartWithTextAfter() { assertPlaces("|Hello", "\(link)\n\n|Hello") }
+
+    func testNoStrayBlankLinesPileUp() {
+        assertPlaces("A\n\n|\n\nB", "A\n\n\(link)\n\n|B")
+        assertPlaces("A\n\n|", "A\n\n\(link)\n\n|")
+        assertPlaces("A\n\n|\nB", "A\n\n\(link)\n\n|B")
+    }
+
+    func testTrailingSpacesAfterTheCaretAreTaken() {
+        assertPlaces("Hello |  \nWorld", "Hello \n\n\(link)\n\n|World")
+        assertPlaces("Hello|\t\nWorld", "Hello\n\n\(link)\n\n|World")
+    }
+
+    func testAWhitespaceOnlyLineBeforeTheCaretCountsAsBlank() {
+        assertPlaces("A\n   \n|B", "A\n   \n\(link)\n\n|B")
+    }
+
+    func testAnEmptyLineAboveNeedsNoExtraBreak() {
+        assertPlaces("A\n\n|B", "A\n\n\(link)\n\n|B")
+    }
+
+    func testTextAfterAFencedBlockAndBeforeOne() {
+        assertPlaces("```\ncode\n```\n|text", "```\ncode\n```\n\n\(link)\n\n|text")
+        assertPlaces("Para|\n```\ncode\n```", "Para\n\n\(link)\n\n|```\ncode\n```")
+    }
+
+    func testASelectionAcrossParagraphs() {
+        assertPlaces("One «two\n\nthree» four", "One \n\n\(link)\n\n| four")
+    }
+
+    func testASelectionOfWholeLinesWithTheirTerminator() {
+        assertPlaces("A\n«B\n»C", "A\n\n\(link)\n\n|C")
+    }
+
+    func testUTF16OffsetsWithAnEmojiBeforeTheCaret() {
+        assertPlaces("😀 Hello |world", "😀 Hello \n\n\(link)\n\n|world")
+        assertPlaces("😀😀\n|B", "😀😀\n\n\(link)\n\n|B")
+        assertPlaces("é日本 «🙂» end", "é日本 \n\n\(link)\n\n| end")
+    }
+
+    func testCRLFIsNotSpecialInsideTheEditor() {
+        // The editor always holds "\n" (TextCoding restores CRLF on save), but a stray "\r" must not break the offsets.
+        let text = "A\r\nB"
+        let analysis = MarkdownAnalyzer.analyze(text)
+        let edit = ImagePlacement.edit(links: [link], in: analysis, text: text, selection: NSRange(location: 1, length: 0))
+        XCTAssertNotNil(edit)
+        if let edit { XCTAssertEqual(edit.apply(to: text).hasPrefix("A\n\n\(link)"), true) }
+    }
+
+    // MARK: headings
+
+    func testASetextHeadingGetsTheImageAfterItsUnderline() {
+        assertPlaces("Ti|tle\n=====\nText", "Title\n=====\n\n\(link)\n\n|Text")
+        assertPlaces("Title\n==|===\nText", "Title\n=====\n\n\(link)\n\n|Text")
+        assertPlaces("Ti|tle\n-----\n", "Title\n-----\n\n\(link)\n\n|")
+    }
+
+    func testAMultiLineSetextHeading() {
+        assertPlaces("First |line\nsecond line\n=====\nText", "First line\nsecond line\n=====\n\n\(link)\n\n|Text")
+    }
+
+    func testAHeadingFollowedByABlankLine() {
+        assertPlaces("# T|\n\nText", "# T\n\n\(link)\n\n|Text")
+    }
+
+    func testAHeadingAtTheEndOfTheDocument() {
+        assertPlaces("# T|", "# T\n\n\(link)\n\n|")
+        assertPlaces("# T|\n", "# T\n\n\(link)\n\n|")
+    }
+
+    func testASelectionInsideAHeadingIsLeftAlone() {
+        assertPlaces("# «Ti»tle\nText", "# Title\n\n\(link)\n\n|Text")
+    }
+
+    func testAnATXHeadingBeforeASetextHeadingIsItsOwnOneLine() {
+        assertPlaces("# A|\nB\n---\n", "# A\n\n\(link)\n\n|B\n---\n")
+    }
+
+    func testAClosingSequenceIsStillAHeading() {
+        assertPlaces("## Ti|tle ##\nText", "## Title ##\n\n\(link)\n\n|Text")
+    }
+
+    // MARK: lists and quotes
+
+    func testListItemCases() {
+        assertPlaces("- item|", "- item \(link)|")
+        assertPlaces("- it|em", "- it \(link)|em")
+        assertPlaces("- |item", "- \(link)|item", links: nil)
+        assertPlaces("1. item|", "1. item \(link)|")
+        assertPlaces("- [ ] task|", "- [ ] task \(link)|")
+        assertPlaces("  - nested|", "  - nested \(link)|")
+        assertPlaces("- item|\n- next", "- item \(link)|\n- next")
+    }
+
+    func testTwoLinksInAListItemAreSeparatedByOneSpace() {
+        assertPlaces("- item|", "- item \(link) \(link2)|", links: [link, link2])
+        assertPlaces("- item |", "- item \(link) \(link2)|", links: [link, link2])
+    }
+
+    func testNoSpaceAfterASpaceOrAtTheStartOfTheContent() {
+        assertPlaces("- item |", "- item \(link)|")
+        assertPlaces("- |", "- \(link)|")
+        assertPlaces("> |", "> \(link)|")
+    }
+
+    func testBlockQuoteCases() {
+        assertPlaces("> quoted|", "> quoted \(link)|")
+        assertPlaces("> quoted|\n> more", "> quoted \(link)|\n> more")
+        assertPlaces("> > deep|", "> > deep \(link)|")
+        assertPlaces(">quoted|", ">quoted \(link)|")
+        assertPlaces("> - item in a quote|", "> - item in a quote \(link)|")
+    }
+
+    func testASelectionInAListItemIsReplacedWithoutLineBreaks() {
+        assertPlaces("- some «words» here", "- some \(link)| here")
+    }
+
+    func testAListItemSecondParagraphAndContinuationLines() {
+        assertPlaces("- item\n\n  second para|", "- item\n\n  second para \(link)|")
+        assertPlaces("- item\n  continued|", "- item\n  continued \(link)|")
+    }
+
+    func testNothingButTheLinksIsInsertedInAListOrQuote() {
+        for marked in ["- item|", "> quoted|", "1. item|", "- [ ] task|"] {
+            var text = marked; text.remove(at: text.firstIndex(of: "|")!)
+            let analysis = MarkdownAnalyzer.analyze(text)
+            let edit = ImagePlacement.edit(links: [link, link2], in: analysis, text: text, selection: NSRange(location: text.utf16.count, length: 0))
+            XCTAssertEqual(edit?.replacement, " \(link) \(link2)", marked)
+            XCTAssertFalse(edit?.replacement.contains("\n") ?? true, marked)
+        }
+    }
+
+    func testACaretInTheLeadingSyntaxOfAListOrQuoteIsRefused() {
+        assertRefused("|- item")
+        assertRefused("-| item")
+        assertRefused("|> quoted")
+        assertRefused(">| quoted")
+        assertRefused("  |- nested")
+        assertRefused("1|. item")
+        assertRefused("- [ |] task")
+        assertRefused("«- it»em")
+    }
+
+    func testAHeadingInsideAQuoteIsAQuoteLine() {
+        assertPlaces("> # Title|", "> # Title \(link)|")
+    }
+
+    // MARK: refused contexts (R5)
+
+    func testFencedCodeIsRefused() {
+        assertRefused("```swift\nlet x = 1|\n```")
+        assertRefused("```\n|\n```")
+        assertRefused("|```\ncode\n```")
+        assertRefused("```\ncode\n```|")
+        assertRefused("~~~\ncode|\n~~~")
+        assertRefused("```mermaid\ngraph TD; A-->B|\n```")
+    }
+
+    func testAnIndentedCodeBlockIsRefused() {
+        assertRefused("Para\n\n    code|\n")
+    }
+
+    func testFrontMatterIsRefused() {
+        assertRefused("---\ntitle: x|\n---\nBody")
+        assertRefused("«---\ntitle: x\n---\nBody»")
+    }
+
+    func testTableLinesAreRefused() {
+        assertRefused("| a | b |\n|---|---|\n| 1 | 2|")
+        assertRefused("| a | b|\n|---|---|\n| 1 | 2 |")
+    }
+
+    func testHTMLBlocksAndRulesAreRefused() {
+        assertRefused("<div>\nhi|\n</div>")
+        assertRefused("<p align=\"center\">x|</p>")
+        assertRefused("A\n\n---|\n\nB")
+        assertRefused("A\n\n***|\n\nB")
+    }
+
+    func testASelectionThatTouchesARefusedLineIsRefused() {
+        assertRefused("Para «one\n```\ncode\n```\ntwo» end")
+        assertRefused("«A\n```»\ncode\n```")
+        assertRefused("Intro\n\n«| a | b |\n|---|---|\n| 1 | 2 |»")
+    }
+
+    func testASelectionThatEndsAtTheStartOfARefusedLineDoesNotTouchIt() {
+        assertPlaces("Para\n«Text\n»```\ncode\n```", "Para\n\n\(link)\n\n|```\ncode\n```")
+    }
+
+    func testNothingToInsertIsRefused() {
+        let analysis = MarkdownAnalyzer.analyze("A")
+        XCTAssertNil(ImagePlacement.edit(links: [], in: analysis, text: "A", selection: NSRange(location: 1, length: 0)))
+    }
+
+    func testAStaleAnalysisOrSelectionIsRefused() {
+        let analysis = MarkdownAnalyzer.analyze("A")
+        XCTAssertNil(ImagePlacement.edit(links: [link], in: analysis, text: "AB", selection: NSRange(location: 1, length: 0)), "the analysis is of other text")
+        XCTAssertNil(ImagePlacement.edit(links: [link], in: analysis, text: "A", selection: NSRange(location: 5, length: 0)))
+        XCTAssertNil(ImagePlacement.edit(links: [link], in: analysis, text: "A", selection: NSRange(location: 0, length: 9)))
+        XCTAssertNil(ImagePlacement.edit(links: [link], in: analysis, text: "A", selection: NSRange(location: -1, length: 0)))
+    }
+
+    // MARK: what the result looks like to the analyzer
+
+    func testTheInsertedLinkIsAStandaloneImageThatPreviews() {
+        for marked in ["|", "A|", "A\n|B", "Hello |world", "Hello «world»", "# T|itle\nText", "A\n|\nB"] {
+            var text = marked
+            var sel = NSRange(location: 0, length: 0)
+            if let open = text.firstIndex(of: "«"), let close = text.firstIndex(of: "»") {
+                sel = NSRange(location: text[..<open].utf16.count, length: text[text.index(after: open)..<close].utf16.count)
+                text.removeSubrange(close...close); text.removeSubrange(open...open)
+            } else if let bar = text.firstIndex(of: "|") {
+                sel = NSRange(location: text[..<bar].utf16.count, length: 0); text.remove(at: bar)
+            }
+            let edit = ImagePlacement.edit(links: [link, link2], in: MarkdownAnalyzer.analyze(text), text: text, selection: sel)!
+            let result = MarkdownAnalyzer.analyze(edit.apply(to: text))
+            XCTAssertEqual(result.imageBlocks.map(\.source), ["assets/x.png", "assets/y.png"], "from \(marked.debugDescription)")
+        }
+    }
+
+    func testTheCaretEndsRightAfterTheInsertedText() {
+        let text = "Hello world"
+        let analysis = MarkdownAnalyzer.analyze(text)
+        let edit = ImagePlacement.edit(links: [link], in: analysis, text: text, selection: NSRange(location: 5, length: 0))!
+        XCTAssertEqual(edit.selection, NSRange(location: edit.range.location + edit.replacement.utf16.count, length: 0))
+    }
+
+    func testTheEditReplacesOnlyTheSelectionPlusWhatItAbsorbs() {
+        let text = "One two three"
+        let analysis = MarkdownAnalyzer.analyze(text)
+        let edit = ImagePlacement.edit(links: [link], in: analysis, text: text, selection: NSRange(location: 4, length: 3))!
+        XCTAssertEqual(edit.range, NSRange(location: 4, length: 3))
+    }
+}

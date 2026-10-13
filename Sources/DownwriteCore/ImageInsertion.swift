@@ -303,3 +303,148 @@ public enum ImageShrink {
         return max(ImageLimits.minLongEdge, min(current - 1, Int(scaled)))
     }
 }
+
+// MARK: - Placement
+
+/// Where and how the links of pasted or dropped images go into the text (R5, R11). Pure `(text, selection) -> TextEdit?`, like
+/// the other editing commands, so the app only applies the result.
+public enum ImagePlacement {
+    /// The edit that inserts `links`, or nil when R5 refuses the context (a code block, front matter, a table, HTML or a rule
+    /// on any line the selection touches), when the caret or selection starts inside the leading syntax of a list item or
+    /// quote line (a `-`, `1.`, `>` or task box: the link would break the block), or when `analysis` is not of `text`.
+    ///
+    /// - A body line: the links become paragraphs of their own, blank line before and after (`prefix + links.joined("\n\n") + "\n\n"`),
+    ///   absorbing a blank remainder of the line and one blank line below so none pile up.
+    /// - A heading: the position first moves to the end of its last line and the selection is not replaced.
+    /// - A list item or quote line: the links go in at the caret with no line breaks, one space apart.
+    ///
+    /// The caret of the result is right after the inserted text.
+    public static func edit(links: [String], in analysis: MarkdownAnalysis, text: String, selection: NSRange) -> TextEdit? {
+        let ns = NSString(string: text)
+        guard !links.isEmpty, analysis.length == ns.length, !analysis.lines.isEmpty,
+              selection.location >= 0, selection.length >= 0, NSMaxRange(selection) <= ns.length else { return nil }
+        let lines = analysis.lines
+        let first = analysis.lineIndex(at: selection.location)
+        // A selection that ends at the start of a line does not touch that line.
+        let last = selection.length == 0 ? first : analysis.lineIndex(at: NSMaxRange(selection) - 1)
+        for index in first...last {
+            switch lines[index].kind {
+            case .body, .heading, .setextUnderline: continue
+            default: return nil
+            }
+        }
+        let line = lines[first]
+        if line.quoteDepth > 0 || line.listDepth > 0 || line.listPrefixLength > 0 {
+            return inlineEdit(links: links, line: line, ns: ns, selection: selection)
+        }
+        switch line.kind {
+        case .heading, .setextUnderline:
+            let end = lines[headingEnd(from: first, lines: lines, ns: ns)].contentEnd
+            return paragraphEdit(links: links, lines: lines, ns: ns, range: NSRange(location: end, length: 0))
+        default:
+            return paragraphEdit(links: links, lines: lines, ns: ns, range: selection)
+        }
+    }
+
+    // MARK: Body and heading: paragraphs of their own
+
+    private static func paragraphEdit(links: [String], lines: [LineStyle], ns: NSString, range: NSRange) -> TextEdit? {
+        guard let firstLine = lineIndex(containing: range.location, in: lines),
+              let lastLine = lineIndex(containing: NSMaxRange(range), in: lines) else { return nil }
+        let before = lines[firstLine]
+        let hasTextBefore = !isBlank(ns, NSRange(location: before.range.location, length: range.location - before.range.location))
+        var prefix = ""
+        if hasTextBefore {
+            prefix = "\n\n"
+        } else if firstLine > 0, !isBlank(ns, lines[firstLine - 1].contentRange) {
+            prefix = "\n"
+        }
+
+        var replaced = range
+        let after = lines[lastLine]
+        if isBlank(ns, NSRange(location: NSMaxRange(range), length: after.contentEnd - NSMaxRange(range))) {
+            // Nothing but white space follows on the line: take its terminator, and a blank line below, so the "\n\n" added
+            // below is the only separator.
+            var end = NSMaxRange(after.range)
+            if lastLine + 1 < lines.count, isBlank(ns, lines[lastLine + 1].contentRange) {
+                end = NSMaxRange(lines[lastLine + 1].range)
+            }
+            replaced.length = end - replaced.location
+        }
+        let replacement = prefix + links.joined(separator: "\n\n") + "\n\n"
+        return TextEdit(range: replaced, replacement: replacement,
+                        selection: NSRange(location: replaced.location + replacement.utf16.count, length: 0))
+    }
+
+    /// The last line of the heading whose line `index` is: itself for an ATX heading, its underline for a setext one.
+    private static func headingEnd(from index: Int, lines: [LineStyle], ns: NSString) -> Int {
+        if lines[index].kind == .setextUnderline { return index }
+        var p = lines[index].range.location
+        let end = lines[index].contentEnd
+        while p < end, ns.character(at: p) == 32 || ns.character(at: p) == 9 { p += 1 }
+        if p < end, ns.character(at: p) == 35 { return index }                   // `#`: an ATX heading is one line
+        var next = index + 1
+        while next < lines.count {
+            if isSetextUnderline(ns, lines[next]) { return next }
+            guard case .heading = lines[next].kind else { break }
+            next += 1
+        }
+        return index
+    }
+
+    private static func isSetextUnderline(_ ns: NSString, _ line: LineStyle) -> Bool {
+        var p = line.range.location
+        let end = line.contentEnd
+        var indent = 0
+        while p < end, ns.character(at: p) == 32, indent < 3 { p += 1; indent += 1 }
+        guard p < end, ns.character(at: p) == 61 || ns.character(at: p) == 45 else { return false }
+        let c = ns.character(at: p)
+        while p < end, ns.character(at: p) == c { p += 1 }
+        while p < end, ns.character(at: p) == 32 || ns.character(at: p) == 9 { p += 1 }
+        return p == end
+    }
+
+    // MARK: List items and quotes: inline
+
+    private static func inlineEdit(links: [String], line: LineStyle, ns: NSString, selection: NSRange) -> TextEdit? {
+        let start = contentStart(of: line, ns: ns)
+        guard selection.location >= start else { return nil }
+        let previous = selection.location > start ? ns.character(at: selection.location - 1) : nil
+        let needsSpace = previous != nil && previous != 32 && previous != 9
+        let replacement = (needsSpace ? " " : "") + links.joined(separator: " ")
+        return TextEdit(range: selection, replacement: replacement,
+                        selection: NSRange(location: selection.location + replacement.utf16.count, length: 0))
+    }
+
+    /// Where the text of a list item or quote line begins: after its `>` marks and list marker (and task box).
+    private static func contentStart(of line: LineStyle, ns: NSString) -> Int {
+        var p = line.range.location
+        let end = line.contentEnd
+        for _ in 0..<line.quoteDepth {
+            while p < end, ns.character(at: p) == 32 || ns.character(at: p) == 9 { p += 1 }
+            guard p < end, ns.character(at: p) == 62 else { break }               // `>`
+            p += 1
+            if p < end, ns.character(at: p) == 32 { p += 1 }
+        }
+        return min(end, max(p, line.range.location + line.listPrefixLength))
+    }
+
+    // MARK: Small helpers
+
+    private static func lineIndex(containing offset: Int, in lines: [LineStyle]) -> Int? {
+        var lo = 0, hi = lines.count - 1
+        guard hi >= 0 else { return nil }
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if lines[mid].range.location <= offset { lo = mid } else { hi = mid - 1 }
+        }
+        return lo
+    }
+
+    /// Only spaces and tabs (or nothing) in `range`.
+    private static func isBlank(_ ns: NSString, _ range: NSRange) -> Bool {
+        guard range.length > 0 else { return true }
+        for i in range.location..<NSMaxRange(range) where ns.character(at: i) != 32 && ns.character(at: i) != 9 { return false }
+        return true
+    }
+}
