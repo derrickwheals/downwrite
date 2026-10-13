@@ -295,3 +295,134 @@ final class ImageNamingTests: XCTestCase {
         XCTAssertNil(ImageNaming.firstFree("a.png", isTaken: { _ in true }), "the default limit ends too")
     }
 }
+
+// MARK: - Step 3: links
+
+final class ImageLinkTests: XCTestCase {
+    private func destination(_ markdown: String) -> String {
+        XCTAssertTrue(markdown.hasPrefix("![]("), markdown)
+        XCTAssertTrue(markdown.hasSuffix(")"), markdown)
+        return String(markdown.dropFirst(4).dropLast())
+    }
+
+    func testTheSimplestLink() {
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a.png"]), "![](assets/a.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["a.png"]), "![](a.png)")
+        XCTAssertEqual(ImageLink.folderName, "assets")
+    }
+
+    func testTheLinkNamedInTheSpecEncodesAsPinned() {
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a b.png"]), "![](assets/a%20b.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a(b).png"]), "![](assets/a%28b%29.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a#b.png"]), "![](assets/a%23b.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a?b.png"]), "![](assets/a%3Fb.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a%b.png"]), "![](assets/a%25b.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "café.png"]), "![](assets/café.png)", "letters of any script stay")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "日本.png"]), "![](assets/日本.png)")
+    }
+
+    func testEveryOtherCharacterIsPercentEncodedAsUTF8InUpperCaseHex() {
+        let cases: [(String, String)] = [
+            ("[", "%5B"), ("]", "%5D"), ("&", "%26"), ("'", "%27"), ("\"", "%22"), ("<", "%3C"), (">", "%3E"),
+            ("\\", "%5C"), ("`", "%60"), ("|", "%7C"), ("*", "%2A"), ("+", "%2B"), (",", "%2C"), (";", "%3B"),
+            ("=", "%3D"), ("@", "%40"), ("$", "%24"), ("!", "%21"), (":", "%3A"), ("/", "%2F"), ("\n", "%0A"),
+            ("\t", "%09"), ("\u{7F}", "%7F"), ("\u{00A0}", "%C2%A0"), ("🙂", "%F0%9F%99%82"), ("\u{20AC}", "%E2%82%AC"),
+        ]
+        for (character, encoded) in cases {
+            XCTAssertEqual(ImageLink.markdown(path: ["a\(character)b.png"]), "![](a\(encoded)b.png)", character.debugDescription)
+        }
+    }
+
+    func testUnreservedCharactersAndDigitsStay() {
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "a-b_c.d~e1.png"]), "![](assets/a-b_c.d~e1.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "٣٤٥.png"]), "![](assets/٣٤٥.png)", "digits of other scripts")
+    }
+
+    func testOneSegmentPerComponent() {
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "sub dir", "a b.png"]), "![](assets/sub%20dir/a%20b.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["Photos", "2026", "x.jpg"]), "![](Photos/2026/x.jpg)")
+    }
+
+    func testAnAngleBracketFormIsNeverUsed() {
+        for name in ["a b.png", "a(b).png", "a<b>.png", "a b (1) #2.png"] {
+            XCTAssertFalse(ImageLink.markdown(path: ["assets", name]).contains("<"), name)
+            XCTAssertFalse(ImageLink.markdown(path: ["assets", name]).contains(" "), name)
+        }
+    }
+
+    func testAFirstComponentStartingWithATildeIsNotTheHomeFolder() {
+        // The preview resolves "~…" against the home folder; "./~…" is the document's own folder.
+        XCTAssertEqual(ImageLink.markdown(path: ["~notes", "a.png"]), "![](./~notes/a.png)")
+        XCTAssertEqual(ImageLink.markdown(path: ["assets", "~a.png"]), "![](assets/~a.png)", "only the first component matters")
+    }
+
+    private let nasty = ["a b.png", "a(b).png", "a)b(.png", "a#b.png", "a?b.png", "a%20b.png", "100%.png", "é.png", "日本.png",
+                         "a&b.png", "a'b\".png", "a<b>.png", "a b (1) #x ?y %z é 日本.png", "🙂.png", "a\\b.png", "[x].png",
+                         "a\u{00A0}b.png", "ünï-cödé_~.1.png"]
+
+    func testDecodingTheLinkGivesTheComponentsBack() throws {
+        for name in nasty {
+            let dest = destination(ImageLink.markdown(path: ["assets", name]))
+            XCTAssertEqual(dest.removingPercentEncoding, "assets/" + name, name)
+        }
+    }
+
+    func testMarkdownReadsEachLinkAsOneImageWithThatDestination() throws {
+        for name in nasty {
+            let link = ImageLink.markdown(path: ["assets", name])
+            let analysis = MarkdownAnalyzer.analyze(link + "\n")
+            XCTAssertEqual(analysis.imageBlocks.count, 1, "\(name): one standalone image, so it previews")
+            XCTAssertEqual(analysis.imageBlocks.first?.source, destination(link), "\(name): the parser's source is the encoded path")
+            XCTAssertEqual(analysis.imageBlocks.first?.alt, "")
+        }
+    }
+
+    // MARK: relative path
+
+    func testAFileInsideTheFolder() {
+        XCTAssertEqual(ImageLink.relativePath(of: ["Users", "me", "Docs", "assets", "a.png"], in: ["Users", "me", "Docs"]), ["assets", "a.png"])
+        XCTAssertEqual(ImageLink.relativePath(of: ["Users", "me", "Docs", "deep", "er", "a.png"], in: ["Users", "me", "Docs"]), ["deep", "er", "a.png"])
+    }
+
+    func testAFileInTheSameFolder() {
+        XCTAssertEqual(ImageLink.relativePath(of: ["Users", "me", "Docs", "a.png"], in: ["Users", "me", "Docs"]), ["a.png"])
+    }
+
+    func testAFileOutsideTheFolder() {
+        XCTAssertNil(ImageLink.relativePath(of: ["Users", "me", "Desktop", "a.png"], in: ["Users", "me", "Docs"]))
+        XCTAssertNil(ImageLink.relativePath(of: ["Users", "me", "a.png"], in: ["Users", "me", "Docs"]), "a parent's file is outside")
+        XCTAssertNil(ImageLink.relativePath(of: ["a.png"], in: ["Users", "me", "Docs"]))
+    }
+
+    func testASiblingThatSharesAPrefixIsNotInside() {
+        XCTAssertNil(ImageLink.relativePath(of: ["Docs2", "a.png"], in: ["Docs"]), "/Docs2 is not under /Docs")
+        XCTAssertNil(ImageLink.relativePath(of: ["Users", "me", "Docs-old", "a.png"], in: ["Users", "me", "Docs"]))
+        XCTAssertEqual(ImageLink.relativePath(of: ["Docs", "a.png"], in: ["Docs"]), ["a.png"])
+    }
+
+    func testTheFolderItselfIsNotInsideItself() {
+        XCTAssertNil(ImageLink.relativePath(of: ["Users", "me", "Docs"], in: ["Users", "me", "Docs"]))
+    }
+
+    func testTheRootFolder() {
+        XCTAssertEqual(ImageLink.relativePath(of: ["a.png"], in: []), ["a.png"], "everything is inside the root")
+    }
+
+    func testCaseMattersAndNormalisationDoesNot() {
+        XCTAssertNil(ImageLink.relativePath(of: ["users", "me", "Docs", "a.png"], in: ["Users", "me", "Docs"]), "case differs, so: copy")
+        XCTAssertEqual(ImageLink.relativePath(of: ["caf\u{00E9}", "a.png"], in: ["cafe\u{0301}"]), ["a.png"],
+                       "é and e + combining accent are one name, as the file system sees it")
+    }
+
+    func testUnusableComponentsMeanOutside() {
+        XCTAssertNil(ImageLink.relativePath(of: ["Docs", "..", "Other", "a.png"], in: ["Docs"]), "an unresolved .. cannot be trusted")
+        XCTAssertNil(ImageLink.relativePath(of: ["Docs", ".", "a.png"], in: ["Docs"]))
+        XCTAssertNil(ImageLink.relativePath(of: ["Docs", "", "a.png"], in: ["Docs"]))
+        XCTAssertNil(ImageLink.relativePath(of: ["Docs", "a.png"], in: ["Docs", ".."]))
+    }
+
+    func testARelativePathFeedsTheSameEncoding() {
+        let relative = ImageLink.relativePath(of: ["Docs", "My Photos", "a b.png"], in: ["Docs"])
+        XCTAssertEqual(relative.map(ImageLink.markdown(path:)), "![](My%20Photos/a%20b.png)")
+    }
+}

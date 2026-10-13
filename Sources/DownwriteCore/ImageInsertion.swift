@@ -118,6 +118,19 @@ public enum ImageLimits {
     public static let minLongEdge = 320
 }
 
+/// A letter of any script, a mark that belongs to a letter, or a decimal digit. Variation selectors are marks too, but they only
+/// ride on emoji, so they do not count.
+fileprivate func isLetterOrDigit(_ scalar: Unicode.Scalar) -> Bool {
+    if (0xFE00...0xFE0F).contains(scalar.value) { return false }
+    switch scalar.properties.generalCategory {
+    case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+         .nonspacingMark, .spacingMark, .decimalNumber:
+        return true
+    default:
+        return false
+    }
+}
+
 // MARK: - Names
 
 /// File names for images written to `assets/` (R8, R9). Pure: the clock, the time zone and "is this name taken" are arguments.
@@ -166,15 +179,7 @@ public enum ImageNaming {
     }
 
     private static func isKept(_ scalar: Unicode.Scalar) -> Bool {
-        if scalar == "." || scalar == "_" || scalar == "-" { return true }
-        if (0xFE00...0xFE0F).contains(scalar.value) { return false }          // variation selectors ride on emoji
-        switch scalar.properties.generalCategory {
-        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
-             .nonspacingMark, .spacingMark, .decimalNumber:
-            return true
-        default:
-            return false
-        }
+        scalar == "." || scalar == "_" || scalar == "-" || isLetterOrDigit(scalar)
     }
 
     /// `name` if `isTaken` says it is free, otherwise `name-2`, `name-3` … (the number goes before the last extension) up to
@@ -190,5 +195,52 @@ public enum ImageNaming {
             if !isTaken(candidate) { return candidate }
         }
         return nil
+    }
+}
+
+// MARK: - Links
+
+/// The Markdown for an image in `assets/` or elsewhere under the document's folder (R10, R15). Pure: paths are arrays of
+/// components, so nothing here touches a file system.
+public enum ImageLink {
+    /// The folder pasted and dropped images are saved in, next to the document (R7). A fixed name, not a setting.
+    public static let folderName = "assets"
+
+    /// `![](assets/a%20b.png)`: empty alt text, `/` between components, and each component percent-encoded (UTF-8, upper-case
+    /// hex) except for letters of any script, digits and `- . _ ~`. The angle-bracket form `<…>` is never used. A first
+    /// component that starts with `~` gets a `./` in front: the preview treats `~…` as the home folder.
+    public static func markdown(path components: [String]) -> String {
+        var segments = components.map(encode)
+        if components.first?.hasPrefix("~") == true { segments.insert(".", at: 0) }
+        return "![](" + segments.joined(separator: "/") + ")"
+    }
+
+    private static func encode(_ component: String) -> String {
+        var out = ""
+        for scalar in component.unicodeScalars {
+            if isLetterOrDigit(scalar) || scalar == "-" || scalar == "." || scalar == "_" || scalar == "~" {
+                out.unicodeScalars.append(scalar)
+            } else {
+                for byte in String(scalar).utf8 {
+                    out += "%" + hex[Int(byte >> 4)] + hex[Int(byte & 0xF)]
+                }
+            }
+        }
+        return out
+    }
+
+    private static let hex = Array("0123456789ABCDEF").map(String.init)
+
+    /// The components of `file` below `folder`, or nil unless `file` lies strictly inside it. Both arrays are the components of
+    /// absolute paths with symbolic links already resolved, so a link in the tree that points out of it does not count. A
+    /// sibling that merely shares a prefix (`/Docs2` against `/Docs`) is not inside, nor is the folder itself. Components compare as Swift
+    /// strings do (canonically equivalent text is equal, as on APFS) but case-sensitively, so a difference of case says
+    /// "outside" and the file is copied, which is always safe.
+    public static func relativePath(of file: [String], in folder: [String]) -> [String]? {
+        let unusable: Set<String> = ["", ".", ".."]
+        guard file.count > folder.count,
+              !file.contains(where: unusable.contains), !folder.contains(where: unusable.contains),
+              Array(file.prefix(folder.count)) == folder else { return nil }
+        return Array(file.dropFirst(folder.count))
     }
 }
