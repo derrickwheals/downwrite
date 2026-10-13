@@ -12,20 +12,20 @@ Candidate features that Downwrite does not have yet, with the reasoning for (and
 
 ## Summary
 
-| Ref                                                                  | Item                                                  | Tier            | Status                                 | Todoist ID       |
-| -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | -------------------------------------- | ---------------- |
-| [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3)                      | —                |
-| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed                               | 6hjfjGvqJXxhJqrH |
-| [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed                               | 6hjfjGxrHHghQ9QH |
-| [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed                               | 6hjfjGw57MpVp2gq |
-| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed                               | 6hjfjH3Q4pH554Pq |
-| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | In progress (merged, not yet released) | 6hjfjH4QfpgpMcRq |
-| [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed                               | 6hjfjH74GgcMJVcq |
-| [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed                               | 6hjfjH5gmF37jVWq |
-| [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed                               | 6hjfjH6w5mHHQ2xq |
-| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2               | Proposed                               | 6hjfjH9FvFxcJfJq |
-| [DW-012](#dw-012--copy-text-from-code-blocks)                        | Copy text from code blocks                            | 2               | Released (v0.9.4)                      | —                |
-| [DW-011](#dw-011--accessibility-audit)                               | Accessibility audit                                   | Unverified risk | Proposed                               | 6hjfjHCFqqQq6Fjq |
+| Ref                                                                  | Item                                                  | Tier            | Status            | Todoist ID       |
+| -------------------------------------------------------------------- | ----------------------------------------------------- | --------------- | ----------------- | ---------------- |
+| [DW-001](#dw-001--export-and-print)                                  | Export and print                                      | 1               | Released (v0.9.3) | —                |
+| [DW-002](#dw-002--paste-and-drop-images)                             | Paste and drop images                                 | 1               | Proposed          | 6hjfjGvqJXxhJqrH |
+| [DW-003](#dw-003--syntax-highlighting-in-code-blocks)                | Syntax highlighting in code blocks                    | 1               | Proposed          | 6hjfjGxrHHghQ9QH |
+| [DW-004](#dw-004--typeset-math)                                      | Typeset math                                          | 1               | Proposed          | 6hjfjGw57MpVp2gq |
+| [DW-005](#dw-005--folders-quick-open-and-linking-between-notes)      | Folders, quick open and linking between notes         | 1               | Proposed          | 6hjfjH3Q4pH554Pq |
+| [DW-006](#dw-006--github-style-callouts)                             | GitHub-style callouts                                 | 2               | Released (v0.9.5) | —                |
+| [DW-007](#dw-007--focus-and-typewriter-mode)                         | Focus and typewriter mode                             | 2               | Proposed          | 6hjfjH74GgcMJVcq |
+| [DW-008](#dw-008--auto-pairing-while-typing)                         | Auto-pairing while typing                             | 2               | Proposed          | 6hjfjH5gmF37jVWq |
+| [DW-009](#dw-009--localisation)                                      | Localisation                                          | 2               | Proposed          | 6hjfjH6w5mHHQ2xq |
+| [DW-010](#dw-010--system-integration-shortcuts-services-applescript) | System integration (Shortcuts, Services, AppleScript) | 2               | Proposed          | 6hjfjH9FvFxcJfJq |
+| [DW-012](#dw-012--copy-text-from-code-blocks)                        | Copy text from code blocks                            | 2               | Released (v0.9.4) | —                |
+| [DW-011](#dw-011--accessibility-audit)                               | Accessibility audit                                   | Unverified risk | Proposed          | 6hjfjHCFqqQq6Fjq |
 
 Tier 1 is the set of gaps most likely to stop someone using Downwrite every day. Tier 2 is worth doing but would not stop anyone adopting it. The last item is an audit of something that has not been tested yet.
 
@@ -108,8 +108,7 @@ Two agents can work on two items at once, each in its own git worktree and branc
 
 ## DW-006 — GitHub-style callouts
 
-- **Todoist:** https://app.todoist.com/app/task/6hjfjH4QfpgpMcRq
-- **Status:** In progress. GitHub-style callouts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`), in the editor and in print, PDF and HTML export, merged in PR #21 on 2026-10-13 ([`docs/changes/2026-10-12-github-style-callouts/`](changes/2026-10-12-github-style-callouts/intent.md)); it becomes Released, with its tag, once a release ships it.
+- **Status:** Released in [v0.9.5](https://github.com/derrickwheals/downwrite/releases/tag/v0.9.5) (2026-10-13). GitHub-style callouts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`), in the editor and in print, PDF and HTML export, were merged in PR #21 on 2026-10-13 ([`docs/changes/2026-10-12-github-style-callouts/`](changes/2026-10-12-github-style-callouts/intent.md)).
 - **Why add it:** `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]` and similar render as coloured callouts on GitHub and in several editors, and documentation written for GitHub uses them heavily. In Downwrite they show as a plain quote with the literal `[!NOTE]` text, so the author sees something different from the reader.
 - **Why not, or what to watch:** The cost is low for the value: it is a variant of a block quote, parsed in `DownwriteCore` (so testable on Linux), drawn with a coloured bar and a label, with the marker line hidden like other syntax. It could reasonably move up the list. Decisions needed: which types to support, whether to accept other editors' variants such as foldable `[!note]+` callouts, and how callouts interact with folding. Elsewhere they degrade gracefully to a normal quote.
 - **What the code has today:** Block quotes are drawn with a quote bar, and there is no `[!TYPE]` handling.
