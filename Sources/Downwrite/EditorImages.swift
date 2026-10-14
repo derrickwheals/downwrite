@@ -170,12 +170,16 @@ extension EditorCoordinator {
     /// selection that is typed over or into collapses to just after what was typed, so the person's text is never replaced by an
     /// image that was asked for earlier.
     func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
-        guard !pendingImageJobs.isEmpty else { return true }
-        let inserted = replacementString?.utf16.count ?? 0
+        moveImagePlaces(through: range, inserted: replacementString?.utf16.count ?? 0)
+        return true
+    }
+
+    /// Moves the place of every waiting job through an edit that replaces `range` with `inserted` UTF-16 units. A reload from disk
+    /// (`applyExternalText`) writes the storage without asking the text view, so it calls this itself.
+    func moveImagePlaces(through range: NSRange, inserted: Int) {
         for index in pendingImageJobs.indices {
             pendingImageJobs[index].position = Self.movedThrough(edit: range, inserted: inserted, position: pendingImageJobs[index].position)
         }
-        return true
     }
 
     static func movedThrough(edit: NSRange, inserted: Int, position: NSRange) -> NSRange {

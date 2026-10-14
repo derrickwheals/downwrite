@@ -758,6 +758,20 @@ final class ImagePlacementTests: XCTestCase {
         assertPlaces("## Ti|tle ##\nText", "## Title ##\n\n\(link)\n\n|Text")
     }
 
+    /// An ATX heading is one to six `#` and then a space, a tab or the end of the line, so `#work` is text: over `---` or `===` it is
+    /// a setext heading and the link goes after the underline, not between the text and its underline.
+    func testALineStartingWithAHashThatIsNotAnATXHeadingIsASetextHeading() {
+        assertPlaces("#work |#meeting\n---\nNotes", "#work #meeting\n---\n\n\(link)\n\n|Notes")
+        assertPlaces("#1 pri|ority\n=====\nText", "#1 priority\n=====\n\n\(link)\n\n|Text")
+        assertPlaces("####### se|ven\n---\nText", "####### seven\n---\n\n\(link)\n\n|Text")
+    }
+
+    func testARealATXHeadingStaysOneLineWhateverTheLineAfterIt() {
+        assertPlaces("# A|\n---\nText", "# A\n\n\(link)\n\n|---\nText")                       // the dashes are a rule, not an underline
+        assertPlaces("#\t|T\nText", "#\tT\n\n\(link)\n\n|Text")
+        assertPlaces("#| \nText", "# \n\n\(link)\n\n|Text")                                    // an empty heading
+    }
+
     // MARK: lists and quotes
 
     func testListItemCases() {

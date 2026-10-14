@@ -326,6 +326,34 @@ final class ImagePasteFlowTests: ImageRigTestCase {
         XCTAssertEqual(r.text, "XYZ Hello world\n\n\(link(pastedName))\n\n")
     }
 
+    /// The file is rewritten by another app while the image is being made: the editor is handed the new text (the reload path
+    /// writes the storage directly, not through `shouldChangeText`), and the link must still land where the person pasted.
+    func testAReloadFromDiskDuringTheWorkMovesThePlaceToo() async throws {
+        let r = try rig("Hello world")
+        let gate = DispatchSemaphore(value: 0)
+        slow(r, gate: gate)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        r.h.coordinator.update(text: "Note: Hello world", settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720))
+        XCTAssertEqual(r.text, "Note: Hello world")
+        gate.signal()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertEqual(r.text, "Note: Hello world\n\n\(link(pastedName))\n\n")
+    }
+
+    func testAReloadThatRewritesTheSelectedTextCollapsesThePendingTarget() async throws {
+        let r = try rig("Hello world", selection: NSRange(location: 6, length: 5))
+        let gate = DispatchSemaphore(value: 0)
+        slow(r, gate: gate)
+        putPNG(r.pb)
+        XCTAssertTrue(r.h.coordinator.pasteImages())
+        r.h.coordinator.update(text: "Hello there", settings: EditorSettings(font: .avenirNext, size: 17, lineHeight: 1.45, width: 720))
+        gate.signal()
+        await r.h.coordinator.waitForImageWork()
+        XCTAssertTrue(r.text.hasPrefix("Hello there"), "the reloaded text was not replaced by the image: \(r.text.debugDescription)")
+        XCTAssertTrue(r.text.contains(link(pastedName)))
+    }
+
     func testClosingTheWindowMeansNothingIsInserted() async throws {
         let r = try rig("Hello world\n")
         let gate = DispatchSemaphore(value: 0)

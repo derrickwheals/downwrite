@@ -116,9 +116,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     /// Asks the person to save an untitled document first (R17); returns the saved file, or nil if they cancelled. nil here means
     /// the standard sheet (see `EditorImages.swift`).
     var requestSave: (() async -> URL?)?
-    /// Paste and drop jobs: a serial queue (the tail), the ones still waiting or running, and where each finished one left the caret.
     /// How a dragged-in file promise is received (see `PromisedFiles`): AppKit's, except in tests.
     var promiseStarter: PromisedFiles.Starter = PromisedFiles.appKit
+    /// Paste and drop jobs: a serial queue (the tail), and the ones still waiting or running.
     var imageQueueTail: Task<Void, Never>?
     var pendingImageJobs: [ImageJob] = []
     var nextImageJobID = 0
@@ -226,6 +226,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         guard let tv = textView, let storage = tv.textStorage else { return }
         guard let edit = TextDiff.replacement(from: tv.string, to: newText) else { return }
         let selection = tv.selectedRange()
+        moveImagePlaces(through: edit.range, inserted: edit.replacement.utf16.count)      // a paste or drop at work keeps its place (R20)
         isStyling = true
         tv.undoManager?.disableUndoRegistration()
         storage.replaceCharacters(in: edit.range, with: edit.replacement)

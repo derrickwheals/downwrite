@@ -397,7 +397,11 @@ public enum ImagePlacement {
         var p = lines[index].range.location
         let end = lines[index].contentEnd
         while p < end, ns.character(at: p) == 32 || ns.character(at: p) == 9 { p += 1 }
-        if p < end, ns.character(at: p) == 35 { return index }                   // `#`: an ATX heading is one line
+        // An ATX heading is one line: one to six `#`, then a space, a tab or the end of the line. `#work` or `#######` is text, so
+        // above an underline it is a setext heading (the analyzer guesses ATX from the first `#` alone and leaves the underline plain).
+        var hashes = 0
+        while p < end, ns.character(at: p) == 35 { p += 1; hashes += 1 }
+        if (1...6).contains(hashes), p == end || ns.character(at: p) == 32 || ns.character(at: p) == 9 { return index }
         var next = index + 1
         while next < lines.count {
             if isSetextUnderline(ns, lines[next]) { return next }
