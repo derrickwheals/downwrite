@@ -5,7 +5,7 @@ plan: ./plan.md
 reviewed: 2026-10-14
 base: main
 head: 67b884f89682a67aaa24c34dbef15704725b29d6
-reproven:              # blank on purpose: see "Proof after the fixes"
+reproven: 3115cec42813caceb17efcd29db84fe6938c72df
 pr: https://github.com/derrickwheals/downwrite/pull/23
 ---
 
@@ -33,13 +33,14 @@ Related, not changed here: the analyzer makes the same wrong guess as `headingEn
 
 ## Proof after the fixes
 
-Re-run on 2026-10-14 against `557f08a`. Before the fixes, three of the four new tests failed for the reasons in findings 1 and 2 (the fourth, a real ATX heading above `---`, is a guard that passes either way); after them, all four pass.
+Re-run on 2026-10-14. Before the fixes, three of the four new tests failed for the reasons in findings 1 and 2 (the fourth, a real ATX heading above `---`, is a guard that passes either way); after them, all four pass.
 
-- `scripts/ci-local.sh --no-e2e` (build, `swift test`, package the app): green. 568 app tests and 761 Core tests, 0 failures; the app packages.
-- Core tests on Linux in the `swift:6.1-noble` image, one test per process (`scripts/linux-test.sh` itself does not run under this Mac's bash 3.2, so the same image and test binary were driven by a script): 761 of 761 passed, 0 failed, 0 wedged.
-- Real-app step (`ci-local.sh`'s e2e arguments, from a copy of the app with a fresh bundle id so the saved preferences are untouched), run twice: **not green**. The 37 `imagepaste:` lines have 0 failures, and they include the four checks of the move-while-open scenario that the build record said were written but not run (open from another folder, move the document with its `assets/` folder while open, force a fresh render). Both runs fail the same 10 other checks: the Appearance tab is 633 pt against the 620 limit and two imported-theme-library checks (your eight imported themes, as in the build record), and seven SwiftUI-focus checks (⌘/ four times, Keep on Top twice, the fold commands). As a control, the unfixed commit `67b884f`, built and run the same way here, fails 9 of the same 10. The tenth, "⌘/ again returns to the formatted editor (light)", is a race: the check forces the source view when the first ⌘/ is not delivered and then passes only if the second ⌘/ is. The build record saw the seven focus checks pass in a run where the desktop was in front; here the terminal was.
+- CI on `3115cec` (the PR head, which contains the fixes), for both the push and the pull-request run: **green**. `App build, tests and e2e (macOS)` passes with 1329 tests and 0 failures, and its real-app step ends with `ALL CHECKS PASSED`: no FAIL line in the report, including the 37 `imagepaste:` checks (the move-while-open scenario among them), the ⌘/, Keep on Top and fold-command checks, and both palette checks. `Core tests (Linux)`, CodeQL and the three analysis jobs pass too. That job runs the same steps as `scripts/ci-local.sh`, on an idle macOS runner.
+- Locally on `557f08a`: `scripts/ci-local.sh --no-e2e` (build, `swift test`, package the app) is green with 568 app tests and 761 Core tests, 0 failures. Core tests on Linux in the `swift:6.1-noble` image, one test per process (`scripts/linux-test.sh` does not run under this Mac's bash 3.2, so the same image and binary were driven by a script): 761 of 761.
+- The real-app step on this Mac is unreliable, and the failures are not caused by this branch. From an isolated copy (fresh bundle id) it fails three checks every time: the Appearance tab (633 pt against the 620 limit) and two imported-theme-library checks, caused by the eight themes imported on this Mac (CI has none). It also fails seven SwiftUI-focus checks (⌘/ four times, Keep on Top twice, the fold commands) intermittently: they failed in every local run of the branch, **and in one of three runs of `main`** (`7822ceb`, built the same way here), where the other two runs passed. Launching the copy through `open` instead of from the terminal did not change that, and loses the screen-recording permission, so it is not a better way to run it. No `imagepaste:` check failed in any local run.
+- A `scripts/ci-local.sh` run by the maintainer on `3115cec` (real bundle id) failed 11 checks: the nine above and "editor palette follows light" and "…dark". Those two compare the editor's palette with the built-in Downwrite palette, so they fail when a non-default light or dark theme is saved at the start of the run; CI and the isolated copies start from the defaults and pass them. The self-test sets `lightTheme` and `darkTheme` back to Downwrite at its end (`SelfTest.swift`), so the themes saved before that run cannot be read back to confirm this.
 
-`reproven` is left blank on purpose: the plan says every proof command must pass, and the real-app step has not passed in full in this environment. It should be set to `557f08a` once the e2e is run in a normal desktop session, or waived by you. The move-while-open check was uncommitted when those runs were made (it was compiled into the app from the working tree); it is committed in `c3aee74`, which changes only that file and the plan's notes about it.
+The move-while-open check was uncommitted when the local runs were made (it was compiled into the app from the working tree); it is committed in `c3aee74`, which changes only that file and the plan's notes about it, and CI ran it from the commit.
 
 ## Not checked by the reviewer
 
