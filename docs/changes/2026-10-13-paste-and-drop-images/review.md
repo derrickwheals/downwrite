@@ -6,7 +6,7 @@ reviewed: 2026-10-14
 base: main
 head: 67b884f89682a67aaa24c34dbef15704725b29d6
 reproven:              # blank on purpose: see "Proof after the fixes"
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/23
 ---
 
 # Review: Paste and drop images into a document
