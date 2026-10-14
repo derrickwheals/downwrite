@@ -6,7 +6,7 @@ track: feature
 status: accepted
 raised: 2026-10-13
 accepted: 2026-10-13
-merged:
+merged: 2026-10-14
 backlog: "DW-002 (https://app.todoist.com/app/task/6hjfjGvqJXxhJqrH)"
 ---
 
