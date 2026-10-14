@@ -186,6 +186,39 @@ extension SelfTest {
         otherCoordinator.imagePasteboard = .general
         otherWindow.close()
 
+        // MARK: A document opened from another folder, then moved with its assets folder while it is open (found by hand)
+        do {
+            let root = outDir.appendingPathComponent("move-test", isDirectory: true)
+            try? FileManager.default.removeItem(at: root)
+            let first = root.appendingPathComponent("First", isDirectory: true)
+            try? FileManager.default.createDirectory(at: first.appendingPathComponent("assets"), withIntermediateDirectories: true)
+            try? png(300, 200).write(to: first.appendingPathComponent("assets/pic.png"))
+            let moving = first.appendingPathComponent("moved.md")
+            try? "# Moved\n\n![](assets/pic.png)\n".write(to: moving, atomically: true, encoding: .utf8)
+            func editor(titled name: String) -> EditorTextView? { editors().first { $0.window?.representedURL?.lastPathComponent == name } }
+            func showsPicture(_ view: EditorTextView?) -> Bool { view?.coordinator?.overlay.reservedHeights.values.contains { $0 > 100 } == true }
+            NSDocumentController.shared.openDocument(withContentsOf: moving, display: true) { _, _, _ in }
+            let opened = await waitUntil(timeout: 10) { editor(titled: "moved.md") != nil }
+            check(opened, "imagepaste: a document opened from another folder gets a window")
+            if let view = editor(titled: "moved.md"), let movedWindow = view.window {
+                let drawn = await waitUntil(timeout: 10) { showsPicture(view) }
+                check(drawn, "imagepaste: its relative image is found and drawn on first open (not \"Image not found\")", detail: "\(String(describing: view.coordinator?.overlay.reservedHeights))")
+                let second = root.appendingPathComponent("Second", isDirectory: true)
+                try? FileManager.default.moveItem(at: first, to: second)
+                let followed = await waitUntil(timeout: 10) { NSDocumentController.shared.documents.contains { $0.fileURL?.deletingLastPathComponent().lastPathComponent == "Second" } }
+                check(followed, "imagepaste: the open document follows the move of its folder")
+                _ = await waitUntil(timeout: 5) { view.coordinator?.fileURL?.deletingLastPathComponent().lastPathComponent == "Second" }
+                UserDefaults.standard.set(ThemeChoice.dark.rawValue, forKey: Prefs.theme)
+                ThemeChoice.applyCurrent()
+                await settle(1.5)
+                let after = await waitUntil(timeout: 10) { showsPicture(view) }
+                check(after, "imagepaste: after the move, a fresh render still finds assets/pic.png next to the moved document", detail: "\(String(describing: view.coordinator?.overlay.reservedHeights)) fileURL=\(String(describing: view.coordinator?.fileURL?.path))")
+                UserDefaults.standard.set(ThemeChoice.light.rawValue, forKey: Prefs.theme)
+                ThemeChoice.applyCurrent()
+                movedWindow.close()
+            }
+        }
+
         // Back to the original window and the starting theme, for the walkthroughs that follow.
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(tv)
