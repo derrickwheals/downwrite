@@ -125,6 +125,8 @@ Always update `FEATURE-LIST.md` (repo root) after a new feature has been fully r
 - CSS `max-height` with `height:auto` squashes an element that has its own width: add `object-fit: contain` and measure the shape in a real PDF, not in the CSS.
 - Tests that create a named `NSPasteboard` must release it in a teardown (`addTeardownBlock { pb.releaseGlobally() }`), as `SelfTestCodeCopy` does; a fresh name per test otherwise leaves one pasteboard in the pasteboard server per test until logout.
 - A `selectionChanged` branch that re-analyses and returns early (the table-source one) skips everything after it, and `reanalyze` records per-caret state silently (`syncActiveCallout`), so per-move work such as an announcement must run before such a return, and a test must move the caret through that branch (`CalloutEditorTests.testLeavingATableShownAsMarkdownIntoACalloutIsAnnounced`).
+- A tracker that follows edits through the text view's `textView(_:shouldChangeTextIn:replacementString:)` misses code that writes the storage directly (`applyExternalText`, the reload from disk): route those writes through the same mover (`moveImagePlaces`), and test a reload while the tracked work is pending (`ImagePasteFlowTests.testAReloadFromDiskDuringTheWorkMovesThePlaceToo`).
+- A line that starts with `#` is not necessarily an ATX heading: `#tag` over `---` is a setext heading, though the analyzer guesses ATX from the first `#`. Decide ATX as one to six `#` followed by a blank or the end of the line (`ImagePlacement.headingEnd`), and test a `#tag` line above an underline.
 
 ## Agent backlog
 
