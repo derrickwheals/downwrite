@@ -3,7 +3,7 @@ type: plan
 id: 2026-10-13-paste-and-drop-images
 intent: ./intent.md
 spec: ./spec.md
-status: in-progress    # draft | approved | in-progress | done
+status: done           # draft | approved | in-progress | done
 approved: 2026-10-14
 branch: change/2026-10-13-paste-and-drop-images
 ---
@@ -182,3 +182,11 @@ Run on 2026-10-14 against the head of `change/2026-10-13-paste-and-drop-images`.
 - The real-app run was **not** `scripts/ci-local.sh`'s own e2e step, which launches the packaged app under its real bundle id and so writes the person's saved preferences. It was the same arguments from an isolated copy with a fresh bundle id (the plan's own note). Full run: the 33 `imagepaste:` checks pass; the only failures are the three environmental ones (the Appearance tab is 633 pt against the 620 limit, and two imported-theme-library checks, caused by the eight themes imported in `~/Library/Application Support/Downwrite/Themes`, which were not touched). One full run also failed seven SwiftUI-focus checks (⌘/, Keep on Top, fold commands) that passed in the next run: the desktop was not frontmost.
 - Independent verifier (`ai-sdlc:verifier`): PASS. Findings and fixes are under *Deviations* ("Verification fixes"). The re-check after the fixes was the targeted tests, a mutation check, the full suites and the real-app image step, not a second verifier pass.
 - Owed by hand, in a real desktop session (so the plan stays `in-progress`): everything in the list under *Proof*, plus the two things the tests cannot show: a photo dragged from Photos and an image dragged from Safari (the real file-promise receive, which AppKit allows only during a live drop), Save… in the save-first sheet (the system save panel), an image drag to the bottom edge of a document taller than the window (autoscroll), and VoiceOver speaking the announcement.
+
+### By-hand checks, 2026-10-14
+
+Done by the person in a real desktop session on the built app, and reported as passing: the checks listed under *Proof* (a screenshot pasted with ⌃⌘⇧4; PNG, JPEG and HEIC dragged from Finder; Photos and Safari drags, which cover the real file-promise receive; Copy Image and a file copied in Finder; large images; the animated GIF; read-only folder and `assets` file in the way; Print and Export), the untitled save sheet with Save… (and a cancelled save panel), VoiceOver speaking the announcement, and drag autoscroll near the top and bottom edges.
+
+One check failed first and was fixed: moving the document and its `assets/` folder together showed "Image not found" (see *Deviations*, "Found by hand"). It was re-checked after the fix and passes. With that, nothing in the plan is owed, so the status is `done`.
+
+Not run: the real-app version of that move check (open from another folder, move while open, force a re-render) was written in `SelfTestImagePaste.swift` but not committed, because a real Downwrite was running; the unit tests and the by-hand check cover it. Separate from this change: DW-013 (File ▸ Move To… fails with a ViewBridge error) and the unreliable first-edit "Edited" mark after a `revert` (step 14) are logged for separate work.
