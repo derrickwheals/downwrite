@@ -87,6 +87,10 @@ enum SelfTest {
             await codeCopyWalkthrough(outDir: outDir, reusing: tv)
             return finish(outDir)
         }
+        if imagePasteOnly {                                    // (development: just the paste and drop images walkthrough)
+            await imagePasteWalkthrough(outDir: outDir, reusing: tv)
+            return finish(outDir)
+        }
         if calloutsOnly, let fixture = calloutFixture {        // (development: just the callout walkthrough)
             await calloutWalkthrough(outDir: outDir, fixture: fixture, reusing: tv)
             return finish(outDir)
@@ -776,6 +780,10 @@ enum SelfTest {
         // 8c. Callouts, end to end: the shared corpus classified and drawn, the caret on a marker line, the announcement, a fold, the source
         // view, screenshots (SelfTestCallout.swift). It reloads this run's first window with the corpus, so it also runs before the folding walkthrough.
         if let fixture = calloutFixture { await calloutWalkthrough(outDir: outDir, fixture: fixture, reusing: tv) }
+
+        // 8d. Pasting and dropping images, end to end: Edit ▸ Paste, undo, a drop onto a folded heading, the untitled sheet, screenshots
+        // (SelfTestImagePaste.swift). It reloads this run's first window with a document of its own, so it also runs before the folding walkthrough.
+        await imagePasteWalkthrough(outDir: outDir, reusing: tv)
 
         // 9. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift). It runs last, in this
         // run's first window (the one SwiftUI resolves ⌘/ and the other focused-value menu items against), which it reloads with Fixture F.

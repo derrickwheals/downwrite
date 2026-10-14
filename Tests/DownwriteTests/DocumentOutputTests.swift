@@ -768,6 +768,44 @@ final class DocumentOutputControllerTests: XCTestCase {
         XCTAssertEqual(result?["notes"] as? Int, 1, "the broken one is a note above its source")
     }
 
+    // MARK: DW-002 R24: a pasted image is in the output
+
+    func testAPastedImageIsEmbeddedInTheHTMLExportAsADataURI() async throws {
+        // A real editor on a real folder: the paste writes assets/ and puts the link in the text, exactly as a person's would.
+        let folder = try temporaryFolder()
+        let doc = folder.appendingPathComponent("notes.md")
+        try "Hello\n".write(to: doc, atomically: true, encoding: .utf8)
+        let editor = EditorHarness(text: "Hello\n", fileURL: doc)
+        editor.window.makeKeyAndOrderFront(nil)
+        let board = NSPasteboard(name: NSPasteboard.Name("downwrite.test.export.\(UUID().uuidString)"))
+        addTeardownBlock { board.releaseGlobally() }
+        board.clearContents()
+        board.setData(ImageFixtures.png(width: 64, height: 48), forType: .png)
+        editor.coordinator.imagePasteboard = board
+        editor.select(editor.textView.string.utf16.count)
+        XCTAssertTrue(editor.coordinator.pasteImages())
+        await editor.coordinator.waitForImageWork()
+        XCTAssertTrue(editor.textView.string.contains("![](assets/image-"), editor.textView.string)
+
+        // The output controller is handed that text and the file it belongs to, and nothing else.
+        let rig = Rig()
+        rig.fileURL = doc
+        rig.displayName = "notes.md"
+        rig.text = editor.textView.string
+        let out = folder.appendingPathComponent("notes.html")
+        let omissions = try await rig.controller.writeHTML(to: out)
+        XCTAssertTrue(omissions.isEmpty, "nothing was left out: \(omissions)")
+        let html = try String(contentsOf: out, encoding: .utf8)
+        XCTAssertTrue(html.contains("<img src=\"data:image/png;base64,"), "the pasted image is embedded as a data URI")
+        XCTAssertFalse(html.contains("assets/image-"), "the page refers to nothing on this Mac")
+
+        // And a fresh web view with no base URL, as on another Mac, shows it.
+        let loader = PrintRenderer()
+        try await loader.load(html)
+        let reply = try await loader.webView.evaluateJavaScript("JSON.stringify(Array.from(document.images).map(i => [i.naturalWidth, i.naturalHeight]))") as? String
+        XCTAssertEqual(reply, "[[64,48]]")
+    }
+
     // MARK: R27: the window stays responsive while preparing
 
     func testPreparingALargeDocumentNeverStallsTheMainThreadForLong() async throws {

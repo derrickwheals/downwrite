@@ -278,6 +278,9 @@ final class DiagramOverlay {
         var view: DiagramView
         var reserved: CGFloat
         var task: Task<Void, Never>?
+        /// The folder relative image paths were resolved against when this card was last rendered. A card of an image or HTML block
+        /// is rendered again when the document's folder changes (it was moved, saved elsewhere, or its URL arrived after the view).
+        var base: URL?
     }
 
     private weak var textView: EditorTextView?
@@ -315,6 +318,12 @@ final class DiagramOverlay {
         return max(200, tv.bounds.width - tv.textContainerInset.width * 2)
     }
 
+    /// Whether what a card shows depends on the document's folder (relative image paths): everything but a diagram.
+    private func dependsOnBase(_ kind: PreviewBlock.Kind) -> Bool {
+        if case .mermaid = kind { return false }
+        return true
+    }
+
     /// Shows a card for each block and drops the cards of blocks that are gone. `style` is how HTML blocks are drawn: a
     /// different one (theme, font) renders them again.
     func sync(blocks: [PreviewBlock], dark: Bool, style: HTMLPageStyle) {
@@ -330,12 +339,12 @@ final class DiagramOverlay {
             if case .html = block.kind { blockStyle = style }
             if var e = entries[block.firstLine] {
                 e.view.isHidden = hiddenLines.contains(block.firstLine)
-                if e.kind == block.kind && e.dark == dark && e.style == blockStyle { continue }
+                if e.kind == block.kind && e.dark == dark && e.style == blockStyle && (!dependsOnBase(block.kind) || e.base == baseURL) { continue }
                 e.task?.cancel()
-                e.kind = block.kind; e.dark = dark; e.style = blockStyle
+                e.kind = block.kind; e.dark = dark; e.style = blockStyle; e.base = baseURL
                 entries[block.firstLine] = e
                 start(block.firstLine)
-            } else if let moved = orphans.filter({ $0.value.kind == block.kind && $0.value.dark == dark && $0.value.style == blockStyle })
+            } else if let moved = orphans.filter({ $0.value.kind == block.kind && $0.value.dark == dark && $0.value.style == blockStyle && (!dependsOnBase(block.kind) || $0.value.base == baseURL) })
                         .min(by: { abs($0.key - block.firstLine) < abs($1.key - block.firstLine) }) {
                 orphans[moved.key] = nil
                 moved.value.view.isHidden = hiddenLines.contains(block.firstLine)
@@ -348,7 +357,7 @@ final class DiagramOverlay {
                 // (An HTML card shows nothing, and keeps no room, until it knows how tall it is.)
                 if blockStyle == nil { v.showLoading(palette: palette) }
                 tv.addSubview(v)
-                entries[block.firstLine] = Entry(kind: block.kind, dark: dark, style: blockStyle, view: v, reserved: blockStyle == nil ? 72 : 0)
+                entries[block.firstLine] = Entry(kind: block.kind, dark: dark, style: blockStyle, view: v, reserved: blockStyle == nil ? 72 : 0, base: baseURL)
                 changed = true
                 start(block.firstLine)
             }

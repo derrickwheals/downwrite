@@ -48,7 +48,20 @@ struct EditorView: NSViewRepresentable {
 final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
     var text: Binding<String>
     var fileURL: URL? {
-        didSet { if fileURL != oldValue { watchedDate = Self.modificationDate(of: fileURL) } }
+        didSet {
+            guard fileURL != oldValue else { return }
+            watchedDate = Self.modificationDate(of: fileURL)
+            refreshPreviewBase()
+        }
+    }
+
+    /// The document's folder is what relative image paths mean, so when the document gets a URL (SwiftUI hands it over after the view is
+    /// made) or a different one (it was moved with its images, or saved elsewhere) the cards are rendered again from it, without
+    /// waiting for the next edit.
+    private func refreshPreviewBase() {
+        guard let overlay, styler != nil, textView != nil else { return }
+        overlay.baseURL = fileURL?.deletingLastPathComponent()
+        overlay.sync(blocks: sourceMode ? [] : analysis.previewBlocks, dark: isDark, style: htmlStyle)
     }
     private(set) weak var textView: EditorTextView?
     private weak var scroll: NSScrollView?
@@ -85,6 +98,32 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     var onCopyControlInvalidated: ((NSRect) -> Void)?
     /// Where Copy Code Block puts the code. Tests use a private named pasteboard so the person's clipboard is left alone.
     var codeCopyPasteboard = NSPasteboard.general
+    /// The pasteboard Edit ▸ Paste reads for what Downwrite handles itself (a URL over a selection, and pasted images). Tests use a
+    /// private named pasteboard so the person's clipboard is left alone.
+    var imagePasteboard = NSPasteboard.general
+    /// Names a pasted image (`image-YYYYMMDD-HHMMSS`) from this clock and time zone. Tests fix them.
+    var imageClock: () -> Date = { Date() }
+    var imageTimeZone: TimeZone = .current
+    /// The size the preview and the export accept. A test lowers it instead of making a huge image.
+    var imageMaxBytes = ImageLoader.maxEmbeddedBytes
+    /// Reads, converts and writes one image (source, document folder, now, time zone, size cap); it runs off the main thread. A
+    /// test swaps in a slow one.
+    var imagePrepare: @Sendable (ImageSource, URL, Date, TimeZone, Int) throws -> PreparedImage = {
+        try ImageIntake.prepare($0, documentFolder: $1, now: $2, timeZone: $3, maxBytes: $4)
+    }
+    /// Shows the sheet that says what happened to an image (R21, R22). Tests record the title and message instead.
+    var onImageNotice: ((_ title: String, _ message: String) -> Void)?
+    /// Asks the person to save an untitled document first (R17); returns the saved file, or nil if they cancelled. nil here means
+    /// the standard sheet (see `EditorImages.swift`).
+    var requestSave: (() async -> URL?)?
+    /// How a dragged-in file promise is received (see `PromisedFiles`): AppKit's, except in tests.
+    var promiseStarter: PromisedFiles.Starter = PromisedFiles.appKit
+    /// Paste and drop jobs: a serial queue (the tail), and the ones still waiting or running.
+    var imageQueueTail: Task<Void, Never>?
+    var pendingImageJobs: [ImageJob] = []
+    var nextImageJobID = 0
+    var imageWindowClosed = false
+    var imageCloseObserver: NSObjectProtocol?
     /// How long the tick stays on a copied block's control (a test shortens it).
     var codeCopyTickDuration: TimeInterval = 1.5
     var codeCopyTickTimer: Timer?
@@ -112,6 +151,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
     init(text: Binding<String>) {
         self.text = text
         super.init()
+    }
+
+    deinit {
+        if let observer = imageCloseObserver { NotificationCenter.default.removeObserver(observer) }
     }
 
     // MARK: Setup
@@ -183,6 +226,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         guard let tv = textView, let storage = tv.textStorage else { return }
         guard let edit = TextDiff.replacement(from: tv.string, to: newText) else { return }
         let selection = tv.selectedRange()
+        moveImagePlaces(through: edit.range, inserted: edit.replacement.utf16.count)      // a paste or drop at work keeps its place (R20)
         isStyling = true
         tv.undoManager?.disableUndoRegistration()
         storage.replaceCharacters(in: edit.range, with: edit.replacement)
