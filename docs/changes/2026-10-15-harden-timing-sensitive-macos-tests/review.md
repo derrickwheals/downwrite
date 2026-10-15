@@ -6,7 +6,7 @@ reviewed: 2026-10-15
 base: main
 head: b5a42c721ce474a46ecae17c8f97be044847df51
 reproven:
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/24
 ---
 
 # Review: Harden timing-sensitive tests on the macOS runner
