@@ -33,7 +33,7 @@ None.
 
 ## Fed back to CLAUDE.md
 
-Proposed, not added: each needs the maintainer's agreement first. None of the three Nits is a recurring mistake; these come from the build and its Deviations.
+Added to `CLAUDE.md` on the maintainer's go-ahead after the merge (2026-10-15), worded as in that file; the proposals were below. None of the three Nits is a recurring mistake; these come from the build and its Deviations.
 
 - Gotchas: Do not assert wall-clock budgets in a test that runs on the shared runner. Compare against a baseline measured in the same run (thread CPU time through `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`, and a ratio such as `StylerTests.testLargeDocumentStylesQuickly`), and keep an absolute budget only when `CI` is unset.
 - Gotchas: The editor's scroll view is legacy style in a test window (`EditorTextView.make()` asks for overlay and does not get it), so a vertical scroller takes 17 pt from the column once the document outgrows the window and a grid or card placed before it sits 8 pt off; a test that depends on the column width must call `EditorHarness.pinColumnWidth()`, and `TableLayoutTests.testGridFollowsTheColumnWhenTheScrollerComesAndGoes` is the one that exercises the scroller.
