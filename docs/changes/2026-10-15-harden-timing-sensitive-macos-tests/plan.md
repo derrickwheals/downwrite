@@ -2,7 +2,7 @@
 type: plan
 id: 2026-10-15-harden-timing-sensitive-macos-tests
 intent: ./intent.md
-status: in-progress    # draft | approved | in-progress | done
+status: done           # draft | approved | in-progress | done
 approved: 2026-10-15
 branch: change/2026-10-15-harden-timing-sensitive-macos-tests
 ---
@@ -94,6 +94,7 @@ Each step is one commit on the branch; tests that can fail first come before the
 - **The HTMLCard cause is not established** — step 7 may reduce the rate without removing it. The plan does not claim otherwise, and step 9 is a stop-and-ask point rather than a retry loop.
 - **The new checks add test time** — about 0.8 s on a Mac (two 0.27 s runs of the small document, two 0.15 s restyles), about 5 s on the runner, roughly 1% of the step. I did not trade other tests away to offset it.
 - **Mutation checks edit app code on purpose** — each is reverted before the commit; step 8 and the verifier check `git diff -- Sources` is empty.
+- **A hung export now fails after five minutes (found at verification).** The stall test waits up to 300 s for the printing step, and the `swift test` step is capped at 10 minutes (`timeout-minutes: 10` in `ci.yml` and `release.yml`) while a normal step takes 200 to 370 s, so a truly hung export on a slow day could end the step on the cap instead of on the test's own message. Under 50 busy loops the export took 58 s and 153 s (123 s earlier); one further attempt printed nothing and the cause is unknown. The cap is the workflow decision already noted as outside this change.
 - **Busy loops left running** — every recipe starts them in a shell that kills them on exit, and the verifier checks `pgrep` afterwards.
 
 ## Proof
