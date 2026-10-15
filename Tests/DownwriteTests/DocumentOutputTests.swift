@@ -896,7 +896,10 @@ final class DocumentOutputControllerTests: XCTestCase {
             return rig?.destination
         }
         rig.controller.exportPDF()
-        await rig.finish(timeout: 120)
+        // (The printing step is not what this test limits, and it scales with the machine: with the CPU shared among 50 busy loops, about
+        // five times slower, the whole export took 123 s, which a wait of 120 s turned into a failure of the wrong thing. Waiting longer costs
+        // nothing when the machine is quick, because the wait ends as soon as the export does.)
+        await rig.finish(timeout: 300)
         running = false
         await heartbeat.value
         print("MAIN-THREAD STALL (PDF) \(lines.count) lines: while preparing \(Int(stallAtPanel * 1000)) ms of \(Int(timeToPanel * 1000)) ms, while printing \(Int(longestStall * 1000)) ms, whole export \(String(format: "%.2f", Date().timeIntervalSince(started))) s")

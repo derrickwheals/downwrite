@@ -48,6 +48,8 @@ jobs:
           STATUS=0
           swift test > test.log 2>&1 || STATUS=$?
           grep -E "Executed [0-9]+ tests" test.log | tail -1
+          # The timing-sensitive tests print what they measured (the margin on this runner, also when they pass).
+          grep -E "^TIMING:" test.log || true
           if [ $STATUS -ne 0 ]; then
             echo "=== TEST FAILURES ==="
             grep -E "error:|Fatal|Segmentation|Crash" test.log | sort -u | head -80

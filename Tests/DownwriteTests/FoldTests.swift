@@ -274,22 +274,27 @@ final class FoldTests: XCTestCase {
 
     // MARK: Coordinator and overlays (R4, R7, R15, R18, R20, R21)
 
+    /// The column is pinned: the fixture is taller than the window, so a legacy-style scroller (17 pt) appears while the grid is being placed and
+    /// narrows the column from 900 to 883 pt. A grid placed a moment before it sits 8 pt out (x=62 where the column implies 54, in a failed CI
+    /// run), and that is not what these tests are about; `TableLayoutTests` guards a grid following the scroller coming and going.
     private func fixtureHarness(file: StaticString = #filePath) async throws -> EditorHarness {
         let h = EditorHarness(text: try Self.fixtureF(), size: NSSize(width: 900, height: 760))
+        h.pinColumnWidth()
         h.select(0)
         let ready = await waitUntil { (h.coordinator.tableOverlay.grids.first?.tableSize.width ?? 0) > 0 }
         XCTAssertTrue(ready, "the table never became a grid")
         return h
     }
 
-    /// Waits for the asynchronous repositioning to settle and returns what is still inconsistent.
+    /// Waits for the asynchronous repositioning to settle and returns what is still inconsistent, followed by the layout's geometry (so a
+    /// failure on a runner we cannot attach to says what the column, the scroller and the grids looked like).
     private func layoutProblems(_ h: EditorHarness) async -> [String] {
         var found: [String] = []
         _ = await waitUntil(timeout: 8) {
             found = h.coordinator.tableOverlay.layoutProblems() + h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis)
             return found.isEmpty
         }
-        return found
+        return found.isEmpty ? found : found + [h.geometryReport()]
     }
 
     /// The text of each folded region's header's first line.
