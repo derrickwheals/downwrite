@@ -202,6 +202,11 @@ final class StylerTests: XCTestCase {
         XCTAssertFalse(b.font(at: 0).isFixedPitch)
     }
 
+    /// A caret move restyles only the lines whose look changes, so it costs a small fraction of restyling the whole document. Seconds on the
+    /// wall measure the machine as much as the code (a runner about five times slower than a Mac took 4.3 s for 50 moves against a budget of 3 s),
+    /// so the moves are compared with one full restyle of the same document, both in the CPU time of this thread (waiting for a core does not
+    /// count): a move that restyled everything would cost about as much as the full restyle, and today's costs about a fifteenth of it. The
+    /// absolute budget is kept where the machine is known, a developer's (no `CI` variable), also in CPU time.
     func testLargeDocumentStylesQuickly() {
         var s = ""
         for i in 0..<2000 { s += "## Heading \(i)\n\nA paragraph with **bold**, *italic*, `code` and a [link](https://x.y/\(i)).\n\n" }
@@ -210,9 +215,17 @@ final class StylerTests: XCTestCase {
         h.select(100)
         let elapsed = Date().timeIntervalSince(start)
         XCTAssertLessThan(elapsed, 10, "initial style of ~180KB took \(elapsed)s")
-        let move = Date()
-        for i in 0..<50 { h.select(200 + i * 40) }
-        XCTAssertLessThan(Date().timeIntervalSince(move), 3, "50 caret moves should stay interactive")
+        // (Twice, keeping the quicker: the first pass pays for one-off set-up, which would make the moves look cheap by comparison.)
+        let full = min(cpuSeconds { h.coordinator.restyleAll() }.seconds, cpuSeconds { h.coordinator.restyleAll() }.seconds)
+        let moves = (0..<50).map { i in cpuSeconds { h.select(200 + i * 40) }.seconds }
+        let median = moves.sorted()[moves.count / 2]
+        let timing = String(format: "styler move median=%.4fs full restyle=%.3fs ratio=%.3f (50 moves %.2fs)",
+                            median, full, median / max(full, 0.001), moves.reduce(0, +))
+        print("TIMING: \(timing)")
+        XCTAssertLessThanOrEqual(median, full / 4, "a caret move should cost a fraction of restyling everything: \(timing)")
+        if ProcessInfo.processInfo.environment["CI"] == nil {
+            XCTAssertLessThan(moves.reduce(0, +), 3, "50 caret moves should stay interactive on a developer machine: \(timing)")
+        }
     }
 
     // MARK: Callouts (DW-006)
