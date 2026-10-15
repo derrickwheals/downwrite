@@ -6,7 +6,7 @@ track: bug
 status: accepted
 raised: 2026-10-15
 accepted: 2026-10-15
-merged:
+merged: 2026-10-15
 backlog: DW-016 (https://app.todoist.com/app/task/6hmGwrX9g6G74h5H)
 ---
 
