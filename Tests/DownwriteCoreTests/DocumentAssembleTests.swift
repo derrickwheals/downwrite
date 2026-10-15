@@ -1,9 +1,24 @@
+import Foundation
 import XCTest
 @testable import DownwriteCore
 
 /// Step 2 of the renderer (`assemble`), the omission summary, file names and the size gate (R14 to R16, R23, R24, R27).
 final class DocumentAssembleTests: XCTestCase {
     private let png = "data:image/png;base64,QQ=="
+
+    /// Runs `body` and returns what it returned with the CPU seconds the calling thread spent in it. Time spent waiting for a core
+    /// (a busy shared runner) does not count, so a duration measured with it does not move with the machine's load. Work handed to
+    /// other threads would not be counted either; `prepare` and `assemble` run on the calling thread.
+    private func cpuSeconds<T>(_ body: () throws -> T) rethrows -> (value: T, seconds: Double) {
+        func now() -> Double {
+            var ts = timespec()
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts)
+            return Double(ts.tv_sec) + Double(ts.tv_nsec) / 1_000_000_000
+        }
+        let start = now()
+        let value = try body()
+        return (value, now() - start)
+    }
 
     private func page(_ markdown: String, name: String = "doc.md", target: DocumentHTML.Target = .screen,
                       images: [String: DocumentHTML.ImageOutcome] = [:], diagrams: [DocumentHTML.DiagramOutcome] = []) -> (html: String, omissions: [DocumentHTML.Omission]) {
