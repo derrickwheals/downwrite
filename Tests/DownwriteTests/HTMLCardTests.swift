@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import WebKit
 @testable import Downwrite
 import DownwriteCore
 
@@ -10,6 +11,20 @@ final class HTMLCardTests: XCTestCase {
     private func cards(_ h: EditorHarness) -> [DiagramView] { h.textView.subviews.compactMap { $0 as? DiagramView } }
 
     private func reserved(_ h: EditorHarness, _ line: Int) -> CGFloat { h.coordinator.overlay.reservedHeights[line] ?? 0 }
+
+    /// What the first card's page says about itself: the width it was laid out at and the height of its content. For the message of a failed
+    /// wait, so that the next failure says whether the card never rendered again or measured at the old width. Bounded to 5 s, because a web
+    /// view that does not answer must not hold the failure back.
+    private func pageReport(_ h: EditorHarness) async -> String {
+        guard let web = cards(h).first?.subviews.compactMap({ $0 as? WKWebView }).first else { return "no card web view" }
+        let answer = TextBox("")
+        Task { @MainActor in
+            do { answer.value = "\(try await web.evaluateJavaScript("window.innerWidth + ' × ' + Math.ceil(document.getElementById('dw-root').getBoundingClientRect().height)") ?? "no value")" }
+            catch { answer.value = "error \(error.localizedDescription)" }
+        }
+        let answered = await waitUntil(timeout: 5) { !answer.value.isEmpty }
+        return "page \(answered ? answer.value : "did not answer within 5 s") (web view frame \(web.frame))"
+    }
 
     private func makeFolder(withImageNamed name: String, size: NSSize) throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dw-html-\(UUID().uuidString)", isDirectory: true)
@@ -129,6 +144,7 @@ final class HTMLCardTests: XCTestCase {
     func testCardIsMeasuredAgainWhenTheColumnGetsNarrower() async throws {
         let words = Array(repeating: "wrapping words", count: 60).joined(separator: " ")
         let h = EditorHarness(text: "<p>\(words)</p>\n\nafter\n")
+        h.pinColumnWidth()                // (without it a scroller appears once the narrower card has grown the document, and takes 17 pt from the column again: 500 → 483)
         h.select(h.index(of: "after"))
         // (A web view on a shared CI runner can need a good deal longer than the 25 s default for its first load, so wait up to a minute.)
         let ok = await waitUntil(timeout: 60) { self.reserved(h, 0) > 40 }
@@ -136,8 +152,10 @@ final class HTMLCardTests: XCTestCase {
         let wide = reserved(h, 0)
         h.window.setContentSize(NSSize(width: 500, height: 760))
         h.textView.setFrameSize(NSSize(width: 500, height: h.textView.frame.height))      // (schedules the reposition that measures again)
+        XCTAssertEqual(h.textView.frame.width, 500, accuracy: 1, "the column should be 500 pt wide now\n\(h.geometryReport())")
         let again = await waitUntil(timeout: 60) { self.reserved(h, 0) > wide + 20 }
-        XCTAssertTrue(again, "a narrower column wraps more: \(wide) → \(reserved(h, 0))")
+        let diagnosis = again ? "" : "\n\(h.geometryReport())\n\(await pageReport(h))"
+        XCTAssertTrue(again, "a narrower column wraps more: \(wide) → \(reserved(h, 0))\(diagnosis)")
         let settled = await waitUntil { h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis).isEmpty }
         XCTAssertTrue(settled, "\(h.coordinator.overlay.layoutProblems(analysis: h.coordinator.analysis))")
     }
