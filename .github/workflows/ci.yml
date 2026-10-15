@@ -56,27 +56,6 @@ jobs:
             exit 1
           fi
 
-      # Temporary (DW-016), removed again before the change is merged: when the commit message contains [repeat], run the timing-sensitive
-      # tests again and again on this runner, to see whether they still fail now and then. Layout tests 20 times, performance tests 5 times.
-      - name: Repeat the timing-sensitive tests
-        if: contains(github.event.head_commit.message, '[repeat]')
-        timeout-minutes: 20
-        run: |
-          LAYOUT='HTMLCardTests/testCardIsMeasuredAgainWhenTheColumnGetsNarrower|FoldTests/testTablesAndDiagramsInsideAFoldAreHiddenReserveNothingAndComeBackInPlace|TableLayoutTests/testGridFollowsTheColumnWhenTheScrollerComesAndGoes'
-          PERF='DocumentAssembleTests/testATwentyThousandLine|StylerTests/testLargeDocumentStylesQuickly'
-          FAILED=0
-          for i in $(seq 1 20); do
-            if swift test --skip-build --filter "$LAYOUT" > repeat.log 2>&1; then echo "layout run $i: passed"
-            else FAILED=$((FAILED+1)); echo "layout run $i: FAILED"; grep -E "error:" repeat.log | sort -u | head -20; fi
-          done
-          for i in $(seq 1 5); do
-            if swift test --skip-build --filter "$PERF" > repeat.log 2>&1; then echo "performance run $i: passed"
-            else FAILED=$((FAILED+1)); echo "performance run $i: FAILED"; grep -E "error:" repeat.log | sort -u | head -20; fi
-            grep -E "^TIMING:" repeat.log || true
-          done
-          echo "repeat: $FAILED of 25 runs failed"
-          [ "$FAILED" -eq 0 ]
-
       - name: Package app bundle
         run: |
           scripts/build-app.sh > artifacts/package.log 2>&1 || { tail -30 artifacts/package.log; exit 1; }
