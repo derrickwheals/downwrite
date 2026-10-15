@@ -76,7 +76,7 @@ No file under `Sources/` changes.
 Each step is one commit on the branch; tests that can fail first come before the change that fixes them.
 
 - [x] 1. Branch `change/2026-10-15-harden-timing-sensitive-macos-tests` from `main`. Add the helpers to `Harness.swift` (`cpuSeconds`, `pinColumnWidth`, `geometryReport`) and a private `cpuSeconds` in `DocumentAssembleTests.swift`. No test changes yet. `swift build --build-tests` passes.
-- [ ] 2. Re-run the 50-busy-loop recipe on the untouched tests and put the numbers in this commit message (an empty commit): Assemble and Styler fail, as in Reproduction. This is the "red".
+- [x] 2. Re-run the 50-busy-loop recipe on the untouched tests and put the numbers in this commit message (an empty commit): Assemble and Styler fail, as in Reproduction. This is the "red".
 - [ ] 3. Assemble: replace the wall-clock budget with the scaling check. The 250-section document (5,504 lines) is timed twice in CPU seconds and the smaller time kept; the 1,000-section document once; assert `big <= 8 × small`, and `big < 30` always, and `big < 5` when `CI` is unset. Print `TIMING: assemble big=… small=… ratio=…`. Runs on Linux too.
 - [ ] 4. Styler: time `restyleAll()` twice (keep the smaller) after the initial style; time each of the 50 caret moves in CPU seconds; assert `median(move) <= fullRestyle / 4`, and `sum(moves) < 3` when `CI` is unset. Print `TIMING: styler move median=… full restyle=… ratio=…`.
 - [ ] 5. Stall: `rig.finish(timeout: 300)` at `:899`, with a comment that the printing step took 123 s at 5× slowdown and is not what R27 limits.
