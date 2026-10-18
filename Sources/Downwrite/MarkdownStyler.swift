@@ -96,8 +96,17 @@ final class MarkdownStyler {
 
     // MARK: Entry points
 
+    /// Styles the whole document. The look is worked out on a detached copy of the text and only the runs that differ are written to
+    /// `storage` (`StyleDiff`): a whole-document `setAttributes` would throw away the layout of the entire document on every keystroke,
+    /// and the view jumps while it is rebuilt (DW-024).
     func styleAll(storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, preview: PreviewState) {
         guard storage.length > 0 else { return }
+        let copy = NSTextStorage(string: storage.string)
+        styleAll(into: copy, analysis: analysis, selection: selection, preview: preview)
+        StyleDiff.apply(copy, to: storage)
+    }
+
+    private func styleAll(into storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, preview: PreviewState) {
         let all = NSRange(location: 0, length: storage.length)
         storage.beginEditing()
         // Reset to the base look first so characters outside any line (e.g. a trailing empty line) are sane.
@@ -230,11 +239,14 @@ final class MarkdownStyler {
         return [.font: typography.font(size: (typography.size * 0.92).rounded(), mono: true), .foregroundColor: palette.text.nsColor, .paragraphStyle: p]
     }
 
+    /// Like `styleAll`, through a detached copy and `StyleDiff`, so a keystroke in the source view writes nothing.
     func styleSource(storage: NSTextStorage) {
         guard storage.length > 0 else { return }
-        storage.beginEditing()
-        storage.setAttributes(sourceAttributes(), range: NSRange(location: 0, length: storage.length))
-        storage.endEditing()
+        let copy = NSTextStorage(string: storage.string)
+        copy.beginEditing()
+        copy.setAttributes(sourceAttributes(), range: NSRange(location: 0, length: copy.length))
+        copy.endEditing()
+        StyleDiff.apply(copy, to: storage)
     }
 
     // MARK: Per-line styling
