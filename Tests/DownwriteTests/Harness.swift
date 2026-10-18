@@ -108,3 +108,116 @@ extension NSFont {
     var isBold: Bool { fontDescriptor.symbolicTraits.contains(.bold) }
     var isItalic: Bool { fontDescriptor.symbolicTraits.contains(.italic) }
 }
+
+// MARK: Typing stability (DW-024)
+
+/// How far the view moved during one action, beyond where it started and where it settled. Notifications are posted synchronously,
+/// so a shift that is gone by the end of the call still shows in the trace.
+struct GeometryExcursion: CustomStringConvertible {
+    /// The clip view's scroll position (bounds origin y), in the order it changed, starting with its value before the action.
+    var clipTrace: [CGFloat]
+    /// The text view's height, in the order it changed, starting with its value before the action.
+    var heightTrace: [CGFloat]
+
+    /// The largest distance a value went outside the interval between its first and last values (0 when it moved straight there).
+    static func excursion(_ trace: [CGFloat]) -> CGFloat {
+        guard let first = trace.first, let last = trace.last else { return 0 }
+        let lo = min(first, last), hi = max(first, last)
+        return trace.reduce(0) { max($0, $1 < lo ? lo - $1 : ($1 > hi ? $1 - hi : 0)) }
+    }
+
+    var clip: CGFloat { Self.excursion(clipTrace) }
+    var height: CGFloat { Self.excursion(heightTrace) }
+
+    var description: String {
+        func f(_ trace: [CGFloat]) -> String { trace.map { String(format: "%.1f", Double($0)) }.joined(separator: " → ") }
+        return String(format: "clip excursion %.1f (%@), height excursion %.1f (%@)", Double(clip), f(clipTrace), Double(height), f(heightTrace))
+    }
+}
+
+/// A box the notification blocks below append to (they are `@Sendable`, so they cannot mutate a captured `var`; they run synchronously
+/// on the main thread, where the notifications are posted).
+final class Recorded<T>: @unchecked Sendable { var value: T; init(_ v: T) { value = v } }
+
+extension EditorHarness {
+    /// Records the clip view's scroll position and the text view's height while `body` runs.
+    func recordGeometry(during body: () -> Void) -> GeometryExcursion {
+        let clip = scroll.contentView
+        clip.postsBoundsChangedNotifications = true
+        textView.postsFrameChangedNotifications = true
+        let result = Recorded(GeometryExcursion(clipTrace: [clip.bounds.origin.y], heightTrace: [textView.frame.height]))
+        let tv = textView
+        let center = NotificationCenter.default
+        let a = center.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { _ in
+            MainActor.assumeIsolated { result.value.clipTrace.append(clip.bounds.origin.y) }
+        }
+        let b = center.addObserver(forName: NSView.frameDidChangeNotification, object: tv, queue: nil) { _ in
+            MainActor.assumeIsolated { result.value.heightTrace.append(tv.frame.height) }
+        }
+        body()
+        center.removeObserver(a)
+        center.removeObserver(b)
+        return result.value
+    }
+
+    /// The ranges the text storage reported as edited while `body` runs (characters and attributes alike), one per `processEditing`.
+    func recordEdits(during body: () -> Void) -> [NSRange] {
+        let edits = Recorded<[NSRange]>([])
+        let store = storage
+        let token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: store, queue: nil) { _ in
+            MainActor.assumeIsolated { edits.value.append(store.editedRange) }
+        }
+        body()
+        NotificationCenter.default.removeObserver(token)
+        return edits.value
+    }
+
+    /// Types `text` at the caret: through `insertText` (what the input system calls), or as one real key-down event per character
+    /// through `keyDown`, which goes through the text input context like a key on the keyboard.
+    func type(_ text: String, viaKeyEvent: Bool = false) {
+        guard viaKeyEvent else {
+            textView.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+            return
+        }
+        window.makeFirstResponder(textView)
+        let codes: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "b": 11, " ": 49, "\r": 36]
+        for c in text {
+            let chars = String(c)
+            guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                           isARepeat: false, keyCode: codes[c] ?? 0) else { continue }
+            textView.keyDown(with: e)
+        }
+    }
+
+    /// Puts the caret at `offset` and scrolls it into view, with the layout around it done.
+    func placeCaret(at offset: Int) {
+        select(offset)
+        textView.scrollRangeToVisible(NSRange(location: offset, length: 0))
+        scroll.layoutSubtreeIfNeeded()
+        textView.displayIfNeeded()
+    }
+
+    /// Where the caret is drawn, in the text view's coordinates.
+    func caretRect() -> NSRect {
+        let layout = textView.layoutManager!
+        let loc = textView.selectedRange().location
+        layout.ensureLayout(forCharacterRange: NSRange(location: max(0, loc - 1), length: min(1, storage.length)))
+        let rect: NSRect
+        if loc >= storage.length, layout.extraLineFragmentTextContainer != nil {
+            rect = layout.extraLineFragmentRect
+        } else {
+            rect = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: min(loc, max(0, storage.length - 1))), effectiveRange: nil)
+        }
+        return rect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y)
+    }
+}
+
+/// `paragraphs` paragraphs of `words` plain words each, separated by blank lines: a document far taller than any window, with no Markdown in it.
+func longPlainDocument(paragraphs: Int = 300, words: Int = 60) -> String {
+    let vocabulary = ["the", "quiet", "river", "carried", "small", "boats", "past", "old", "stone", "houses", "while", "evening", "light",
+                      "settled", "over", "fields", "and", "distant", "hills", "slowly"]
+    return (0..<paragraphs).map { p in
+        (0..<words).map { vocabulary[(p * 7 + $0 * 3) % vocabulary.count] }.joined(separator: " ")
+    }.joined(separator: "\n\n")
+}

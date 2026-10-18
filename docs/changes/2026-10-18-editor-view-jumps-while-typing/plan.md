@@ -2,9 +2,9 @@
 type: plan
 id: 2026-10-18-editor-view-jumps-while-typing
 intent: ./intent.md
-status: approved       # draft | approved | in-progress | done
+status: in-progress    # draft | approved | in-progress | done
 approved: 2026-10-18
-branch: change/2026-10-18-editor-view-jumps-while-typing
+branch: claude/ecstatic-brown-ca43xe
 ---
 
 # Plan: Editor view jumps while typing
@@ -139,4 +139,4 @@ The intent's proposed outcome, item by item:
 
 ## Deviations
 
-<Filled during build. One line per departure from this plan, added in the same commit as the code that departs.>
+- Step 1: the work is on `claude/ecstatic-brown-ca43xe` (the branch this cloud session is bound to and may push), not `change/2026-10-18-editor-view-jumps-while-typing`. The build runs in a Linux container with no Xcode, so every macOS result below (red on `main`, green after the fix, mutations, timings) is read from the CI job on this branch rather than run locally; `scripts/ci-local.sh` (step 6) is left to the maintainer's Mac.
