@@ -118,6 +118,114 @@ final class TypingStabilityTests: XCTestCase {
         }
     }
 
+    // MARK: The restyle writes only what changed, and ends where a full style would
+
+    private let everyMark = """
+    # Top
+
+    Intro with **bold**, ==marked==, `code` and a [link](https://example.com).
+
+    - bullet one
+    - [ ] a task
+    - [x] a done task
+
+    > a quote
+    > > nested
+
+    > [!TIP] Callout title
+    > callout body
+
+    ---
+
+    ```swift
+    let x = 1
+    ```
+
+    ## Folded section
+
+    hidden body line
+
+    ## Last
+
+    caret here
+    """
+
+    /// The attribute keys a document with every kind of mark must carry, so that the no-op test cannot pass on a plain document.
+    private let everyKey: [NSAttributedString.Key] = [.dwBullet, .dwCheckbox, .dwCallout, .dwCalloutBar, .dwFold, .dwFoldChip, .dwPill, .dwRule,
+                                                      .dwQuoteDepth, .dwQuoteBarColor, .dwBlockBackground, .kern, .strikethroughStyle, .underlineStyle]
+
+    func testRestylingAnUnchangedDocumentWritesNothing() throws {
+        let h = EditorHarness(text: everyMark)
+        h.placeCaret(at: h.index(of: "caret here"))
+        let anchor = h.index(of: "## Folded section")
+        let region = try XCTUnwrap(h.coordinator.analysis.foldRegions.first { $0.anchor == anchor }, "precondition: the section is foldable")
+        h.coordinator.toggleFold(headerLine: region.headerLines.lowerBound)
+        var present = Set<String>()
+        var hiddenMarkers = 0
+        h.storage.enumerateAttributes(in: NSRange(location: 0, length: h.storage.length), options: []) { attrs, range, _ in
+            for key in attrs.keys { present.insert(key.rawValue) }
+            if let f = attrs[.font] as? NSFont, f.pointSize < 1 { hiddenMarkers += range.length }
+        }
+        for key in everyKey { XCTAssertTrue(present.contains(key.rawValue), "precondition: the document carries \(key.rawValue)") }
+        XCTAssertGreaterThan(hiddenMarkers, 0, "precondition: some markers are hidden")
+
+        let edits = h.recordEdits { h.coordinator.restyleAll() }
+        XCTAssertEqual(edits, [], "restyling a document whose look has not changed writes nothing")
+        h.coordinator.setSourceMode(true)
+        XCTAssertEqual(h.recordEdits { h.coordinator.restyleAll() }, [], "nor in the source view")
+    }
+
+    /// The first position where two attributed strings differ, with both sides' attributes, for a failure message.
+    private func firstDifference(_ a: NSAttributedString, _ b: NSAttributedString) -> String {
+        guard a.string == b.string else { return "the texts differ" }
+        for i in 0..<a.length where !(a.attributes(at: i, effectiveRange: nil) as NSDictionary).isEqual(to: b.attributes(at: i, effectiveRange: nil)) {
+            return "first difference at \(i) (\((a.string as NSString).substring(with: NSRange(location: i, length: 1)).debugDescription)):\n"
+                + "editor \(a.attributes(at: i, effectiveRange: nil))\nfresh \(b.attributes(at: i, effectiveRange: nil))"
+        }
+        return "no difference"
+    }
+
+    private func fixture(_ path: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        return try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    /// After each kind of change, the editor's storage is attribute-for-attribute what a freshly opened editor with the same text, caret
+    /// and appearance shows. The appearance switch changes the colour of every run, so a diff that skipped or misplaced a run would show.
+    func testRestyleMatchesAFreshStyle() throws {
+        enum Change: String, CaseIterable { case nothing, typedLetter, backspace, undo, darkAppearance }
+        for path in ["Tests/Fixtures/callouts.md", "Tests/Fixtures/fold-demo.md", "Tests/Fixtures/export-demo.md", "README.md"] {
+            let text = try fixture(path)
+            for change in Change.allCases {
+                let h = EditorHarness(text: text)
+                h.pinColumnWidth()
+                h.placeCaret(at: h.storage.length)
+                var dark = false
+                switch change {
+                case .nothing: break
+                case .typedLetter: h.type("x")
+                case .backspace: h.textView.deleteBackward(nil)
+                case .undo:
+                    h.type("x")
+                    h.textView.breakUndoCoalescing()
+                    h.textView.undoManager?.undo()
+                    XCTAssertEqual(h.textView.string, text, "\(path): undo restores the text")
+                case .darkAppearance:
+                    h.window.appearance = NSAppearance(named: .darkAqua)
+                    h.coordinator.appearanceDidChange()
+                    dark = true
+                }
+                let fresh = EditorHarness(text: h.textView.string, dark: dark)
+                fresh.pinColumnWidth()
+                let sel = h.textView.selectedRange()
+                fresh.select(sel.location, sel.length)
+                fresh.coordinator.restyleAll()
+                let editor = NSAttributedString(attributedString: h.storage), reference = NSAttributedString(attributedString: fresh.storage)
+                XCTAssertTrue(editor.isEqual(to: reference), "\(path), \(change.rawValue): \(firstDifference(editor, reference))")
+            }
+        }
+    }
+
     // MARK: What must not change (characterisation)
 
     func testTheCaretStaysInViewWhileTypingNewLinesAtTheEnd() {
