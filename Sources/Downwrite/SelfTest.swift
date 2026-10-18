@@ -91,6 +91,10 @@ enum SelfTest {
             await imagePasteWalkthrough(outDir: outDir, reusing: tv)
             return finish(outDir)
         }
+        if typingOnly {                                        // (development: just the typing walkthrough)
+            await typingWalkthrough(outDir: outDir, reusing: tv)
+            return finish(outDir)
+        }
         if calloutsOnly, let fixture = calloutFixture {        // (development: just the callout walkthrough)
             await calloutWalkthrough(outDir: outDir, fixture: fixture, reusing: tv)
             return finish(outDir)
@@ -784,6 +788,10 @@ enum SelfTest {
         // 8d. Pasting and dropping images, end to end: Edit ▸ Paste, undo, a drop onto a folded heading, the untitled sheet, screenshots
         // (SelfTestImagePaste.swift). It reloads this run's first window with a document of its own, so it also runs before the folding walkthrough.
         await imagePasteWalkthrough(outDir: outDir, reusing: tv)
+
+        // 8e. Typing at the end of a long document, in the formatted editor and the source view: the view must not move and a key must edit
+        // only its own paragraph (SelfTestTyping.swift, DW-024). It reloads this run's first window too, so it also runs before folding.
+        await typingWalkthrough(outDir: outDir, reusing: tv)
 
         // 9. Folding, end to end: menu shortcuts, mouse, Find, edit keys, the saved file, screenshots (SelfTestFold.swift). It runs last, in this
         // run's first window (the one SwiftUI resolves ⌘/ and the other focused-value menu items against), which it reloads with Fixture F.
