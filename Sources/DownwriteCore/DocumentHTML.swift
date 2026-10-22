@@ -52,9 +52,10 @@ public enum DocumentHTML {
         markdown = protectFootnoteDefinitions(markdown)
 
         // Smart punctuation off: the text is shown as typed (the editor's own parse turns it on because only ranges are used there).
-        let document = Document(parsing: markdown, options: [.disableSmartOpts])
-        let renderer = DocumentRenderer(headingIDs: ids, source: SourceText(markdown))
-        renderer.render(document)
+        // Through `TableTails`, as the editor's analysis is: a table ends at its last row, and the renderer reads the text that was parsed.
+        let parsed = TableTails.parse(markdown, options: [.disableSmartOpts])
+        let renderer = DocumentRenderer(headingIDs: ids, source: SourceText(parsed.text))
+        renderer.render(parsed.document)
 
         let scanned = HTMLSanitizer.scan(renderer.html, openDetails: options.target == .print, allowImageSource: LinkPolicy.isCandidateImageSource)
         let body = scanned.html.replacingOccurrences(of: DocumentRenderer.boundary, with: "")

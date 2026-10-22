@@ -373,6 +373,16 @@ final class TableModelTests: XCTestCase {
         XCTAssertEqual(tight.selection.location, n + 1)
     }
 
+    func testExitAfterWithTextDirectlyBelowTheTable() throws {
+        let table = "| a |\n| - |\n| 1 |"
+        let text = table + "\nText\n"
+        let t = try XCTUnwrap(MarkdownAnalyzer.analyze(text).tables.first)
+        XCTAssertEqual(t.lastLine, 2, "the text is not a row")
+        let e = TableEditing.exitAfter(in: text, table: t)
+        XCTAssertEqual(e.replacement, "", "no blank line is added: the text is already outside the table")
+        XCTAssertEqual(e.selection, NSRange(location: table.utf16.count + 1, length: 0), "the caret lands at the start of the text")
+    }
+
     func testExitBefore() throws {
         let s = "intro\n\n| a |\n| - |\n| 1 |\n"
         let t = try XCTUnwrap(MarkdownAnalyzer.analyze(s).tables.first)

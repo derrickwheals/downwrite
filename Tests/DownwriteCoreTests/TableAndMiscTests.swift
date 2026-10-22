@@ -25,6 +25,16 @@ final class TableAndMiscTests: XCTestCase {
         XCTAssertNil(Formatter.apply(.formatTable, to: text, selection: NSRange(location: 1, length: 0)))
     }
 
+    func testFormatTableStopsAtTheLastRowAndLeavesTheTextBelowAlone() throws {
+        let text = "|a|b|\n|-|-|\n|1|2|\nx | y\nplain\n"
+        let e = try XCTUnwrap(Formatter.apply(.formatTable, to: text, selection: NSRange(location: 14, length: 0)))
+        XCTAssertEqual(e.apply(to: text), "| a   | b   |\n| --- | --- |\n| 1   | 2   |\nx | y\nplain\n")
+        XCTAssertNil(Formatter.apply(.formatTable, to: text, selection: NSRange(location: 20, length: 0)), "the caret is on text, not on a row")
+        let unpiped = "a | b\n- | -\n1 | 2\n3 | 4\ntext\n"
+        let u = try XCTUnwrap(Formatter.apply(.formatTable, to: unpiped, selection: NSRange(location: 14, length: 0)))
+        XCTAssertEqual(u.apply(to: unpiped), "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n| 3   | 4   |\ntext\n")
+    }
+
     func testInsertTable() {
         let e = Formatter.apply(.insertTable, to: "", selection: NSRange(location: 0, length: 0))!
         let out = e.apply(to: "")
