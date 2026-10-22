@@ -42,4 +42,4 @@ None.
 
 ## Fed back to CLAUDE.md
 
-Proposed, not yet added (waiting for the maintainer).
+- Added to *Things Claude gets wrong here* (agreed 2026-10-22, from finding 1): cmark reports a table's range, and its header's range, from a text line directly above the header, so never derive a position inside a table from `range.lowerBound`, and give every table corpus a text-line-above case.
