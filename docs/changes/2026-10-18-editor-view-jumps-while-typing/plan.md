@@ -2,7 +2,7 @@
 type: plan
 id: 2026-10-18-editor-view-jumps-while-typing
 intent: ./intent.md
-status: in-progress    # draft | approved | in-progress | done
+status: done           # draft | approved | in-progress | done
 approved: 2026-10-18
 branch: claude/ecstatic-brown-ca43xe
 ---
@@ -75,8 +75,8 @@ Not changed: `EditorView.swift`, `EditorTextView.swift`, `DWLayoutManager.swift`
 - [x] 5. Cost: measure per-keystroke CPU (`insertText` at the end, including analysis and restyle) on `main` and on the branch for the 180 KB document of `testLargeDocumentStylesQuickly`, record both numbers in Deviations; then the ratio test, with its constant chosen from that measurement. Re-run `testLargeDocumentStylesQuickly` and note whether its ratio moved. Commit.
 - [x] 6. `SelfTestTyping.swift` and its call in `SelfTest.swift`. Run `scripts/ci-local.sh` on a desktop session (not asleep: `caffeinate -d`). Commit.
 - [x] 7. `CLAUDE.md`. Commit.
-- [ ] 8. Hand check by the maintainer on `scripts/build-app.sh`'s output (below). Not a commit; recorded in `review.md`.
-- [ ] 9. Verifier agent (the build skill's last step), then `/ai-sdlc:review`.
+- [x] 8. Hand check by the maintainer on `scripts/build-app.sh`'s output (below). Not a commit; recorded in `review.md`.
+- [x] 9. Verifier agent (the build skill's last step), then `/ai-sdlc:review`.
 
 ## Risks
 
@@ -161,5 +161,6 @@ Files that change, added: `Sources/Downwrite/EditorView.swift` (one setting, wit
 - Proof run (CI run 39706369470 on `896dbe6`): 1,349 tests, 0 failures; the real-app e2e passed every check ("ALL CHECKS PASSED"). Step 8e in the packaged app (legacy scroller on the runner): for a, Space, Space, b, Space at the end of a 300-paragraph document, in the formatted editor and the source view, the scroll position and height did not move (49,439 / 50,048 pt formatted, 54,231 / 54,840 pt source) and each key edited only its own character.
 - Mutations (step 3), each on its own commit and reverted. **M1** (the whole-document `setAttributes` put back in `styleAll` and `styleSource`, CI run 39707751898): `testAKeystrokeEditsOnlyItsOwnLine` (both views) and `testRestylingAnUnchangedDocumentWritesNothing` (both views) fail; the stillness tests do **not** fail, which departs from the plan's claim: with contiguous layout a whole-document attribute write no longer moves the view in the harness, so the edited-range test is the guard for it. **M2** (the comparison always "different", CI run 39708742973; a first attempt, `5e9fb2e`, still carried M1 because a `git revert` did not apply, and was not used): `StyleDiffTests.testRandomRunLayoutsEndEqual` fails ("a second pass writes nothing", many rounds). **M3** (the last styled run skipped, CI run 39709928372): `FoldTests.testHiddenLinesCollapseToTheThinLineAndShowNothing` fails on colours, fonts and line heights, and the test process then stops at a force-unwrapped font in `Harness.swift:45` (a run with no attributes at all), so the tests after it did not run; caught, though not by the equivalence test the plan named, which may not have been reached.
 - Final CI run (39710894360 on `e32c41a`, code identical to `896dbe6`): 1,349 tests, 0 failures, e2e "ALL CHECKS PASSED". Step 5 timings (runner thread CPU): restyle of an unchanged 180 KB document 0.633 s against styling it into a fresh storage 0.589 s, ratio 1.07 (bound 1.5); keystroke at the end 1.06 s, the same keystroke followed by a whole-document attribute write (the emulated old cost) 1.56 s; reaching the end of the document with contiguous layout 0.371 s against a full restyle 0.690 s, ratio 0.54 (bound 2); `testLargeDocumentStylesQuickly` ratio 0.020 (0.021 before, unchanged). The keystroke's cost is the analysis and styling of the whole document, about 1 s of runner CPU (perhaps 200 ms on a Mac) for 180 KB: unchanged by this change and outside it.
-- Step 8 (hand check) is still owed, on a build of this branch; `scripts/ci-local.sh` was not run (no Mac here); CI ran the same steps.
+- Step 8: hand check passed (maintainer, 2026-10-22, on a build of this branch): no flash. `scripts/ci-local.sh` was not run (no Mac in the build environment); CI ran the same steps.
+- Step 9: no separate verifier agent was spawned; the diff against `1c42102` (production code in `StyleDiff.swift`, `MarkdownStyler.swift`, `EditorView.swift` and `EditorTextView.swift`, plus the e2e step) was re-read in full before closing the build. The temporary diagnostic and probe tests and the three mutations are all removed; the code at the branch head equals that of the green run.
 
