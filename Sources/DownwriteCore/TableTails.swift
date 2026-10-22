@@ -153,10 +153,13 @@ extension TableTails {
         guard let range = table.range else { return nil }
         let first = range.lowerBound.line - 1
         let last = (range.upperBound.column == 1 && range.upperBound.line > range.lowerBound.line ? range.upperBound.line - 1 : range.upperBound.line) - 1
-        guard first >= 0, last >= first + 2, last < source.lineCount else { return nil }
-        let delimiter = first + 1
+        // cmark starts the range (and the header's) on a text line directly above the header, so the delimiter row is found from the
+        // first body row, which it always precedes; a table with no body row has nothing under its delimiter.
+        guard first >= 0, last < source.lineCount, let firstBody = table.body.child(at: 0)?.range else { return nil }
+        let delimiter = firstBody.lowerBound.line - 2
+        guard delimiter > first, last > delimiter else { return nil }
         let pipeLed = isPipeLed(source.units, from: source.lineStarts[delimiter], end: source.lineContentEnds[delimiter])
-        for line in (first + 2)...last
+        for line in (delimiter + 1)...last
         where !isRow(source.units, from: source.lineStarts[line], end: source.lineContentEnds[line], pipeLed: pipeLed) {
             return line
         }

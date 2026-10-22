@@ -156,7 +156,7 @@ final class TableTailsTests: XCTestCase {
         ("one line", "| a | b |\n| - | - |\n| 1 | 2 |\ntext\nmore\n\nAfter\n", 3, ""),
         ("at the end without a newline", "| a |\n| - |\n| 1 |\ntext", 3, ""),
         ("quote", "> | a |\n> | - |\n> | 1 |\n> text\n> more\n", 3, "> "),
-        ("quote with a lazy tail", "> | a |\n> | - |\n> | 1 |\n> text\n\nAfter\n", 3, "> "),
+        ("quote with a tail, then a blank line and more text","> | a |\n> | - |\n> | 1 |\n> text\n\nAfter\n", 3, "> "),
         ("bullet item", "- | a |\n  | - |\n  | 1 |\n  text\n- next\n", 3, "  "),
         ("numbered item", "1. | a |\n   | - |\n   | 1 |\n   text\n2. next\n", 3, "   "),
         ("text over a rule makes a setext heading", "| a |\n| - |\n| 1 |\ntext\n---\n", 3, ""),
@@ -300,10 +300,19 @@ final class TableTailsTests: XCTestCase {
             "in a list item": "- | a |\n  | - |\n  | 1 |\n\n  more\n",
             "ended by a rule": "| a |\n| - |\n| 1 |\n***\n",
             "ended by a list": "| a |\n| - |\n| 1 |\n- item\n",
+            "a text line above a piped header, delimiter without a pipe": "note\n| a | b |\n--- | --- |\n1 | 2 |\n",
+            "a text line above a header, no outer pipes": "note\na | b\n--- | ---\n1 | 2\n",
         ]
         for (name, text) in corpus.sorted(by: { $0.key < $1.key }) {
             XCTAssertEqual(spans(MarkdownAnalyzer.analyze(text)), cmarkTables(text), name)
         }
+    }
+
+    /// cmark reports a table's range from a text line directly above its header, so the delimiter row is found from the header, not from the range's start.
+    func testTheDelimiterRowIsFoundFromTheHeaderWhenATextLineSitsAboveIt() {
+        let text = "note\na | b\n| - | - |\n| 1 | 2 |\nx | y\n"
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze(text)), ["0-3"], "a pipeless line under a pipe-led delimiter is text, with or without the note above")
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n| - | - |\n| 1 | 2 |\nx | y\n")), ["0-2"])
     }
 
     // MARK: Quotes and lists
