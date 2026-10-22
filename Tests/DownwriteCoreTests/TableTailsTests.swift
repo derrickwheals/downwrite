@@ -15,6 +15,45 @@ final class TableTailsTests: XCTestCase {
         a.tables.map { "\($0.firstLine)-\($0.lastLine)" }
     }
 
+    // MARK: The rule
+
+    func testUnderAPipeLedDelimiterRowARowStartsWithAPipe() {
+        for row in ["| a |", "|", "| |", "|a", "  | a |", "\t| a |", "> | a |", ">> | a |", "  > | a |", "|a|b|c|", "| a \\| b |"] {
+            XCTAssertTrue(TableTails.isRow(row, pipeLed: true), row)
+        }
+        for text in ["a", "a | b", "a |", "\\| a |", "", "   ", "> text", "> a | b", "x\t| y"] {
+            XCTAssertFalse(TableTails.isRow(text, pipeLed: true), text)
+        }
+    }
+
+    func testUnderADelimiterRowWithoutALeadingPipeARowHasAnUnescapedPipe() {
+        for row in ["a | b", "a |", "| a", "|", "1 | 2 | 3", "> a | b", "  a | b", "x \\\\| y", "\\| a | b"] {
+            XCTAssertTrue(TableTails.isRow(row, pipeLed: false), row)
+        }
+        for text in ["a", "a \\| b", "\\|", "", "> text", "plain words"] {
+            XCTAssertFalse(TableTails.isRow(text, pipeLed: false), text)
+        }
+    }
+
+    func testTheDelimiterRowDecidesWhetherItIsPipeLed() {
+        XCTAssertTrue(TableTails.isPipeLed(delimiter: "| - | - |"))
+        XCTAssertTrue(TableTails.isPipeLed(delimiter: "  |---|"))
+        XCTAssertTrue(TableTails.isPipeLed(delimiter: "> | - |"))
+        XCTAssertFalse(TableTails.isPipeLed(delimiter: "- | -"))
+        XCTAssertFalse(TableTails.isPipeLed(delimiter: ":-: | -:"))
+        XCTAssertFalse(TableTails.isPipeLed(delimiter: "> - | -"))
+    }
+
+    func testTableLengthStopsAtTheFirstLineThatIsNotARow() {
+        XCTAssertEqual(TableTails.tableLength(of: ["| a |", "| - |", "| 1 |", "| 2 |"]), 4)
+        XCTAssertEqual(TableTails.tableLength(of: ["| a |", "| - |", "| 1 |", "x | y", "| 2 |"]), 3)
+        XCTAssertEqual(TableTails.tableLength(of: ["| a |", "| - |", "x | y"]), 2)
+        XCTAssertEqual(TableTails.tableLength(of: ["a | b", "- | -", "1 | 2", "3 | 4"]), 4)
+        XCTAssertEqual(TableTails.tableLength(of: ["a | b", "- | -", "1 | 2", "| 3 |", "text | here"]), 5)
+        XCTAssertEqual(TableTails.tableLength(of: ["| a |"]), 1)
+        XCTAssertEqual(TableTails.tableLength(of: []), 0)
+    }
+
     // MARK: The card
 
     func testTextTypedUnderTheLastRowIsNotPartOfTheTable() throws {

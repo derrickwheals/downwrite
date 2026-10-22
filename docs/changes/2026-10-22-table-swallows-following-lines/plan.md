@@ -42,7 +42,7 @@ Not changed: `TableModel`, `TableOverlay`, `TableGrid`, the styler, `EditorView`
 ## Order of work
 
 - [x] 1. On the branch, write the failing tests first: the card's sample (table has 2 rows, the three text lines are `.body` lines, the paragraph is not in `tables`), the row-rule cases, the export, Format Table, and the grid and styler cases. Confirm each fails on `main` for the right reason. Commit.
-- [ ] 2. `TableTails.swift`: the rule and `tableLength(of:)`, with their unit tests green on their own. Commit.
+- [x] 2. `TableTails.swift`: the rule and `tableLength(of:)`, with their unit tests green on their own. Commit.
 - [ ] 3. `TableTails.parse` and the line map, wired into `MarkdownAnalyzer.run()` and `range(of:)`. The analyzer tests go green; run the whole Core suite to prove nothing else moved. Commit.
 - [ ] 4. `DocumentHTML.prepare` through `TableTails`; export tests green. Commit.
 - [ ] 5. `TableFormatter.tableLines` trimmed; the Format Table tests green. Commit.
