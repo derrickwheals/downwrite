@@ -198,7 +198,7 @@ final class TOCTests: XCTestCase {
         let visible = h.textView.visibleRect
         let top = lineTop(h, of: heading)
         XCTAssertTrue(top >= visible.minY && top <= visible.maxY, "the last heading is on screen even though it can't reach the top")
-        XCTAssertLessThanOrEqual(visible.maxY, h.textView.frame.maxY + 1, "no scrolling past the end: \(moves)\n\(h.geometryReport())")
+        XCTAssertLessThanOrEqual(visible.maxY, h.textView.frame.maxY + 1, "no scrolling past the end: \(moves); text view frame \(h.textView.frame) bounds \(h.textView.bounds) visible \(visible); clip bounds \(h.scroll.contentView.bounds) insets \(h.scroll.contentView.contentInsets.top)/\(h.scroll.contentView.contentInsets.bottom); \(h.geometryReport().replacingOccurrences(of: "\n", with: " | "))")
     }
 
     func testAnimatedRevealArrivesAtTheSamePlace() async throws {
