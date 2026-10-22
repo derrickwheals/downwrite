@@ -51,8 +51,10 @@ final class TypingStabilityTests: XCTestCase {
     /// and after the key.
     private func assertStill(_ h: EditorHarness, keys: [String], viaKeyEvent: Bool, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
         for key in keys {
-            let g = h.recordGeometry { h.type(key, viaKeyEvent: viaKeyEvent) }
-            let what = "\(label), \(key == " " ? "Space" : key) via \(viaKeyEvent ? "keyDown" : "insertText"): \(g)\n\(h.geometryReport())"
+            var edits: [NSRange] = []
+            let g = h.recordGeometry { edits = h.recordEdits { h.type(key, viaKeyEvent: viaKeyEvent) } }
+            let tail = String(h.textView.string.suffix(30)).debugDescription
+            let what = "\(label), \(key == " " ? "Space" : key) via \(viaKeyEvent ? "keyDown" : "insertText"): \(g); edits \(edits); text ends \(tail)\n\(h.geometryReport())"
             XCTAssertLessThanOrEqual(g.clip, tolerance, "the scroll position moved and came back: " + what, file: file, line: line)
             XCTAssertLessThanOrEqual(g.height, tolerance, "the text view's height moved and came back: " + what, file: file, line: line)
         }
@@ -96,6 +98,15 @@ final class TypingStabilityTests: XCTestCase {
         let h = harness(mixedDocument)
         XCTAssertFalse(h.coordinator.analysis.callouts.isEmpty, "precondition: the document has callouts")
         assertStill(h, keys: keys, viaKeyEvent: false, "mixed Markdown, at the end")
+    }
+
+    /// The 180 KB document of `StylerTests.testLargeDocumentStylesQuickly`: headings and paragraphs with inline Markdown, ending in an
+    /// empty line.
+    func testALongMarkdownDocumentDoesNotMoveEither() {
+        var s = ""
+        for i in 0..<2000 { s += "## Heading \(i)\n\nA paragraph with **bold**, *italic*, `code` and a [link](https://x.y/\(i)).\n\n" }
+        let h = harness(s)
+        assertStill(h, keys: keys, viaKeyEvent: false, "long Markdown, at the end")
     }
 
     // MARK: What a keystroke writes

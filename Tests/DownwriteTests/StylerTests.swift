@@ -268,6 +268,27 @@ final class StylerTests: XCTestCase {
         }
     }
 
+    /// DW-024: the editor uses contiguous layout, so the first time the caret reaches the end of a long document everything before it is laid
+    /// out. That must cost no more than styling the document, which opening it already does: both are measured on the same 180 KB document
+    /// in this thread's CPU time (the probe recorded in the plan put the jump at about 0.6 of a full restyle on the runner).
+    func testReachingTheEndOfALongDocumentCostsLittle() {
+        var s = ""
+        for i in 0..<2000 { s += "## Heading \(i)\n\nA paragraph with **bold**, *italic*, `code` and a [link](https://x.y/\(i)).\n\n" }
+        let h = EditorHarness(text: s)
+        h.placeCaret(at: 0)
+        XCTAssertFalse(h.textView.layoutManager!.allowsNonContiguousLayout, "the editor uses contiguous layout")
+        let full = min(cpuSeconds { h.coordinator.restyleAll() }.seconds, cpuSeconds { h.coordinator.restyleAll() }.seconds)
+        h.textView.layoutManager!.invalidateLayout(forCharacterRange: NSRange(location: 0, length: h.storage.length), actualCharacterRange: nil)
+        h.placeCaret(at: 0)
+        let jump = cpuSeconds { h.placeCaret(at: h.storage.length); h.textView.displayIfNeeded() }.seconds
+        let timing = String(format: "reach the end=%.3fs full restyle=%.3fs ratio=%.3f", jump, full, jump / max(full, 0.001))
+        print("TIMING: \(timing)")
+        XCTAssertLessThanOrEqual(jump, full * 2, "laying out a long document should cost no more than styling it: \(timing)")
+        if ProcessInfo.processInfo.environment["CI"] == nil {
+            XCTAssertLessThan(jump, 0.25, "reaching the end of a 180 KB document should not stall on a developer machine: \(timing)")
+        }
+    }
+
     // MARK: Callouts (DW-006)
 
     private func palette(_ h: EditorHarness) -> Palette { AppearanceResolver.palette(for: h.textView.effectiveAppearance) }

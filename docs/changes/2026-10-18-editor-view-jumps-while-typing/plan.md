@@ -68,8 +68,8 @@ Not changed: `EditorView.swift`, `EditorTextView.swift`, `DWLayoutManager.swift`
 
 ## Order of work
 
-- [ ] 1. Branch `change/2026-10-18-editor-view-jumps-while-typing` from `main`. Add `GeometryRecorder` and the typing helpers to `Harness.swift`, then `TypingStabilityTests` with the stillness tests and the edited-range test. Also write the characterisation tests (undo, marked text, caret stays in view) and check they are green on `main`. Run the stillness tests on `main` and see them **fail** with the excursion numbers in the message; commit tests with the failure output in the message.
-- [ ] 2. `StyleDiff.swift` with `StyleDiffTests` (unit: identical → 0 runs and no edit notification; one differing run → only that range; an attribute present only in storage is removed; seeded random run layouts → storage ends up attribute-equal to the styled copy). Commit.
+- [x] 1. Branch `change/2026-10-18-editor-view-jumps-while-typing` from `main`. Add `GeometryRecorder` and the typing helpers to `Harness.swift`, then `TypingStabilityTests` with the stillness tests and the edited-range test. Also write the characterisation tests (undo, marked text, caret stays in view) and check they are green on `main`. Run the stillness tests on `main` and see them **fail** with the excursion numbers in the message; commit tests with the failure output in the message.
+- [x] 2. `StyleDiff.swift` with `StyleDiffTests` (unit: identical → 0 runs and no edit notification; one differing run → only that range; an attribute present only in storage is removed; seeded random run layouts → storage ends up attribute-equal to the styled copy). Commit.
 - [ ] 3. Route `styleAll` and `styleSource` through `StyleDiff`. The step-1 stillness tests go green. Run the whole macOS suite. Then the mutation checks (below) and record the results in Deviations. Commit.
 - [ ] 4. Equivalence and no-op tests: after a restyle the storage equals a fresh harness's for every fixture and after a series of edits; a second `restyleAll()` on a document with every kind of mark writes nothing. Commit.
 - [ ] 5. Cost: measure per-keystroke CPU (`insertText` at the end, including analysis and restyle) on `main` and on the branch for the 180 KB document of `testLargeDocumentStylesQuickly`, record both numbers in Deviations; then the ratio test, with its constant chosen from that measurement. Re-run `testLargeDocumentStylesQuickly` and note whether its ratio moved. Commit.
@@ -136,6 +136,17 @@ The intent's proposed outcome, item by item:
 | Typing no slower; the caret still scrolls into view | step 5 and the ratio test; the caret test |
 | Tables, cards, folds, sidebar and source view keep working | `TableLayoutTests`, `SourceViewTests`, `FoldTests`, `TOCTests`, `DrawingTests` and the rest of `swift test`, unchanged |
 | Marked text and undo untouched | the characterisation tests |
+
+## Amendment (approved by the maintainer, 2026-10-22)
+
+The restyle fix (steps 2–3) is necessary but not enough: a one-line shift remains, the maintainer still sees the flash on a build with it, and the diagnostic and probe in Deviations show AppKit's own insertion under non-contiguous layout causes it. The approach therefore also turns non-contiguous layout **off** (`allowsNonContiguousLayout = false` in `EditorCoordinator.attach`), keeping the restyle fix, which is what makes contiguous layout affordable (a key no longer invalidates the whole document). Decision 1's reason for setting contiguous layout aside (a whole-document relayout on every key) no longer holds; its measured cost is about 0.3 s of runner CPU, once, the first time the end of a 180 KB document is reached, and nothing per keystroke.
+
+Added to the order of work, after step 3:
+
+- [ ] 3a. `allowsNonContiguousLayout = false`. Remove the probe. A stillness test on the 180 KB Markdown document. Find the cause of the 7.8 pt shift that remained there in both modes and fix it, or report it before fixing it if it is a third cause.
+- [ ] 3b. `StylerTests.testReachingTheEndOfALongDocumentCostsLittle`: CPU time of jumping to the end of the 180 KB document against one full restyle of it, measured in the same run (ratio, `TIMING:` line, absolute budget only when `CI` is unset).
+
+Files that change, added: `Sources/Downwrite/EditorView.swift` (one setting, with a comment). `CLAUDE.md` (step 7) also records that the editor uses contiguous layout and why.
 
 ## Deviations
 
