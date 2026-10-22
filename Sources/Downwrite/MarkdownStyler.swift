@@ -103,6 +103,7 @@ final class MarkdownStyler {
         guard storage.length > 0 else { return }
         let copy = NSTextStorage(string: storage.string)
         styleAll(into: copy, analysis: analysis, selection: selection, preview: preview)
+        storage.beginEditing(); storage.setAttributes(baseAttributes(), range: NSRange(location: 0, length: storage.length)); storage.endEditing()   // MUTATION M1
         StyleDiff.apply(copy, to: storage)
     }
 
@@ -246,6 +247,7 @@ final class MarkdownStyler {
         copy.beginEditing()
         copy.setAttributes(sourceAttributes(), range: NSRange(location: 0, length: copy.length))
         copy.endEditing()
+        storage.beginEditing(); storage.setAttributes(baseAttributes(), range: NSRange(location: 0, length: storage.length)); storage.endEditing()   // MUTATION M1
         StyleDiff.apply(copy, to: storage)
     }
 
