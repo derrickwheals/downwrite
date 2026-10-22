@@ -5,7 +5,7 @@ plan: ./plan.md
 reviewed: 2026-10-22
 base: main
 head: 6be42f8124be813386a63d5ba8e281fdde0a6d9a
-reproven:               # not yet: see Proof status
+reproven: c8fcdd68bd53251eca287d9d5c63eccc9cd980bc
 pr:
 ---
 
@@ -54,4 +54,4 @@ The plan's Proof, re-run after the fixes on a Mac (macOS 27.0.1), on commit `2f9
 
 The 10 failures of the maintainer's desktop run: six SwiftUI-focus checks (⌘/ three times, Keep on Top twice, the fold commands), three theme-library checks (Appearance tab 633 pt against 620; the list-screenshot themes; "nothing is left in the library"), and `typing: a edits only its own paragraph (source view)`. The first nine are local-only failures recorded in the agent's notes from earlier changes (the maintainer's 8 imported themes, and SwiftUI's focused scene not resolving in a local run); the CI job for the PR head is the arbiter for them. The tenth is finding 5: it is the same ⌘/ failure showing through this change's step. The step now reports `typing: the source view is showing` instead of recording the formatted editor as the source view.
 
-**Not proven:** `ALL CHECKS PASSED` for the e2e with the finding 5 change, and the source-view half of step 8e on a run where ⌘/ works. The last CI run that had both is `896dbe6` (code identical to the earlier head); the finding 1 and 5 changes touch only tests, the self-test and an access level (`MarkdownStyler.styleAll(into:)`). `reproven` stays blank until a CI run on the new head passes.
+**Reproven on CI, 2026-10-22, run 39717180748 on `c8fcdd6`** (the head with all five fixes): both jobs succeeded. Core tests (Linux) passed, which stands in for `scripts/linux-test.sh`. The macOS job ran 1,349 tests with 0 failures and the real-app e2e printed `ALL CHECKS PASSED`, step 8e included, so the source-view half ran with the mode held. Runner timings: restyle of an unchanged 180 KB document 0.543 s against 0.295 s of styling alone (ratio 1.84, bound 3); a keystroke 0.861 s against 1.424 s with the whole-document write added. The local e2e failures above stay as recorded: they are the maintainer's Mac, not the code.
