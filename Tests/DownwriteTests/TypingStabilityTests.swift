@@ -8,6 +8,8 @@ import DownwriteCore
 /// estimate and the clip view clamped its scroll position to it, and layout grew both back inside the same keystroke — a flash about a line
 /// lower near the end of a long document. These tests watch the scroll position and the height *during* each key (the notifications are
 /// synchronous), not only where they settle, and the ranges the text storage reports as edited, which does not depend on the scroller.
+/// The stillness tests guard the editor's contiguous layout (with the whole-document write put back they still pass: the plan's M1); the
+/// edited-range test and the no-op restyle test are what guard the diff.
 @MainActor
 final class TypingStabilityTests: XCTestCase {
     /// Points a value may wander outside the interval between where it started and where it settled.

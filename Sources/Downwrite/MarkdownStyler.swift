@@ -106,7 +106,8 @@ final class MarkdownStyler {
         StyleDiff.apply(copy, to: storage)
     }
 
-    private func styleAll(into storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, preview: PreviewState) {
+    /// The styling itself, onto `storage` as given (internal so `StylerTests` can time it without the copy and the diff).
+    func styleAll(into storage: NSTextStorage, analysis: MarkdownAnalysis, selection: NSRange, preview: PreviewState) {
         let all = NSRange(location: 0, length: storage.length)
         storage.beginEditing()
         // Reset to the base look first so characters outside any line (e.g. a trailing empty line) are sane.
