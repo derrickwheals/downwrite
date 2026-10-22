@@ -6,7 +6,7 @@ reviewed: 2026-10-22
 base: main
 head: f10003be5593aa0db61f28adc684606f5b7c4af7
 reproven: 705089d13bc15a44db9b69a59438b5f12bdd7795
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/26
 ---
 
 # Review: Table swallows the text typed straight under it
