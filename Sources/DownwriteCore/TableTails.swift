@@ -90,11 +90,16 @@ extension TableTails {
         }
     }
 
+    /// The most times a text is parsed. Tables stacked without a blank line between them are swallowed whole by cmark, so each pass
+    /// can only show the next one's tail (a chain of N costs N parses of the whole text); no real document comes near this, and
+    /// past it the rest of such a chain keeps GFM's reading rather than costing every keystroke more.
+    static let maxPasses = 16
+
     /// Parses `text` as cmark does and, for every table whose last lines are not rows (see `isRow`), parses it again with a blank line
     /// before each such line, as if one had been typed there: cmark then ends the table and reads what follows as ordinary blocks (a
     /// paragraph, a setext heading over `---`, a second table headed by the last pipeless line). The inserted line carries the break
     /// line's own prefix of spaces, tabs and `>`, so inside a quote or a list item it stays in the container. A second parse can reveal
-    /// another table with a tail (the one that now starts), so this repeats until no table has one; each pass adds at least one line.
+    /// another table with a tail (the one that now starts), so this repeats until no table has one; each pass adds at least one line, up to `maxPasses`.
     static func parse(_ text: String, options: ParseOptions = []) -> Parsed {
         var current = text
         var inserted: [Int] = []
@@ -108,7 +113,7 @@ extension TableTails {
             let source = SourceText(current)
             let known = Set(inserted)
             let breaks = Set(tables.compactMap { breakLine(of: $0, in: source) }).filter { !known.contains($0 - 1) }.sorted()
-            if breaks.isEmpty || passes > source.lineCount { break }
+            if breaks.isEmpty || passes >= maxPasses { break }
 
             var units: [UInt16] = []
             units.reserveCapacity(source.units.count + 4 * breaks.count)

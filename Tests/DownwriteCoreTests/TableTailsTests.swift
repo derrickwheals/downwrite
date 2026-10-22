@@ -92,6 +92,21 @@ final class TableTailsTests: XCTestCase {
         XCTAssertEqual([0, 3, 4, 8, 9, 10].map { p.originalLine(ofParsed: $0) }, [0, 3, 3, 7, 8, 8])
     }
 
+    func testAChainOfStackedTablesStopsAtTheLimitInsteadOfParsingOnceForEach() {
+        let chain = (0..<60).map { "| a | b |\n| - | - |\n| \($0) | 2 |\ntail \($0)\n" }.joined()
+        let p = TableTails.parse(chain)
+        XCTAssertEqual(p.passes, TableTails.maxPasses)
+        XCTAssertEqual(p.inserted.count, TableTails.maxPasses - 1, "every pass but the last found one tail")
+        let a = MarkdownAnalyzer.analyze(chain)
+        XCTAssertEqual(a.length, chain.utf16.count)
+        XCTAssertEqual(a.tables.first.map { $0.lastLine }, 2, "the tails that were found are text")
+        for t in a.tables { XCTAssertTrue(NSMaxRange(t.range) <= a.length) }
+        // A document with a few stacked tables, which is as many as anyone writes, is read in full.
+        let few = (0..<5).map { "| a |\n| - |\n| \($0) |\ntail \($0)\n" }.joined()
+        // (cmark starts a table on the text line directly above its header, as it does without this change: only the last rows are compared.)
+        XCTAssertEqual(MarkdownAnalyzer.analyze(few).tables.map(\.lastLine), [2, 6, 10, 14, 18])
+    }
+
     func testATableInsideAQuoteInsideAListItemIsFoundToo() {
         let p = TableTails.parse("- > | a |\n  > | - |\n  > | 1 |\n  > text\n")
         XCTAssertEqual(p.inserted, [3])
