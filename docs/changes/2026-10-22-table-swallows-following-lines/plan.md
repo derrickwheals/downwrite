@@ -47,7 +47,7 @@ Not changed: `TableModel`, `TableOverlay`, `TableGrid`, the styler, `EditorView`
 - [x] 4. `DocumentHTML.prepare` through `TableTails`; export tests green. Commit.
 - [x] 5. `TableFormatter.tableLines` trimmed; the Format Table tests green. Commit.
 - [x] 6. App tests green (`TableGridTests`, `StylerTests`) with no app code change; if one needs code, the plan changes first (Deviations). Commit.
-- [ ] 7. `CLAUDE.md` bullet and the `TableEditing` comment. Run the full proof below, then the hand check, then update the plan's Deviations. Commit.
+- [x] 7. `CLAUDE.md` bullet and the `TableEditing` comment. Run the full proof below, then the hand check, then update the plan's Deviations. Commit.
 
 ## Risks
 
@@ -107,3 +107,4 @@ Requirement coverage (bug track, from the intent's outcome and the four decision
 - Step 3: `CalloutSyntax.match` reads the *parsed* text (`parsedSrc`) and its result (marker line, marker and title ranges) is mapped back to the document, because it takes cmark positions of the text it is given. The plan's `range(of:)` mapping alone would have left a callout after a table with a tail off by the inserted lines.
 - Step 3 mutations (run, as the plan promised): M1, `isRow` accepts every line: 17 of the 23 `TableTailsTests` fail (card sample, equivalence, random oracle, rule cases, pass counts). M2, the line map is not applied (`original(_:)` returns its argument): the test process crashes with an index out of range in the first equivalence case.
 - Step 6: no app code changed, as planned. The three `TableGridTests` and the `StylerTests` case fail on plain cmark (M3, `TableTails.parse` returning the first parse unchanged: 4 of 4 fail) and pass with the rule; the existing 43 grid tests, `StylerTests`, `TableLayoutTests` and `SourceViewTests` pass unchanged. The first version of the styler test asserted `maximumLineHeight > 1` for a normal line, but an unset maximum is 0; it now asserts the line is not in the collapsed range.
+- Step 7 proof, run 2026-10-22 on the branch: `swift test` on macOS, 592 app tests and 790 Core tests, 0 failures (the `TIMING:` lines are in the usual range: restyle ratio 1.98, as DW-024 recorded). Core on Linux (`mirror.gcr.io/library/swift:6.1-noble`, one test per process, 4 at a time, the Linux Core tests memory recipe): 790 of 790 passed, none failed or wedged. `scripts/linux-test.sh` itself was not used (macOS bash 3.2). The hand check (open `test-doc.md`, type `x` then `|` under a grid, print preview) is still owed to the maintainer: it needs the built app and a person at the screen.

@@ -3,9 +3,9 @@ import Foundation
 /// Text-level edits around a grid table: leaving it with the keyboard and removing it. (Cell and row/column edits go
 /// through `TableModel`; the app writes the model back with `TableModel.markdown`.)
 public enum TableEditing {
-    /// Caret position for leaving the grid downwards. A table must be followed by a blank line before ordinary text
-    /// (otherwise the next line would become one of its rows), so this adds the missing blank line when the document
-    /// ends right at the table. When nothing needs adding the returned edit is an empty insertion and only the
+    /// Caret position for leaving the grid downwards. A line that starts with `|` straight under the table would become one of
+    /// its rows, so this adds the missing blank line when the document ends right at the table; text that is not a row
+    /// (`TableTails`) is already outside it. When nothing needs adding the returned edit is an empty insertion and only the
     /// selection matters.
     public static func exitAfter(in text: String, table: TableBlock) -> TextEdit {
         let ns = NSString(string: text)
