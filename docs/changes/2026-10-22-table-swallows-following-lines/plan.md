@@ -45,7 +45,7 @@ Not changed: `TableModel`, `TableOverlay`, `TableGrid`, the styler, `EditorView`
 - [x] 2. `TableTails.swift`: the rule and `tableLength(of:)`, with their unit tests green on their own. Commit.
 - [x] 3. `TableTails.parse` and the line map, wired into `MarkdownAnalyzer.run()` and `range(of:)`. The analyzer tests go green; run the whole Core suite to prove nothing else moved. Commit.
 - [x] 4. `DocumentHTML.prepare` through `TableTails`; export tests green. Commit.
-- [ ] 5. `TableFormatter.tableLines` trimmed; the Format Table tests green. Commit.
+- [x] 5. `TableFormatter.tableLines` trimmed; the Format Table tests green. Commit.
 - [ ] 6. App tests green (`TableGridTests`, `StylerTests`) with no app code change; if one needs code, the plan changes first (Deviations). Commit.
 - [ ] 7. `CLAUDE.md` bullet and the `TableEditing` comment. Run the full proof below, then the hand check, then update the plan's Deviations. Commit.
 

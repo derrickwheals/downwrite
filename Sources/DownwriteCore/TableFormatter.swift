@@ -36,10 +36,20 @@ public enum TableFormatter {
             let next = ns.lineRange(for: NSRange(location: NSMaxRange(end), length: 0))
             if isRow(lineText(next)) { end = next } else { break }
         }
-        let range = NSRange(location: start.location, length: NSMaxRange(end) - start.location)
-        let lines = lineText(range).components(separatedBy: "\n")
+        // The contiguous pipe lines may run on past the table: a line that is not a row (`TableTails`) is text, not part of it.
+        var lineRanges: [NSRange] = []
+        var next = start
+        while true {
+            lineRanges.append(next)
+            if next.location >= end.location { break }
+            next = ns.lineRange(for: NSRange(location: NSMaxRange(next), length: 0))
+        }
+        let lines = lineRanges.map { lineText($0) }
         guard lines.count >= 2, TableModel.isDelimiterRow(lines[1]) else { return nil }
-        return (range, lines)
+        let length = TableTails.tableLength(of: lines)
+        guard let caretIndex = lineRanges.firstIndex(of: caretLine), caretIndex < length else { return nil }
+        let last = lineRanges[length - 1]
+        return (NSRange(location: start.location, length: NSMaxRange(last) - start.location), Array(lines[..<length]))
     }
 
     public static func formatEdit(in text: String, selection: NSRange) -> TextEdit? {
