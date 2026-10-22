@@ -375,7 +375,7 @@ final class DocumentHTMLTests: XCTestCase {
     }
 
     func testATableWithoutOuterPipesStillExportsEveryRow() {
-        let html = body("a | b\n- | -\n1 | 2\n3 | 4\ntext\n")
+        let html = body("a | b\n--- | ---\n1 | 2\n3 | 4\ntext\n")
         XCTAssertEqual(html.components(separatedBy: "<tr>").count - 1, 3, html)
         XCTAssertTrue(html.hasSuffix("<p>text</p>\n"), html)
     }
@@ -389,6 +389,7 @@ final class DocumentHTMLTests: XCTestCase {
         let html = body("- | a |\n  |---|\n  | 1 |\n  text\n")
         XCTAssertTrue(html.contains("<tr><td>1</td></tr>"), html)
         XCTAssertFalse(html.contains("<td>text"), html)
+        // As if a blank line had been typed inside the item: it holds two blocks apart, so the list is loose and the text is a `<p>`.
         XCTAssertTrue(html.contains("<p>text</p>"), html)
         let quote = body("> | a |\n> |---|\n> | 1 |\n> text\n")
         XCTAssertFalse(quote.contains("<td>text"), quote)
