@@ -97,10 +97,19 @@ extension SelfTest {
                                      windowNumber: window.windowNumber, context: nil, characters: "/", charactersIgnoringModifiers: "/",
                                      isARepeat: false, keyCode: 44)!
         _ = NSApp.mainMenu?.performKeyEquivalent(with: slash)
-        if !(await waitUntil(timeout: 3, { coordinator.sourceMode })) { coordinator.setSourceMode(true) }
-        await typeAtTheEnd("source view")
-        _ = NSApp.mainMenu?.performKeyEquivalent(with: slash)
-        if !(await waitUntil(timeout: 3, { !coordinator.sourceMode })) { coordinator.setSourceMode(false) }
+        let slashReached = await waitUntil(timeout: 3, { coordinator.sourceMode })
+        if !slashReached { coordinator.setSourceMode(true) }
+        // (SwiftUI's round trip: its `sourceMode` state is only changed by the menu command, so after the fallback above it puts the formatted
+        // editor back at the next update, and keys typed then would be recorded as the source view's.)
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        if coordinator.sourceMode {
+            await typeAtTheEnd("source view")
+            _ = NSApp.mainMenu?.performKeyEquivalent(with: slash)
+            if !(await waitUntil(timeout: 3, { !coordinator.sourceMode })) { coordinator.setSourceMode(false) }
+        } else {
+            fail("the source view is showing", slashReached ? "⌘/ was handled, but the formatted editor is showing again"
+                 : "⌘/ did not reach the View menu (SwiftUI has not resolved the focused window, as in the other ⌘/ checks), so the source view was not typed in")
+        }
 
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
