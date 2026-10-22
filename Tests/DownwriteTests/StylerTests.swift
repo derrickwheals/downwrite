@@ -228,6 +228,71 @@ final class StylerTests: XCTestCase {
         }
     }
 
+    /// DW-024: the restyle after an edit styles a detached copy of the text and writes only the runs that differ (`StyleDiff`). The copy and
+    /// the comparison must cost little next to the styling itself, which the old whole-document write also paid. Both are measured here in
+    /// this thread's CPU time on the same 180 KB document: a restyle of an unchanged document (copy + style + compare, nothing written)
+    /// against the styling alone, into a fresh storage (`styleAll(into:)`), so the ratio is what the copy and the comparison add. A keystroke is also timed with today's restyle
+    /// and with a whole-document attribute write added after it (what the old styler did on top of the styling), for the record; layout is
+    /// not CPU work done here, so neither number claims typing got faster.
+    func testRestylingCostsLittleMoreThanStyling() {
+        var s = ""
+        for i in 0..<2000 { s += "## Heading \(i)\n\nA paragraph with **bold**, *italic*, `code` and a [link](https://x.y/\(i)).\n\n" }
+        let h = EditorHarness(text: s)
+        h.placeCaret(at: h.storage.length)
+        let c = h.coordinator
+        func styleFresh() -> Double {
+            // (`styleAll(into:)`, not `styleAll(storage:)`, which makes the copy and runs the diff itself: the baseline must not pay for them.)
+            cpuSeconds { c.styler.styleAll(into: NSTextStorage(string: h.textView.string), analysis: c.analysis, selection: h.textView.selectedRange(), preview: c.preview) }.seconds
+        }
+        func restyle() -> Double { cpuSeconds { c.restyleAll() }.seconds }
+        _ = styleFresh(); _ = restyle()                         // (one-off set-up on neither side)
+        let fresh = (0..<5).map { _ in styleFresh() }.sorted()[2]
+        let again = (0..<5).map { _ in restyle() }.sorted()[2]
+
+        let keystroke = (0..<9).map { _ in cpuSeconds { h.type("a") }.seconds }.sorted()[4]
+        let whole = (0..<9).map { _ in
+            cpuSeconds {
+                h.type("a")
+                let store = h.storage, copy = NSAttributedString(attributedString: store)
+                store.beginEditing()
+                copy.enumerateAttributes(in: NSRange(location: 0, length: copy.length), options: []) { attrs, range, _ in store.setAttributes(attrs, range: range) }
+                store.endEditing()
+            }.seconds
+        }.sorted()[4]
+
+        let timing = String(format: "restyle unchanged=%.4fs style into fresh storage=%.4fs ratio=%.3f; keystroke=%.4fs, with a whole-document write=%.4fs",
+                            again, fresh, again / max(fresh, 0.0001), keystroke, whole)
+        print("TIMING: \(timing)")
+        // (Measured on a Mac: the copy and the comparison cost about as much as the styling, ratio 2.0; the bound stops them growing, e.g. a
+        // per-character lookup. The claim that matters is the second: a keystroke costs less than it did with the whole-document write.)
+        XCTAssertLessThanOrEqual(again, fresh * 3, "the copy and the comparison should not cost more than a few times the styling: \(timing)")
+        XCTAssertLessThanOrEqual(keystroke, whole, "a keystroke should cost no more than it did with the whole-document write: \(timing)")
+        if ProcessInfo.processInfo.environment["CI"] == nil {
+            XCTAssertLessThan(keystroke, 1, "a keystroke in a 180 KB document should stay interactive on a developer machine: \(timing)")
+        }
+    }
+
+    /// DW-024: the editor uses contiguous layout, so the first time the caret reaches the end of a long document everything before it is laid
+    /// out. That must cost no more than styling the document, which opening it already does: both are measured on the same 180 KB document
+    /// in this thread's CPU time (the probe recorded in the plan put the jump at about 0.6 of a full restyle on the runner).
+    func testReachingTheEndOfALongDocumentCostsLittle() {
+        var s = ""
+        for i in 0..<2000 { s += "## Heading \(i)\n\nA paragraph with **bold**, *italic*, `code` and a [link](https://x.y/\(i)).\n\n" }
+        let h = EditorHarness(text: s)
+        h.placeCaret(at: 0)
+        XCTAssertFalse(h.textView.layoutManager!.allowsNonContiguousLayout, "the editor uses contiguous layout")
+        let full = min(cpuSeconds { h.coordinator.restyleAll() }.seconds, cpuSeconds { h.coordinator.restyleAll() }.seconds)
+        h.textView.layoutManager!.invalidateLayout(forCharacterRange: NSRange(location: 0, length: h.storage.length), actualCharacterRange: nil)
+        h.placeCaret(at: 0)
+        let jump = cpuSeconds { h.placeCaret(at: h.storage.length); h.textView.displayIfNeeded() }.seconds
+        let timing = String(format: "reach the end=%.3fs full restyle=%.3fs ratio=%.3f", jump, full, jump / max(full, 0.001))
+        print("TIMING: \(timing)")
+        XCTAssertLessThanOrEqual(jump, full * 2, "laying out a long document should cost no more than styling it: \(timing)")
+        if ProcessInfo.processInfo.environment["CI"] == nil {
+            XCTAssertLessThan(jump, 0.25, "reaching the end of a 180 KB document should not stall on a developer machine: \(timing)")
+        }
+    }
+
     // MARK: Callouts (DW-006)
 
     private func palette(_ h: EditorHarness) -> Palette { AppearanceResolver.palette(for: h.textView.effectiveAppearance) }

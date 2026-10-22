@@ -166,7 +166,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDele
         tv.coordinator = self
         tv.delegate = self
         tv.layoutManager?.delegate = self
-        tv.layoutManager?.allowsNonContiguousLayout = true
+        // Contiguous layout (DW-024): with non-contiguous layout AppKit re-estimated the height of the text after every insertion, and the
+        // view dipped by a line and came back inside the keystroke. The cost is laying out the text before the caret the first time the
+        // end of a long document is reached (`TypingStabilityTests`, `StylerTests.testReachingTheEndOfALongDocumentCostsLittle`).
+        tv.layoutManager?.allowsNonContiguousLayout = false
         applySettings(s)
         styler = MarkdownStyler(typography: typography, palette: currentPalette(for: tv.effectiveAppearance))
         refreshCopyControlStyle()
