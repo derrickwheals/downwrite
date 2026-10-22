@@ -193,12 +193,12 @@ final class TOCTests: XCTestCase {
         h.coordinator.revealHeading(at: try row(model, "Title").id, animated: false)
         XCTAssertEqual(h.scroll.contentView.bounds.origin.y, -h.scroll.contentView.contentInsets.top, accuracy: 1, "can't scroll above the start")
         let last = try row(model, "Detail 40").id
-        h.coordinator.revealHeading(at: last, animated: false)
+        let moves = h.recordGeometry { h.coordinator.revealHeading(at: last, animated: false) }
         let heading = h.coordinator.analysis.headings[last]
         let visible = h.textView.visibleRect
         let top = lineTop(h, of: heading)
         XCTAssertTrue(top >= visible.minY && top <= visible.maxY, "the last heading is on screen even though it can't reach the top")
-        XCTAssertLessThanOrEqual(visible.maxY, h.textView.frame.maxY + 1, "no scrolling past the end")
+        XCTAssertLessThanOrEqual(visible.maxY, h.textView.frame.maxY + 1, "no scrolling past the end: \(moves)\n\(h.geometryReport())")
     }
 
     func testAnimatedRevealArrivesAtTheSamePlace() async throws {

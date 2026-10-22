@@ -137,6 +137,7 @@ final class EditorTextView: NSTextView {
         // height (the layout is contiguous, DW-024, so a part laid out after the clamp would still change the height and leave the view
         // scrolled past the end).
         if let container = textContainer { lm.ensureLayout(for: container) }
+        sizeToFit()
         let used = lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: location), effectiveRange: nil)
         let clip = scroll.contentView
         let lineY = used.minY + textContainerOrigin.y
