@@ -133,8 +133,10 @@ final class EditorTextView: NSTextView {
     private func scrollTarget(for range: NSRange, margin: CGFloat) -> NSPoint? {
         guard let lm = layoutManager, let storage = textStorage, let scroll = enclosingScrollView, storage.length > 0 else { return nil }
         let location = min(range.location, storage.length - 1)
-        // Layout is non-contiguous: everything above the line must be laid out first or its position is only an estimate.
-        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: location + 1))
+        // The whole text is laid out first: the line's position needs everything above it, and the clamp below needs the text view's final
+        // height (the layout is contiguous, DW-024, so a part laid out after the clamp would still change the height and leave the view
+        // scrolled past the end).
+        if let container = textContainer { lm.ensureLayout(for: container) }
         let used = lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: location), effectiveRange: nil)
         let clip = scroll.contentView
         let lineY = used.minY + textContainerOrigin.y
