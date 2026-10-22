@@ -163,6 +163,22 @@ final class StylerTests: XCTestCase {
         XCTAssertNotNil(h.attrs(at: 4)[.dwBlockBackground])
     }
 
+    func testTextUnderATableIsStyledAsBodyText() {
+        let h = EditorHarness(text: "> | a | b |\n> | - | - |\n> | 1 | 2 |\n> tail text\n\nend\n")
+        h.select(h.textView.string.utf16.count)
+        XCTAssertTrue(h.font(at: 4).isFixedPitch)
+        XCTAssertNotNil(h.attrs(at: 4)[.dwBlockBackground], "the table lines keep the card")
+        let tail = h.index(of: "tail")
+        XCTAssertFalse(h.font(at: tail).isFixedPitch, "the line under the last row is body text")
+        XCTAssertNil(h.attrs(at: tail)[.dwBlockBackground])
+        let flat = EditorHarness(text: "| a | b |\n| - | - |\n| 1 | 2 |\ntail text\n\nend\n")
+        flat.select(flat.textView.string.utf16.count)
+        let plain = flat.index(of: "tail")
+        XCTAssertFalse(flat.font(at: plain).isFixedPitch)
+        XCTAssertNil(flat.attrs(at: plain)[.dwBlockBackground])
+        XCTAssertGreaterThan(flat.paragraph(at: plain).maximumLineHeight, 1, "it is not collapsed behind the grid")
+    }
+
     func testGridTableSourceIsCollapsedBehindTheGrid() {
         let h = EditorHarness(text: "| a | b |\n| - | - |\n| 1 | 2 |\n\nend\n")
         h.select(h.textView.string.utf16.count)

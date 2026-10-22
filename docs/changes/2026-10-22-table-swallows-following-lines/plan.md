@@ -2,7 +2,7 @@
 type: plan
 id: 2026-10-22-table-swallows-following-lines
 intent: ./intent.md
-status: approved       # draft | approved | in-progress | done
+status: in-progress    # draft | approved | in-progress | done
 approved: 2026-10-22
 branch: change/2026-10-22-table-swallows-following-lines
 ---
@@ -41,7 +41,7 @@ Not changed: `TableModel`, `TableOverlay`, `TableGrid`, the styler, `EditorView`
 
 ## Order of work
 
-- [ ] 1. On the branch, write the failing tests first: the card's sample (table has 2 rows, the three text lines are `.body` lines, the paragraph is not in `tables`), the row-rule cases, the export, Format Table, and the grid and styler cases. Confirm each fails on `main` for the right reason. Commit.
+- [x] 1. On the branch, write the failing tests first: the card's sample (table has 2 rows, the three text lines are `.body` lines, the paragraph is not in `tables`), the row-rule cases, the export, Format Table, and the grid and styler cases. Confirm each fails on `main` for the right reason. Commit.
 - [ ] 2. `TableTails.swift`: the rule and `tableLength(of:)`, with their unit tests green on their own. Commit.
 - [ ] 3. `TableTails.parse` and the line map, wired into `MarkdownAnalyzer.run()` and `range(of:)`. The analyzer tests go green; run the whole Core suite to prove nothing else moved. Commit.
 - [ ] 4. `DocumentHTML.prepare` through `TableTails`; export tests green. Commit.
@@ -101,4 +101,5 @@ Requirement coverage (bug track, from the intent's outcome and the four decision
 
 ## Deviations
 
-<Filled during build. One line per departure from this plan, added in the same commit as the code that departs.>
+- Step 1: the `isRow` unit cases and the `passes` count test need `TableTails` to exist, so they are written with step 2 (the rule) and step 3 (the parse) instead of step 1. The analyzer-level tests (card sample, equivalence, GFM corpus, nested, random oracle), export, Format Table, `exitAfter`, grid and styler tests are all in step 1. The two grid/styler app tests were written but not yet run on `main` (the app test target needs the whole app build); they are run in step 6.
+- Step 1: the GFM no-change corpus and the quoted-table-is-never-a-grid test pass on `main` by design (they guard what must not change); the other 12 `TableTailsTests` fail on `main` for the right reason (a table swallowing the text under it).

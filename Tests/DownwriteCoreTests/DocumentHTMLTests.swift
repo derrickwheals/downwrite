@@ -362,6 +362,39 @@ final class DocumentHTMLTests: XCTestCase {
         XCTAssertTrue(inList.hasPrefix("<ul>\n<li>\n<p>item</p>\n<div class=\"dw-table\"><table style="), inList)
     }
 
+    // MARK: 6b: tables end where the rows do (DW-025, D2)
+
+    func testTextDirectlyUnderTheLastRowIsAParagraphNotARow() {
+        let html = body("| a |\n|---|\n| 1 |\ntext\nmore\n")
+        XCTAssertTrue(html.hasSuffix("<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table></div>\n<p>text\nmore</p>\n"), html)
+        XCTAssertFalse(html.contains("<td>text"), html)
+        let card = body(TableTailsTests.card)
+        XCTAssertEqual(card.components(separatedBy: "<tr>").count - 1, 2, "a header row and the one empty row: \(card)")
+        XCTAssertTrue(card.contains("<p>sxasdasdas\nsadasd\nIpsum duis elit"), card)
+        XCTAssertTrue(card.hasSuffix("<p>After.</p>\n"), card)
+    }
+
+    func testATableWithoutOuterPipesStillExportsEveryRow() {
+        let html = body("a | b\n- | -\n1 | 2\n3 | 4\ntext\n")
+        XCTAssertEqual(html.components(separatedBy: "<tr>").count - 1, 3, html)
+        XCTAssertTrue(html.hasSuffix("<p>text</p>\n"), html)
+    }
+
+    func testATextLineOverARuleUnderATableIsAHeadingInTheExportToo() {
+        let html = body("| a |\n|---|\n| 1 |\ntext\n---\n")
+        XCTAssertTrue(html.hasSuffix("</table></div>\n<h2 id=\"text\">text</h2>\n"), html)
+    }
+
+    func testATableInAListItemEndsAtItsLastRowToo() {
+        let html = body("- | a |\n  |---|\n  | 1 |\n  text\n")
+        XCTAssertTrue(html.contains("<tr><td>1</td></tr>"), html)
+        XCTAssertFalse(html.contains("<td>text"), html)
+        XCTAssertTrue(html.contains("<p>text</p>"), html)
+        let quote = body("> | a |\n> |---|\n> | 1 |\n> text\n")
+        XCTAssertFalse(quote.contains("<td>text"), quote)
+        XCTAssertTrue(quote.contains("<p>text</p>"), quote)
+    }
+
     // MARK: 6b: code (R10)
 
     func testFencedCodeIsShownExactly() {

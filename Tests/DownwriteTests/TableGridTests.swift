@@ -499,6 +499,56 @@ final class TableGridTests: XCTestCase {
         XCTAssertEqual(h.textView.string, before, "forward delete at the end of the line above stays out of the table too")
     }
 
+    // MARK: Text under the last row (DW-025)
+
+    /// The sample on the card: an empty body row, then text typed straight under it.
+    static let cardDoc = "| Column 1 | Column 2 | Column 3 |\n| -------- | -------- | -------- |\n| | | |\nsxasdasdas\nsadasd\n"
+        + "Ipsum duis elit, eu est proident duis elit amet aute cillum. Proident duis elit amet aute cillum. Elit amet aute, cillum irure.\n\nAfter.\n"
+
+    func testTextUnderTheLastRowIsNotARowOfTheGrid() {
+        let h = harness(TableGridTests.cardDoc)
+        XCTAssertEqual(h.coordinator.tableOverlay.grids.count, 1)
+        XCTAssertEqual(grid(h).model.rows.count, 2, "the header and the one empty row")
+        let origin = h.textView.textContainerOrigin.y
+        for line in 3...5 {
+            XCTAssertGreaterThan(usedRect(h, line: line).height, 5, "text line \(line) is shown, not collapsed")
+        }
+        XCTAssertGreaterThanOrEqual(usedRect(h, line: 3).minY + origin, grid(h).frame.maxY - 1, "the text starts below the grid")
+        XCTAssertEqual(h.textView.string, TableGridTests.cardDoc, "the document is untouched")
+    }
+
+    func testTypingUnderTheLastRowNeverAddsARowAndAPipeFirstDoes() {
+        let doc = "| a | b |\n| - | - |\n| 1 | 2 |\n"
+        let h = harness(doc)
+        XCTAssertEqual(grid(h).model.rows.count, 2)
+        h.window.makeFirstResponder(h.textView)
+        h.select(doc.utf16.count)
+        for ch in "xyz" {
+            h.type(String(ch))
+            _ = h.coordinator.flushPendingAnalysis()
+            settle(h)
+            XCTAssertEqual(h.coordinator.tableOverlay.grids.count, 1, "after typing “\(ch)”")
+            XCTAssertEqual(grid(h).model.rows.count, 2, "after typing “\(ch)”: the text is not a row")
+        }
+        XCTAssertEqual(h.textView.string, doc + "xyz")
+        h.select(doc.utf16.count)
+        h.type("|")
+        _ = h.coordinator.flushPendingAnalysis()
+        settle(h)
+        XCTAssertEqual(h.textView.string, doc + "|xyz")
+        XCTAssertEqual(h.coordinator.analysis.tables.first?.lastLine, 3, "a pipe first makes it a row")
+        XCTAssertEqual(grid(h).model.rows.count, 3)
+    }
+
+    func testBackspaceAtTheStartOfTheTextDirectlyUnderTheGridGoesIntoTheLastCell() {
+        let doc = "| a | b |\n| - | - |\n| 1 | 2 |\ntext\n"
+        let h = harness(doc)
+        h.select(NSMaxRange(h.coordinator.analysis.tables[0].range) + 1)
+        h.textView.deleteBackward(nil)
+        XCTAssertEqual(h.textView.string, doc, "nothing was deleted")
+        XCTAssertEqual(grid(h).focusedPosition, .init(row: 1, column: 1))
+    }
+
     // MARK: Markdown source
 
     func testEditAsMarkdownShowsTheSourceUntilTheCaretLeaves() async {
