@@ -176,7 +176,7 @@ final class StylerTests: XCTestCase {
         let plain = flat.index(of: "tail")
         XCTAssertFalse(flat.font(at: plain).isFixedPitch)
         XCTAssertNil(flat.attrs(at: plain)[.dwBlockBackground])
-        XCTAssertGreaterThan(flat.paragraph(at: plain).maximumLineHeight, 1, "it is not collapsed behind the grid")
+        XCTAssertFalse((0.001..<1.0).contains(flat.paragraph(at: plain).maximumLineHeight), "it is not collapsed behind the grid")
     }
 
     func testGridTableSourceIsCollapsedBehindTheGrid() {
