@@ -6,7 +6,7 @@ reviewed: 2026-10-22
 base: main
 head: 6be42f8124be813386a63d5ba8e281fdde0a6d9a
 reproven: c8fcdd68bd53251eca287d9d5c63eccc9cd980bc
-pr:
+pr: https://github.com/derrickwheals/downwrite/pull/25
 ---
 
 # Review: Editor view jumps while typing
