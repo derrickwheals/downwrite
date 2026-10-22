@@ -78,10 +78,15 @@ private struct Builder {
     var foldItems: [(header: ClosedRange<Int>, last: Int)] = []
     /// Analysing a single table cell: inline markers keep their real reveal ranges instead of staying visible.
     var cellMode = false
+    /// What was parsed when a table has text straight under its last row (`TableTails`): the text with blank lines inserted, its line
+    /// table, and which lines they are. Nil when nothing was inserted, so `src` is what cmark's positions refer to.
+    private var tails: TableTails.Parsed?
+    private var parsedSrc: SourceText
 
     init(_ text: String) {
         original = text
         src = SourceText(text)
+        parsedSrc = src
         lines = (0..<src.lineCount).map { i in
             LineStyle(range: NSRange(location: src.lineStarts[i], length: src.lineEnds[i] - src.lineStarts[i]),
                       contentEnd: src.lineContentEnds[i])
@@ -92,8 +97,12 @@ private struct Builder {
 
     mutating func run() {
         let masked = maskFrontMatter()
-        let doc = Document(parsing: masked)
-        for child in doc.children { walk(child, Context()) }
+        let parsed = TableTails.parse(masked)
+        if !parsed.inserted.isEmpty {
+            tails = parsed
+            parsedSrc = SourceText(parsed.text)
+        }
+        for child in parsed.document.children { walk(child, Context()) }
     }
 
     func finish() -> MarkdownAnalysis {
@@ -216,9 +225,33 @@ private struct Builder {
 
     private func range(of node: Markup) -> NSRange? {
         guard let r = node.range else { return nil }
-        let s = src.offset(line: r.lowerBound.line, column: r.lowerBound.column)
-        let e = src.offset(line: r.upperBound.line, column: r.upperBound.column)
+        let s = original(parsedSrc.offset(line: r.lowerBound.line, column: r.lowerBound.column))
+        let e = original(parsedSrc.offset(line: r.upperBound.line, column: r.upperBound.column))
         return NSRange(location: s, length: max(0, e - s))
+    }
+
+    /// An offset in the text cmark parsed as an offset in the document. A position on an inserted line is the start of the line that
+    /// follows it, which is where cmark ends a node that a blank line follows.
+    private func original(_ parsedOffset: Int) -> Int {
+        guard let tails else { return parsedOffset }
+        let line = parsedSrc.lineIndex(containing: parsedOffset)
+        let target = min(tails.originalLine(ofParsed: line), src.lineCount - 1)
+        if tails.isInserted(line) { return src.lineStarts[target] }
+        return min(src.lineStarts[target] + parsedOffset - parsedSrc.lineStarts[line], src.length)
+    }
+
+    /// A callout match read from the parsed text, put back into the document's coordinates.
+    private func original(_ match: CalloutMatch) -> CalloutMatch {
+        guard let tails else { return match }
+        func map(_ r: NSRange) -> NSRange {
+            let start = original(r.location)
+            return NSRange(location: start, length: original(NSMaxRange(r)) - start)
+        }
+        var out = match
+        out.markerLine = tails.originalLine(ofParsed: match.markerLine)
+        out.markerRange = map(match.markerRange)
+        out.titleRange = match.titleRange.map(map)
+        return out
     }
 
     private func lineSpan(_ r: NSRange) -> ClosedRange<Int> {
@@ -350,7 +383,9 @@ private struct Builder {
     /// Records the quote as a callout when `CalloutSyntax` says it is one (only top-level quotes can be). The `[!TYPE]` marker
     /// hides like the line's own `>` does: it reveals when the selection touches the marker line, and only then.
     private mutating func callout(_ q: BlockQuote, lines span: ClosedRange<Int>) {
-        guard let m = CalloutSyntax.match(q, in: src), span.contains(m.markerLine) else { return }
+        guard let found = CalloutSyntax.match(q, in: parsedSrc) else { return }
+        let m = original(found)
+        guard span.contains(m.markerLine) else { return }
         let start = lines[span.lowerBound].range.location
         callouts.append(CalloutInfo(
             kind: m.kind, range: NSRange(location: start, length: lines[span.upperBound].contentEnd - start),

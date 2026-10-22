@@ -54,6 +54,50 @@ final class TableTailsTests: XCTestCase {
         XCTAssertEqual(TableTails.tableLength(of: []), 0)
     }
 
+    // MARK: The parse
+
+    func testTheParseInsertsABlankLineBeforeTheFirstLineThatIsNotARow() {
+        let p = TableTails.parse(Self.card)
+        XCTAssertEqual(p.passes, 2)
+        XCTAssertEqual(p.inserted, [3])
+        var lines = Self.card.components(separatedBy: "\n")
+        lines.insert("", at: 3)
+        XCTAssertEqual(p.text, lines.joined(separator: "\n"))
+        XCTAssertEqual((0..<5).map { p.originalLine(ofParsed: $0) }, [0, 1, 2, 3, 3], "an inserted line answers with the line after it")
+        XCTAssertEqual([p.isInserted(2), p.isInserted(3), p.isInserted(4)], [false, true, false])
+    }
+
+    func testTheInsertedLineCarriesTheBreakLinesPrefix() {
+        XCTAssertEqual(TableTails.parse("> | a |\n> | - |\n> | 1 |\n> text\n").text, "> | a |\n> | - |\n> | 1 |\n> \n> text\n")
+        XCTAssertEqual(TableTails.parse("- | a |\n  | - |\n  | 1 |\n  text\n").text, "- | a |\n  | - |\n  | 1 |\n  \n  text\n")
+        XCTAssertEqual(TableTails.parse("| a |\n| - |\n| 1 |\ntext\n").text, "| a |\n| - |\n| 1 |\n\ntext\n")
+    }
+
+    func testParsesCountOneWithoutATailTwoWithOneAndThreeWhenTheSecondTableHasOneToo() {
+        XCTAssertEqual(TableTails.parse("just text\n").passes, 1)
+        XCTAssertEqual(TableTails.parse("a | b\nplain\n").passes, 1, "no table at all")
+        XCTAssertEqual(TableTails.parse("| a |\n| - |\n| 1 |\n\ntext\n").passes, 1, "a table with no tail")
+        XCTAssertEqual(TableTails.parse("| a |\n| - |\n| 1 |\n").passes, 1)
+        XCTAssertEqual(TableTails.parse(Self.card).passes, 2)
+        let two = TableTails.parse("| a |\n| - |\n| 1 |\nh1 | h2\n| - | - |\n| x | y |\nz\n")
+        XCTAssertEqual(two.passes, 3)
+        XCTAssertEqual(two.inserted, [3, 7])
+        XCTAssertEqual(two.text, "| a |\n| - |\n| 1 |\n\nh1 | h2\n| - | - |\n| x | y |\n\nz\n")
+    }
+
+    func testTwoTablesWithTailsAreBothFoundInOnePass() {
+        let p = TableTails.parse("| a |\n| - |\n| 1 |\nx\n\n| b |\n| - |\n| 2 |\ny\n")
+        XCTAssertEqual(p.passes, 2)
+        XCTAssertEqual(p.inserted, [3, 9])
+        XCTAssertEqual([0, 3, 4, 8, 9, 10].map { p.originalLine(ofParsed: $0) }, [0, 3, 3, 7, 8, 8])
+    }
+
+    func testATableInsideAQuoteInsideAListItemIsFoundToo() {
+        let p = TableTails.parse("- > | a |\n  > | - |\n  > | 1 |\n  > text\n")
+        XCTAssertEqual(p.inserted, [3])
+        XCTAssertEqual(p.text, "- > | a |\n  > | - |\n  > | 1 |\n  > \n  > text\n")
+    }
+
     // MARK: The card
 
     func testTextTypedUnderTheLastRowIsNotPartOfTheTable() throws {
@@ -126,11 +170,14 @@ final class TableTailsTests: XCTestCase {
         for (i, l) in a.lines.enumerated() where i != removed {
             lines.append("\(l.kind) q\(l.quoteDepth) l\(l.listDepth) s\(l.isListStart) p\(l.listPrefixLength)")
         }
+        // What the typed line itself carries (the quote marker on `> `) has no counterpart in the original text.
+        let typedLine = NSRange(location: insertionStart, length: shift)
+        func typed(_ r: NSRange) -> Bool { removed != nil && r.location >= typedLine.location && NSMaxRange(r) <= NSMaxRange(typedLine) }
         return Flat(
             lines: lines,
             tables: a.tables.map { "\(line($0.firstLine))-\(line($0.lastLine)) \(range($0.range)) grid=\($0.isGrid)" },
-            spans: a.spans.map { "\($0.flags.rawValue) \(range($0.range))" },
-            markers: a.markers.map { "\($0.flags.rawValue) \(range($0.range)) \(range($0.reveal))" },
+            spans: a.spans.filter { !typed($0.range) }.map { "\($0.flags.rawValue) \(range($0.range))" },
+            markers: a.markers.filter { !typed($0.range) }.map { "\($0.flags.rawValue) \(range($0.range)) \(range($0.reveal))" },
             links: a.links.map { "\(range($0.range)) \($0.destination)" },
             headings: a.headings.map { "\($0.level) \($0.title) \(range($0.range))" })
     }
@@ -182,17 +229,16 @@ final class TableTailsTests: XCTestCase {
     func testTypingAPipeFirstMakesTheLineARowAndItsTable() {
         XCTAssertEqual(spans(MarkdownAnalyzer.analyze("| a |\n| - |\n| 1 |\nx\n")), ["0-2"])
         XCTAssertEqual(spans(MarkdownAnalyzer.analyze("| a |\n| - |\n| 1 |\n|x\n")), ["0-3"])
-        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("| a |\n| - |\n| 1 |\n|\n")), ["0-3"], "a lone pipe is a row")
         XCTAssertEqual(spans(MarkdownAnalyzer.analyze("| a |\n| - |\n| 1 |\n  | x |\n")), ["0-3"], "so is an indented one")
     }
 
     // MARK: The row rule across kinds of delimiter row
 
     func testATableWithoutOuterPipesKeepsEveryLineWithAPipe() {
-        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n- | -\n1 | 2\n3 | 4\n")), ["0-3"])
-        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n- | -\n1 | 2\ntext\n")), ["0-2"])
-        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n- | -\n1 | 2\nx \\| y\n")), ["0-2"], "an escaped pipe is not a separator")
-        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n- | -\n1 | 2\n| 3 | 4 |\n")), ["0-3"])
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n--- | ---\n1 | 2\n3 | 4\n")), ["0-3"])
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n--- | ---\n1 | 2\ntext\n")), ["0-2"])
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n--- | ---\n1 | 2\nx \\| y\n")), ["0-2"], "an escaped pipe is not a separator")
+        XCTAssertEqual(spans(MarkdownAnalyzer.analyze("a | b\n--- | ---\n1 | 2\n| 3 | 4 |\n")), ["0-3"])
     }
 
     func testAPipelessRowUnderAPipeLedTableIsText() {
@@ -223,8 +269,8 @@ final class TableTailsTests: XCTestCase {
             "extra cells": "| a |\n| - |\n| 1 | 2 | 3 |\n",
             "escaped pipes": "| a | b |\n| - | - |\n| x \\| y | z |\n",
             "empty cells": "| a | b |\n| - | - |\n| | |\n| | |\n",
-            "no outer pipes": "a | b\n- | -\n1 | 2\n3 | 4\n",
-            "a half-piped style": "a | b |\n- | - |\n1 | 2 |\n| 3 | 4\n",
+            "no outer pipes": "a | b\n--- | ---\n1 | 2\n3 | 4\n",
+            "a half-piped style": "a | b |\n--- | --- |\n1 | 2 |\n| 3 | 4\n",
             "ended by a blank line": "| a |\n| - |\n| 1 |\n\ntext\n",
             "ended by a heading": "| a |\n| - |\n| 1 |\n# H\n",
             "ended by a quote": "| a |\n| - |\n| 1 |\n> q\n",
