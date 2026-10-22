@@ -28,7 +28,7 @@ enum StyleDiff {
                 var effective = NSRange()
                 let current = storage.attributes(at: location, effectiveRange: &effective)
                 let piece = NSRange(location: location, length: min(NSMaxRange(effective), end) - location)
-                if wantedDictionary.isEqual(to: current) {
+                if false && wantedDictionary.isEqual(to: current) {   // MUTATION M2
                     if let p = pending { writes.append((p, wanted)); pending = nil }
                 } else {
                     pending = pending.map { NSRange(location: $0.location, length: NSMaxRange(piece) - $0.location) } ?? piece
