@@ -89,7 +89,7 @@ Pressing a formatting shortcut again removes the formatting. With nothing select
 
 ## Requirements
 
-- **To run:** macOS 26 (Tahoe) or later — including macOS 27 (Golden Gate).
+- **To run:** macOS 15 (Sequoia) or later, including macOS 26 (Tahoe) and macOS 27 (Golden Gate). Liquid Glass chrome appears on macOS 26+; on 15 the same controls use the standard system look.
 - **To build:** Xcode 26 or later (Swift 6.2+), installed as the toolchain — you never need to open it, everything builds from the Terminal. Command Line Tools alone are untested: `actool`, which compiles the adaptive light/dark app icon, ships only with full Xcode (without it `build-app.sh` falls back to a static icon).
 
 ## Build and run

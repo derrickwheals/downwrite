@@ -128,7 +128,18 @@ extension FocusedValues {
     }
 }
 
-/// Floating word count in a Liquid Glass capsule.
+/// Liquid Glass capsule on macOS 26+, a system material capsule before that.
+private struct PillBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular, in: .capsule)
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+/// Floating word count in a Liquid Glass capsule (a material capsule before macOS 26).
 struct StatusPill: View {
     let text: String
 
@@ -145,7 +156,7 @@ struct StatusPill: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .glassEffect(.regular, in: .capsule)
+        .modifier(PillBackground())
         .accessibilityIdentifier("status-pill")
         .opacity(stats.words == 0 ? 0 : 1)
     }

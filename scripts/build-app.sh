@@ -37,7 +37,7 @@ if [ -d Packaging/AppIcon.icon ] && command -v xcrun >/dev/null; then
   if xcrun actool Packaging/AppIcon.icon --compile "$OUT/Contents/Resources" --output-format human-readable-text \
        --notices --warnings --errors --output-partial-info-plist "$PARTIAL" --app-icon AppIcon \
        --include-all-app-icons --enable-on-demand-resources NO --development-region en \
-       --target-device mac --minimum-deployment-target 26.0 --platform macosx >/dev/null 2>&1; then
+       --target-device mac --minimum-deployment-target 15.0 --platform macosx >/dev/null 2>&1; then
     echo "  ✓ icon compiled"
   else
     echo "  ! actool failed — falling back to AppIcon.icns"

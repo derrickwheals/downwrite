@@ -29,7 +29,7 @@ targets += [
 
 let package = Package(
     name: "Downwrite",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS("15.0")],
     products: products,
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", .upToNextMinor(from: "0.9.0")),

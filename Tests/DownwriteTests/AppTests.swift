@@ -88,7 +88,7 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(md["CFBundleTypeRole"] as? String, "Editor")
         let exts = try XCTUnwrap(md["CFBundleTypeExtensions"] as? [String])
         XCTAssertTrue(exts.contains("md") && exts.contains("markdown"))
-        XCTAssertEqual(dict["LSMinimumSystemVersion"] as? String, "26.0")
+        XCTAssertEqual(dict["LSMinimumSystemVersion"] as? String, "15.0")
         XCTAssertNotNil(dict["UTImportedTypeDeclarations"])
     }
 
