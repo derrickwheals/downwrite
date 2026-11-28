@@ -7,7 +7,7 @@ status: accepted
 raised: 2026-10-13
 accepted: 2026-10-13
 merged: 2026-10-14
-backlog: "DW-002 (https://app.todoist.com/app/task/6hjfjGvqJXxhJqrH)"
+backlog: "DW-002 (https://app.notion.com/p/4260dbce3d3d8155a184f135633efb41)"
 ---
 
 # Paste and drop images into a document

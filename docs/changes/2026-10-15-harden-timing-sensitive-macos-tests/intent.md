@@ -7,7 +7,7 @@ status: accepted
 raised: 2026-10-15
 accepted: 2026-10-15
 merged: 2026-10-15
-backlog: DW-016 (https://app.todoist.com/app/task/6hmGwrX9g6G74h5H)
+backlog: DW-016 (https://app.notion.com/p/4260dbce3d3d81639be1e56401acd475)
 ---
 
 # Harden timing-sensitive tests on the macOS runner
